@@ -1,3 +1,6 @@
+import sys
+from types import ModuleType
+
 from pydantic import BaseModel
 
 from insight_graph.state import Evidence
@@ -36,3 +39,11 @@ def mock_web_search(query: str) -> list[SearchResult]:
 def web_search(query: str, subtask_id: str = "collect") -> list[Evidence]:
     results = mock_web_search(query)
     return pre_fetch_results(results, subtask_id, limit=3)
+
+
+class _CallableWebSearchModule(ModuleType):
+    def __call__(self, query: str, subtask_id: str = "collect") -> list[Evidence]:
+        return web_search(query, subtask_id)
+
+
+sys.modules[__name__].__class__ = _CallableWebSearchModule

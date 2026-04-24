@@ -13,6 +13,7 @@ def test_tools_package_exports_fetch_url_callable() -> None:
 
 def test_tools_package_exports_web_search_callable_and_search_result() -> None:
     assert callable(web_search)
+    assert web_search is importlib.import_module("insight_graph.tools.web_search")
 
     result = SearchResult(
         title="Title",
