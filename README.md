@@ -388,7 +388,9 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 ---
 
-## 配置说明
+## 计划配置（后续路线图）
+
+当前 MVP 不读取环境变量；以下配置项用于后续接入真实 LLM、搜索、数据库和预算控制时落地。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
