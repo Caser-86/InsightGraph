@@ -4,9 +4,21 @@
 
 > 当前仓库处于 MVP 架构落地阶段：优先实现可测试的 LangGraph 多智能体研究流骨架，再逐步接入真实搜索、持久化、向量记忆与 Web API。
 
+## 当前 MVP 已实现
+
+| 能力 | 状态 |
+|------|------|
+| LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
+| CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
+| 证据链 | 已实现 deterministic `mock_search`，所有报告引用仅来自 verified evidence |
+| Critic | 已实现证据数量、分析结果、citation support 检查；失败路径最多重试一次后输出失败评估 |
+| 测试 | 已实现 pytest 覆盖 state、agents、graph、CLI |
+
+> MVP 阶段的 Collector 使用固定 mock evidence，适合验证架构闭环；它不会根据任意查询实时联网搜索。真实 web/news/GitHub 搜索、FastAPI、PostgreSQL、pgvector、LLM 路由和可观测性属于后续路线图。
+
 ---
 
-## 项目结构
+## 目标项目结构（蓝图）
 
 ```text
 src/insight_graph/
@@ -49,7 +61,7 @@ src/insight_graph/
 
 ---
 
-## 核心特性
+## 目标核心特性（蓝图）
 
 | 特性 | 说明 |
 |------|------|
@@ -64,7 +76,7 @@ src/insight_graph/
 
 ---
 
-## 技术架构
+## 目标技术架构（蓝图）
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐
@@ -344,13 +356,12 @@ flowchart TB
 
 ---
 
-## 快速开始
+## 快速开始（当前 MVP）
 
 ### 环境要求
 
 - Python 3.11+
-- Docker（PostgreSQL + pgvector）
-- Poetry 或 uv
+- pip
 
 ### 启动步骤
 
@@ -358,27 +369,22 @@ flowchart TB
 # 1. 克隆并配置
 git clone https://github.com/Caser-86/InsightGraph.git
 cd InsightGraph
-cp .env.example .env
-# 编辑 .env，配置 OPENAI_API_KEY、ANTHROPIC_API_KEY、SEARCH_API_KEY 等
 
-# 2. 启动数据库
-docker compose up -d
+# 2. 安装依赖
+python -m pip install -e ".[dev]"
 
-# 3. 安装依赖
-poetry install
+# 3. 运行测试
+python -m pytest -v
 
-# 4. 数据库迁移
-poetry run alembic upgrade head
-
-# 5. 启动服务
-poetry run insight-graph
+# 4. 执行一次 MVP 研究流
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 ```
 
-### 访问
+### 当前输出
 
-- **API / 前端**：http://localhost:8000
-- **API 文档**：http://localhost:8000/docs
-- **任务流式输出**：`GET /tasks/{task_id}/stream`
+- **CLI 报告**：Markdown 格式，包含 `Key Findings`、`Critic Assessment`、`References`
+- **数据源**：固定 mock evidence，不进行真实联网搜索
+- **API / 前端**：尚未实现，属于后续路线图
 
 ---
 
@@ -401,7 +407,7 @@ poetry run insight-graph
 
 ---
 
-## 脚本
+## 计划脚本（后续路线图）
 
 | 脚本 | 用途 |
 |------|------|
