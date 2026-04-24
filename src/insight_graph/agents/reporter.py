@@ -2,7 +2,8 @@ from insight_graph.state import GraphState
 
 
 def write_report(state: GraphState) -> GraphState:
-    reference_numbers = {item.id: index for index, item in enumerate(state.evidence_pool, start=1)}
+    verified_evidence = [item for item in state.evidence_pool if item.verified]
+    reference_numbers = {item.id: index for index, item in enumerate(verified_evidence, start=1)}
     lines = [
         "# InsightGraph Research Report",
         "",
@@ -23,7 +24,7 @@ def write_report(state: GraphState) -> GraphState:
         lines.extend(["## Critic Assessment", "", state.critique.reason, ""])
 
     lines.extend(["## References", ""])
-    for item in state.evidence_pool:
+    for item in verified_evidence:
         number = reference_numbers[item.id]
         lines.append(f"[{number}] {item.title}. {item.source_url}")
 

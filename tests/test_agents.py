@@ -3,7 +3,7 @@ from insight_graph.agents.collector import collect_evidence
 from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import write_report
-from insight_graph.state import GraphState
+from insight_graph.state import Evidence, Finding, GraphState
 
 
 def test_planner_creates_core_research_subtasks() -> None:
@@ -48,3 +48,71 @@ def test_analysis_critic_and_reporter_create_cited_report() -> None:
     assert "# InsightGraph Research Report" in state.report_markdown
     assert "## References" in state.report_markdown
     assert "[1]" in state.report_markdown
+
+
+def test_critic_rejects_findings_without_verified_evidence() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="verified-source",
+                subtask_id="collect",
+                title="Verified Source",
+                source_url="https://example.com/source",
+                snippet="Verified evidence snippet.",
+                verified=True,
+            )
+        ],
+        findings=[
+            Finding(
+                title="Unsupported finding",
+                summary="This finding points at an unknown citation.",
+                evidence_ids=["missing-source"],
+            )
+        ],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.critique is not None
+    assert updated.critique.passed is False
+    assert "citation support" in updated.critique.missing_topics
+
+
+def test_reporter_excludes_unverified_sources() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="verified-source",
+                subtask_id="collect",
+                title="Verified Source",
+                source_url="https://example.com/verified",
+                snippet="Verified evidence snippet.",
+                verified=True,
+            ),
+            Evidence(
+                id="unverified-source",
+                subtask_id="collect",
+                title="Unverified Source",
+                source_url="https://example.com/unverified",
+                snippet="Unverified evidence snippet.",
+                verified=False,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Verified finding",
+                summary="This finding cites verified evidence.",
+                evidence_ids=["verified-source", "unverified-source"],
+            )
+        ],
+    )
+
+    updated = write_report(state)
+
+    assert updated.report_markdown is not None
+    assert "https://example.com/verified" in updated.report_markdown
+    assert "https://example.com/unverified" not in updated.report_markdown
+    assert "[1]" in updated.report_markdown
+    assert "[2]" not in updated.report_markdown
