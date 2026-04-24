@@ -18,11 +18,13 @@
 
 ### Search Provider 配置
 
-`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。需要真实搜索时可显式启用 DuckDuckGo：
+`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。需要在工具层使用真实搜索时，可显式启用 DuckDuckGo 后直接调用 `web_search` 或通过 `ToolRegistry` 运行该工具：
 
 ```bash
-INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c "from insight_graph.tools.web_search import web_search; print(web_search('Compare Cursor, OpenCode, and GitHub Copilot'))"
 ```
+
+当前 CLI 的 Planner 仍默认选择 `mock_search`，不会因为设置 DuckDuckGo provider 而自动联网；后续 Executor 阶段会把真实 `web_search` 接入默认研究流程。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
