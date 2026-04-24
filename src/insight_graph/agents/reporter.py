@@ -18,6 +18,8 @@ def write_report(state: GraphState) -> GraphState:
             for eid in finding.evidence_ids
             if eid in reference_numbers
         )
+        if not citations:
+            continue
         lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
 
     if state.critique is not None:

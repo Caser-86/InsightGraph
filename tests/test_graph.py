@@ -28,3 +28,5 @@ def test_run_research_stops_after_failed_retry(monkeypatch) -> None:
     assert result.iterations == 1
     assert result.report_markdown is not None
     assert "# InsightGraph Research Report" in result.report_markdown
+    assert "Official sources establish baseline product positioning" not in result.report_markdown
+    assert "Evidence, findings, or citation support are insufficient." in result.report_markdown
