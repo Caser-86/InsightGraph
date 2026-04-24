@@ -22,6 +22,8 @@ def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise FetchError(f"Unsupported URL scheme: {parsed.scheme or 'missing'}")
+    if not parsed.netloc:
+        raise FetchError("URL host is required")
 
     request = Request(url, headers={"User-Agent": "InsightGraph/0.1"})
     try:
@@ -34,11 +36,12 @@ def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
                 raise FetchError("Empty response body")
             content_type = response.headers.get("Content-Type", "")
             encoding = _encoding_from_content_type(content_type)
+            text = _decode_body(body, encoding)
             return FetchedPage(
                 url=url,
                 status_code=status_code,
                 content_type=content_type,
-                text=body.decode(encoding, errors="replace"),
+                text=text,
             )
     except HTTPError as exc:
         raise FetchError(f"HTTP error while fetching URL: {exc.code}") from exc
@@ -52,3 +55,10 @@ def _encoding_from_content_type(content_type: str) -> str:
         if key.lower() == "charset" and value:
             return value
     return "utf-8"
+
+
+def _decode_body(body: bytes, encoding: str) -> str:
+    try:
+        return body.decode(encoding, errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
