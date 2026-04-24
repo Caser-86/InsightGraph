@@ -2,6 +2,8 @@
 
 基于 LangGraph 的多智能体商业情报研究引擎，面向竞品分析、技术趋势、市场机会识别与产业洞察等场景的深度报告自动生成。支持任务分解、多轮工具调用、Critic 闭环纠错、证据溯源与引用校验，产出带可验证来源的结构化研究报告。
 
+> 当前仓库处于 MVP 架构落地阶段：优先实现可测试的 LangGraph 多智能体研究流骨架，再逐步接入真实搜索、持久化、向量记忆与 Web API。
+
 ---
 
 ## 项目结构
@@ -354,8 +356,8 @@ flowchart TB
 
 ```bash
 # 1. 克隆并配置
-git clone https://github.com/your-org/insightgraph.git
-cd insightgraph
+git clone https://github.com/Caser-86/InsightGraph.git
+cd InsightGraph
 cp .env.example .env
 # 编辑 .env，配置 OPENAI_API_KEY、ANTHROPIC_API_KEY、SEARCH_API_KEY 等
 
