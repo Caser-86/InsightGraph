@@ -10,11 +10,24 @@
 |------|------|
 | LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
 | CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
-| 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url` 和 mock `web_search -> pre_fetch -> fetch_url`；报告引用仅来自 verified evidence |
+| 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider；报告引用仅来自 verified evidence |
 | Critic | 已实现证据数量、分析结果、citation support 检查；失败路径最多重试一次后输出失败评估 |
 | 测试 | 已实现 pytest 覆盖 state、agents、graph、CLI |
 
-> MVP 阶段默认 CLI 仍使用固定 mock evidence，适合验证架构闭环；工具层已支持 direct URL 抓取、HTML evidence 提取，以及 deterministic web_search pre-fetch 链路。真实 web/news/GitHub 搜索、FastAPI、PostgreSQL、pgvector、LLM 路由和可观测性属于后续路线图。
+> MVP 阶段默认 CLI 仍使用固定 mock evidence，适合验证架构闭环；工具层已支持 direct URL 抓取、HTML evidence 提取、默认 mock web_search pre-fetch 链路，以及通过 `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo` 启用的 DuckDuckGo 搜索入口。新闻/GitHub 专用搜索、FastAPI、PostgreSQL、pgvector、LLM 路由和可观测性属于后续路线图。
+
+### Search Provider 配置
+
+`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。需要真实搜索时可显式启用 DuckDuckGo：
+
+```bash
+INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
+| `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
 
 ---
 
