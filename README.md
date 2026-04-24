@@ -1,0 +1,437 @@
+# InsightGraph
+
+基于 LangGraph 的多智能体商业情报研究引擎，面向竞品分析、技术趋势、市场机会识别与产业洞察等场景的深度报告自动生成。支持任务分解、多轮工具调用、Critic 闭环纠错、证据溯源与引用校验，产出带可验证来源的结构化研究报告。
+
+---
+
+## 项目结构
+
+```text
+src/insight_graph/
+├── agents/                    # 多智能体核心
+│   ├── planner.py             # 研究目标解析与任务分解
+│   ├── collector.py           # 多源信息采集与工具调用
+│   ├── analyst.py             # 竞品矩阵、趋势归纳与商业分析
+│   ├── evidence_validator.py  # URL、引用片段与来源可信度校验
+│   ├── critic.py              # 质量评审与 replan 决策
+│   ├── reporter.py            # 引用校验 + 报告生成
+│   ├── graph.py               # LangGraph 状态图编排
+│   ├── state.py               # GraphState 定义
+│   ├── source_policy.py       # 数据源优先级与可信度策略
+│   ├── entity_resolver.py     # 公司、产品、技术名实体消歧
+│   └── domains/               # 可插拔研究领域配置
+│       ├── competitive_intel.md
+│       ├── technology_trends.md
+│       ├── market_research.md
+│       └── generic.md
+├── tools/
+│   ├── builtin/               # 内置工具集
+│   │   ├── web_search.py, news_search.py, http_client.py
+│   │   ├── content_extract.py, document_reader.py
+│   │   ├── github_search.py, code_exec.py, file_ops.py
+│   │   └── ...
+│   ├── registry.py            # MCP / 本地工具注册表
+│   └── executor.py            # 工具执行引擎
+├── llm/                       # LLM 提供方与模型路由
+│   ├── openai.py
+│   ├── qwen.py
+│   ├── anthropic.py
+│   └── router.py
+├── api/                       # FastAPI REST + WebSocket
+├── memory/                    # pgvector 长期记忆
+├── persistence/               # PostgreSQL checkpoint 持久化
+├── budget/                    # Token / 步数 / 工具调用预算控制
+├── observability/             # LLM 调用日志与执行链路追踪
+└── settings.py                # 全局配置
+```
+
+---
+
+## 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| **多智能体编排** | Planner → Collector → Analyst → Critic → Reporter，支持 Critic 打回 replan 闭环纠错 |
+| **商业情报建模** | 支持竞品、公司、产品、技术、市场、价格、融资、生态合作等实体分析 |
+| **领域自适应** | 可插拔领域配置（`domains/*.md`），按研究主题选择数据源、搜索策略与报告模板 |
+| **证据溯源链** | 从 web_search / fetch_url / github_search 到 citation 的完整链路，Reporter 仅引用 verified 源 |
+| **竞品矩阵生成** | 自动提取功能、定价、定位、目标用户、技术栈、发布时间线并生成对比表 |
+| **技术趋势分析** | 支持论文、博客、GitHub、产品文档、新闻源的多源交叉验证 |
+| **持久化与恢复** | PostgreSQL + pgvector 存储任务状态、检查点、历史研究上下文与证据片段 |
+| **全链路可观测** | 记录每次 LLM 调用、工具调用、状态转移、token 消耗与引用验证结果 |
+
+---
+
+## 技术架构
+
+```text
+┌───────────────────────────────────────────────────────────────────────┐
+│                     FastAPI (REST + WebSocket)                        │
+│              /tasks, /tasks/{id}/stream, /reports, /tools             │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                       LangGraph StateGraph                            │
+│                                                                       │
+│  ┌──────────┐   ┌───────────┐   ┌─────────┐   ┌──────────┐           │
+│  │ Planner  │──▶│ Collector │──▶│ Analyst │──▶│  Critic  │           │
+│  │ 任务分解  │   │ 信息采集   │   │ 分析归纳 │   │ 质量评审  │           │
+│  └──────────┘   └───────────┘   └─────────┘   └────┬─────┘           │
+│       ▲                                             │                 │
+│       └────────────── replan / recollect ───────────┘                 │
+│                                                     │                 │
+│                                            ┌────────▼────────┐        │
+│                                            │    Reporter     │        │
+│                                            │ 报告生成 + 引用校验 │        │
+│                                            └─────────────────┘        │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────┬───────────┴───────────┬───────────────────────────┐
+│ Tool Registry     │ Long-term Memory      │ Postgres Checkpoint       │
+│ web_search        │ pgvector 向量检索      │ 任务中断/恢复              │
+│ news_search       │ 历史研究摘要            │ thread_id 持久化           │
+│ github_search     │ 实体画像与证据片段      │ 状态快照                   │
+│ fetch_url         │                       │                           │
+│ document_reader   │                       │                           │
+│ code_execute      │                       │                           │
+└───────────────────┴───────────────────────┴───────────────────────────┘
+```
+
+---
+
+## 整体执行流程
+
+```mermaid
+flowchart TB
+    subgraph Input
+        A[用户研究请求] --> B[Long-term Memory 检索]
+        B --> C[初始 State]
+    end
+
+    subgraph LangGraph
+        C --> D[Planner]
+        D --> D1[研究领域识别]
+        D1 --> D2[实体消歧 + 查询扩展]
+        D2 --> D3[生成 subtasks + 依赖关系]
+        D3 --> D4[subtask_type: company / product / market / technology / synthesis]
+        D4 --> E[Collector]
+
+        E --> E1{还有 subtask?}
+        E1 -->|是| E2[多轮工具调用]
+        E2 --> E3[web_search / news_search / github_search]
+        E3 --> E4[fetch_url + document_reader]
+        E4 --> E5[LLM 判断相关性与可信度]
+        E5 --> E6[global_evidence_pool 累积]
+        E6 --> E1
+        E1 -->|否| F[Analyst]
+
+        F --> F1[竞品矩阵 + 趋势归纳]
+        F1 --> F2[市场机会与风险分析]
+        F2 --> G[Critic]
+        G --> G1{质量达标?}
+        G1 -->|否| D
+        G1 -->|是| H[Reporter]
+        H --> H1[Citation 校验]
+        H1 --> H2[URL 可访问性验证]
+        H2 --> H3[仅用 verified 源生成]
+        H3 --> I[最终报告]
+    end
+
+    subgraph Output
+        I --> J[Markdown + Competitive Matrix + References]
+    end
+
+    style D fill:#667eea,color:#fff
+    style E fill:#764ba2,color:#fff
+    style F fill:#43cea2,color:#fff
+    style G fill:#f5576c,color:#fff
+    style H fill:#f093fb,color:#fff
+```
+
+---
+
+## 多智能体协作流程
+
+```mermaid
+flowchart LR
+    subgraph Planner
+        P1[解析研究目标] --> P2[识别研究类型]
+        P2 --> P3[实体消歧]
+        P3 --> P4[生成 subtasks]
+        P4 --> P5[JSON 结构化输出]
+    end
+
+    subgraph Collector
+        C1[加载前序 subtask 结果] --> C2[多源搜索]
+        C2 --> C3[网页/文档/GitHub 抓取]
+        C3 --> C4[LLM 判断保留/丢弃]
+        C4 --> C5[证据片段抽取]
+        C5 --> C6[对话压缩与收敛检测]
+    end
+
+    subgraph Analyst
+        A1[读取 evidence_pool] --> A2[实体画像构建]
+        A2 --> A3[竞品矩阵]
+        A3 --> A4[趋势与机会分析]
+        A4 --> A5[风险与不确定性标注]
+    end
+
+    subgraph Critic
+        K1[检查证据充分性] --> K2[检查来源可信度]
+        K2 --> K3[检查结论是否有引用支撑]
+        K3 --> K4{达标?}
+        K4 -->|否| K5[反馈 + tried_strategies 黑名单]
+        K4 -->|是| K6[放行至 Reporter]
+    end
+
+    subgraph Reporter
+        R1[收集 citations] --> R2[并行 URL 校验]
+        R2 --> R3[evidence_snippets 提取]
+        R3 --> R4[反幻觉 Prompt]
+        R4 --> R5[Markdown + 编号引用]
+    end
+
+    Planner --> Collector
+    Collector --> Analyst
+    Analyst --> Critic
+    Critic -->|replan / recollect| Planner
+    Critic --> Reporter
+```
+
+---
+
+## 数据流与证据链路
+
+```mermaid
+flowchart TB
+    subgraph 数据采集
+        T1[web_search / news_search] --> T2[fetch_url]
+        T3[github_search] --> T4[repo / release / issue / README]
+        T5[document_reader] --> T6[PDF / HTML / Markdown]
+        T2 --> T7[content_extract]
+        T4 --> T7
+        T6 --> T7
+        T7 --> T8[evidence_snippets]
+    end
+
+    subgraph State 传递
+        T8 --> S1[global_evidence_pool]
+        S1 --> S2[entity_profiles]
+        S1 --> S3[citations]
+        S3 --> S4[tool_call_log]
+    end
+
+    subgraph Reporter 消费
+        S4 --> R1[verified_sources]
+        R1 --> R2[仅 verified 参与生成]
+        R2 --> R3[References 章节]
+    end
+
+    T1 -.->|搜索结果| T2
+    T2 -.->|网页正文| T7
+    T3 -.->|GitHub 证据| T4
+```
+
+---
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| **编排** | LangGraph, LangChain |
+| **LLM** | OpenAI, Anthropic, Qwen, OpenAI-compatible API |
+| **结构化输出** | Pydantic, LangChain OutputParser |
+| **向量检索** | pgvector, PostgreSQL, text embeddings |
+| **存储** | PostgreSQL + asyncpg, SQLAlchemy 2.0 |
+| **工具** | DuckDuckGo / Tavily / SerpAPI, httpx, curl-cffi, Playwright |
+| **文档处理** | PyMuPDF, Trafilatura, BeautifulSoup, Markdown parser |
+| **API** | FastAPI, WebSocket 流式输出 |
+| **可观测** | LLM 调用日志、工具调用日志、Graph state snapshot |
+
+---
+
+## 内置工具
+
+| 工具 | 用途 |
+|------|------|
+| `web_search` | 搜索引擎查询，获取官网、文档、新闻、博客等来源 |
+| `news_search` | 新闻与公告检索，用于市场动态、融资、发布事件追踪 |
+| `fetch_url` | 抓取网页/PDF，支持 HTML 解析与 Playwright 渲染 |
+| `content_extract` | 从 HTML、PDF、Markdown 中提取正文和元数据 |
+| `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
+| `document_reader` | 大文档分页读取与语义检索，支持行业报告和技术白皮书 |
+| `code_execute` | 沙箱 Python 代码执行，用于数据清洗、表格计算和趋势统计 |
+| `read_file` / `write_file` / `list_directory` | 本地文件读写与目录浏览 |
+
+---
+
+## 执行链路详解
+
+### 1. Planner
+
+- **输入**：`user_request` + `memory_context` + `domain_profile` + `tried_strategies`
+- **输出**：`subtasks`（含 id、description、dependencies、subtask_type、suggested_tools）
+- **研究类型**：支持 competitive_intel、market_research、technology_trends、company_profile、synthesis
+- **Replan 支持**：Critic 打回时，根据 `tried_strategies` 避免重复失败搜索路径
+
+### 2. Collector
+
+- **多轮循环**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用
+- **多源采集**：结合 web_search、news_search、github_search、fetch_url、document_reader
+- **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
+- **上下文控制**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据
+- **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据
+
+### 3. Analyst
+
+- **实体画像**：为公司、产品、技术、市场主题建立结构化 profile
+- **竞品矩阵**：自动整理定位、核心功能、定价、目标用户、集成生态、技术路线
+- **趋势归纳**：从时间线、发布节奏、开源活跃度、媒体关注度中提取趋势信号
+- **不确定性标注**：对缺失数据、冲突证据、低可信来源进行显式标注
+
+### 4. Critic
+
+- **证据充分性检查**：判断是否有足够来源支撑每个关键结论
+- **来源可信度检查**：优先使用官网、文档、公告、GitHub、权威媒体等可验证来源
+- **闭环控制**：质量不达标时打回 Planner 或 Collector，并限制最大 replan 次数
+- **反幻觉检查**：禁止无来源数字、无依据排名、过度推断和未验证结论
+
+### 5. Reporter
+
+- **Citation 校验**：并行请求所有引用 URL，标记 `verified` / `unverified`
+- **报告生成**：输出 Executive Summary、Competitive Matrix、Key Findings、Risks、References
+- **引用格式**：`[N]` 编号对应 References 中的稳定 URL 与 evidence snippet
+- **输出格式**：默认 Markdown，可扩展为 HTML、PDF、JSON report schema
+
+### 6. 持久化与记忆
+
+- **Checkpoint**：每节点执行后写入 PostgreSQL，支持任务中断后 `resume`
+- **Long-term Memory**：pgvector 存储历史研究摘要、实体画像与证据片段
+- **任务追踪**：通过 `task_id` 与 `thread_id` 关联用户请求、Graph 状态和最终报告
+
+---
+
+## 示例输出
+
+以下为一次实际运行的目标形态（任务：AI Coding Agent 竞品分析）：
+
+| 指标 | 数值 |
+|------|------|
+| 研究对象 | Cursor、OpenCode、Claude Code、GitHub Copilot、Codeium |
+| LLM 调用次数 | 60-100 次 |
+| 工具调用次数 | 120-220 次 |
+| 报告长度 | 4,000-8,000 词，包含竞品矩阵与趋势判断 |
+| 引用来源 | 官网、产品文档、GitHub Release、定价页、新闻报道、技术博客 |
+| 运行时间 | 8-20 分钟，取决于搜索深度与引用校验数量 |
+
+**产出报告结构**：Executive Summary → Market Overview → Competitive Matrix → Product Deep Dives → Pricing & Positioning → Technology Trends → Risks & Open Questions → References
+
+每个关键事实均通过 `[N]` 编号关联到 References 中的具体 URL，可逐条验证。
+
+---
+
+## 效果与亮点
+
+- **可验证引用**：报告中的关键事实可追溯到具体 URL 与 evidence snippet
+- **闭环纠错**：Critic 评审不达标时自动 replan 或 recollect，避免证据不足直接生成
+- **竞品分析友好**：内置产品定位、功能矩阵、定价、生态、路线图等分析维度
+- **技术趋势友好**：支持 GitHub、论文、博客、文档、新闻多源交叉验证
+- **领域可扩展**：新增研究领域仅需添加 `domains/*.md` 配置文件
+- **资源可控**：`max_tokens`、`max_steps`、`max_tool_calls` 三重预算限制
+- **全链路可观测**：记录每次 LLM 调用、工具调用、Graph 节点状态与 token 消耗
+
+---
+
+## 快速开始
+
+### 环境要求
+
+- Python 3.11+
+- Docker（PostgreSQL + pgvector）
+- Poetry 或 uv
+
+### 启动步骤
+
+```bash
+# 1. 克隆并配置
+git clone https://github.com/your-org/insightgraph.git
+cd insightgraph
+cp .env.example .env
+# 编辑 .env，配置 OPENAI_API_KEY、ANTHROPIC_API_KEY、SEARCH_API_KEY 等
+
+# 2. 启动数据库
+docker compose up -d
+
+# 3. 安装依赖
+poetry install
+
+# 4. 数据库迁移
+poetry run alembic upgrade head
+
+# 5. 启动服务
+poetry run insight-graph
+```
+
+### 访问
+
+- **API / 前端**：http://localhost:8000
+- **API 文档**：http://localhost:8000/docs
+- **任务流式输出**：`GET /tasks/{task_id}/stream`
+
+---
+
+## 配置说明
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DEFAULT_LLM_PROVIDER` | LLM 提供方（openai / anthropic / qwen / compatible） | openai |
+| `OPENAI_API_KEY` | OpenAI API Key | - |
+| `ANTHROPIC_API_KEY` | Anthropic API Key | - |
+| `QWEN_API_KEY` | Qwen / DashScope API Key | - |
+| `SEARCH_PROVIDER` | 搜索提供方（duckduckgo / tavily / serpapi） | duckduckgo |
+| `SEARCH_API_KEY` | 搜索服务 API Key | - |
+| `DATABASE_URL` | PostgreSQL 连接字符串 | postgresql+asyncpg://localhost/insightgraph |
+| `MAX_TOKENS` | 单任务 token 上限 | 500000 |
+| `MAX_STEPS` | 最大执行步数（LLM 调用次数） | 100 |
+| `MAX_TOOL_CALLS` | 最大工具调用次数 | 200 |
+| `MAX_TOOL_ROUNDS` | 单个 subtask 最大工具调用轮数 | 5 |
+| `EMBEDDING_DIMENSION` | 向量维度 | 1536 |
+
+---
+
+## 脚本
+
+| 脚本 | 用途 |
+|------|------|
+| `scripts/run_research.py` | 命令行执行研究任务，输出 Markdown 报告 |
+| `scripts/run_with_llm_log.py` | 执行任务并记录全部 LLM 调用到 `llm_logs/` |
+| `scripts/validate_sources.py` | 批量校验报告中的 URL 与 citation |
+| `scripts/benchmark_research.py` | 对固定研究任务进行回归测试与成本统计 |
+| `scripts/validate_document_reader.py` | 验证 PDF / HTML / Markdown 文档读取和分块检索 |
+
+---
+
+## 示例任务
+
+```text
+请分析 AI Coding Agent 市场的主要玩家，包括 Cursor、OpenCode、Claude Code、GitHub Copilot 和 Codeium。
+请比较它们的产品定位、核心功能、定价策略、生态集成、技术路线和潜在风险，并给出未来 12 个月的市场趋势判断。
+要求所有关键事实附带可验证引用。
+```
+
+预期输出：
+
+- Executive Summary
+- 市场格局概览
+- 竞品功能矩阵
+- 定价与商业模式对比
+- 技术趋势分析
+- 风险与不确定性
+- 未来 12 个月判断
+- References
+
+---
+
+## License
+
+MIT
