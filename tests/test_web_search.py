@@ -33,6 +33,8 @@ def test_web_search_prefetches_results(monkeypatch) -> None:
             )
         ]
 
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_LIMIT", raising=False)
     monkeypatch.setattr(web_search_module, "pre_fetch_results", fake_pre_fetch_results)
 
     evidence = web_search_module.web_search("agentic coding tools", subtask_id="s1")

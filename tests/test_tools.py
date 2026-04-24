@@ -59,6 +59,8 @@ def test_registry_runs_web_search_tool(monkeypatch) -> None:
         ]
 
     web_search_module = importlib.import_module("insight_graph.tools.web_search")
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_LIMIT", raising=False)
     monkeypatch.setattr(web_search_module, "pre_fetch_results", fake_pre_fetch_results)
 
     evidence = ToolRegistry().run("web_search", "Compare AI coding agents", "s1")
