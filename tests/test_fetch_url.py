@@ -1,3 +1,5 @@
+import importlib
+
 from insight_graph.tools.fetch_url import fetch_url, infer_source_type
 from insight_graph.tools.http_client import FetchedPage
 
@@ -17,7 +19,8 @@ def test_fetch_url_returns_verified_evidence(monkeypatch) -> None:
             """,
         )
 
-    monkeypatch.setattr("insight_graph.tools.fetch_url.fetch_text", fake_fetch_text)
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
 
     evidence = fetch_url("https://example.com/product", "s1")
 
@@ -36,7 +39,8 @@ def test_fetch_url_returns_empty_list_for_empty_snippet(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(url=url, status_code=200, content_type="text/html", text="<html></html>")
 
-    monkeypatch.setattr("insight_graph.tools.fetch_url.fetch_text", fake_fetch_text)
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
 
     assert fetch_url("https://example.com/empty", "s1") == []
 

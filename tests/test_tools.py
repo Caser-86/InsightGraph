@@ -1,7 +1,13 @@
+import importlib
+
 import pytest
 
-from insight_graph.tools import ToolRegistry
+from insight_graph.tools import ToolRegistry, fetch_url
 from insight_graph.tools.http_client import FetchedPage
+
+
+def test_tools_package_exports_fetch_url_callable() -> None:
+    assert callable(fetch_url)
 
 
 def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
@@ -16,7 +22,8 @@ def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
             ),
         )
 
-    monkeypatch.setattr("insight_graph.tools.fetch_url.fetch_text", fake_fetch_text)
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
 
     evidence = ToolRegistry().run("fetch_url", "https://example.com/tool", "s1")
 
