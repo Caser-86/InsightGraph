@@ -1,6 +1,6 @@
 from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
-from insight_graph.tools.web_search import SearchResult
+from insight_graph.tools.search_providers import SearchResult
 
 
 def pre_fetch_results(

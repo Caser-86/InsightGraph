@@ -47,3 +47,56 @@ def test_web_search_prefetches_results(monkeypatch) -> None:
         "limit": 3,
     }
     assert [item.id for item in evidence] == ["prefetched"]
+
+
+def test_web_search_uses_configured_provider_and_limit(monkeypatch) -> None:
+    captured = {}
+
+    class FakeProvider:
+        def search(self, query: str, limit: int):
+            captured["provider_query"] = query
+            captured["provider_limit"] = limit
+            return [
+                SearchResult(
+                    title="One",
+                    url="https://example.com/one",
+                    snippet="one",
+                    source="fake",
+                ),
+                SearchResult(
+                    title="Two",
+                    url="https://example.com/two",
+                    snippet="two",
+                    source="fake",
+                ),
+            ]
+
+    def fake_pre_fetch_results(results, subtask_id: str, limit: int):
+        captured["prefetch_urls"] = [result.url for result in results]
+        captured["subtask_id"] = subtask_id
+        captured["prefetch_limit"] = limit
+        return [
+            Evidence(
+                id="provider-prefetched",
+                subtask_id=subtask_id,
+                title="Provider Prefetched",
+                source_url="https://example.com/one",
+                snippet="Provider prefetched evidence.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_LIMIT", "2")
+    monkeypatch.setattr(web_search_module, "get_search_provider", lambda: FakeProvider())
+    monkeypatch.setattr(web_search_module, "pre_fetch_results", fake_pre_fetch_results)
+
+    evidence = web_search_module.web_search("agentic coding tools", subtask_id="s1")
+
+    assert captured == {
+        "provider_query": "agentic coding tools",
+        "provider_limit": 2,
+        "prefetch_urls": ["https://example.com/one", "https://example.com/two"],
+        "subtask_id": "s1",
+        "prefetch_limit": 2,
+    }
+    assert [item.id for item in evidence] == ["provider-prefetched"]
