@@ -270,8 +270,8 @@ flowchart TB
 |------|------|
 | `web_search` | 搜索引擎查询，获取官网、文档、新闻、博客等来源 |
 | `news_search` | 新闻与公告检索，用于市场动态、融资、发布事件追踪 |
-| `fetch_url` | 抓取网页/PDF，支持 HTML 解析与 Playwright 渲染 |
-| `content_extract` | 从 HTML、PDF、Markdown 中提取正文和元数据 |
+| `fetch_url` | 抓取 direct HTTP/HTTPS URL，并从 HTML 页面生成 verified Evidence |
+| `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
 | `document_reader` | 大文档分页读取与语义检索，支持行业报告和技术白皮书 |
 | `code_execute` | 沙箱 Python 代码执行，用于数据清洗、表格计算和趋势统计 |
