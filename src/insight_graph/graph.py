@@ -14,6 +14,7 @@ def build_graph():
     graph.add_node("collector", collect_evidence)
     graph.add_node("analyst", analyze_evidence)
     graph.add_node("critic", critique_analysis)
+    graph.add_node("record_retry", _record_retry)
     graph.add_node("reporter", write_report)
 
     graph.set_entry_point("planner")
@@ -21,8 +22,11 @@ def build_graph():
     graph.add_edge("collector", "analyst")
     graph.add_edge("analyst", "critic")
     graph.add_conditional_edges(
-        "critic", _route_after_critic, {"reporter": "reporter", "planner": "planner"}
+        "critic",
+        _route_after_critic,
+        {"reporter": "reporter", "record_retry": "record_retry"},
     )
+    graph.add_edge("record_retry", "planner")
     graph.add_edge("reporter", END)
     return graph.compile()
 
@@ -32,8 +36,12 @@ def _route_after_critic(state: GraphState) -> str:
         return "reporter"
     if state.iterations >= 1:
         return "reporter"
+    return "record_retry"
+
+
+def _record_retry(state: GraphState) -> GraphState:
     state.iterations += 1
-    return "planner"
+    return state
 
 
 def run_research(user_request: str) -> GraphState:
