@@ -1,6 +1,7 @@
 import os
 import sys
 from enum import StrEnum
+from typing import Annotated
 
 import typer
 
@@ -49,8 +50,15 @@ def main() -> None:
 
 
 @app.command()
-def research(query: str) -> None:
+def research(
+    query: str,
+    preset: Annotated[
+        ResearchPreset,
+        typer.Option("--preset", help="Runtime preset: offline or live-llm."),
+    ] = ResearchPreset.offline,
+) -> None:
     """Run a research workflow and print a Markdown report."""
+    _apply_research_preset(preset)
     state = run_research(query)
     typer.echo(state.report_markdown or "")
 
