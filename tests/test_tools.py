@@ -11,10 +11,19 @@ from insight_graph.tools import (
     document_reader,
     fetch_url,
     github_search,
+    list_directory,
     news_search,
+    read_file,
     web_search,
 )
 from insight_graph.tools.http_client import FetchedPage
+
+
+def tool_id(prefix: str, relative_path: str, slug_input: str | None = None) -> str:
+    digest = hashlib.sha1(relative_path.encode("utf-8")).hexdigest()[:8]
+    value = slug_input if slug_input is not None else relative_path
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "root"
+    return f"{prefix}-{slug}-{digest}"
 
 
 def document_id_for(relative_path: str) -> str:
@@ -50,6 +59,11 @@ def test_tools_package_exports_news_search_callable() -> None:
 
 def test_tools_package_exports_document_reader_callable() -> None:
     assert callable(document_reader)
+
+
+def test_tools_package_exports_readonly_file_tool_callables() -> None:
+    assert callable(read_file)
+    assert callable(list_directory)
 
 
 def test_github_search_returns_deterministic_verified_github_evidence() -> None:
@@ -198,6 +212,101 @@ def test_document_reader_rejects_invalid_paths(query, tmp_path, monkeypatch) -> 
     assert document_reader(query, "s1") == []
 
 
+def test_read_file_returns_verified_docs_evidence(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "docs" / "Notes.md"
+    document.parent.mkdir()
+    document.write_text("# Notes\n\nAlpha   beta.\nGamma", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = read_file("docs/Notes.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("read-file", "docs/Notes.md")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "Notes.md"
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].snippet == "# Notes Alpha beta. Gamma"
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_read_file_rejects_unsafe_or_invalid_files(tmp_path, monkeypatch) -> None:
+    (tmp_path / "unsupported.bin").write_bytes(b"data")
+    (tmp_path / "bad.md").write_bytes(b"\xff\xfe\xfa")
+    (tmp_path / "empty.md").write_text("\n\t   \n", encoding="utf-8")
+    (tmp_path / "large.md").write_text("a" * (64 * 1024 + 1), encoding="utf-8")
+    (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert read_file("missing.md", "s1") == []
+    assert read_file(".", "s1") == []
+    assert read_file("unsupported.bin", "s1") == []
+    assert read_file("bad.md", "s1") == []
+    assert read_file("empty.md", "s1") == []
+    assert read_file("large.md", "s1") == []
+    assert read_file("../outside.md", "s1") == []
+
+
+def test_read_file_hash_prevents_slug_collisions(tmp_path, monkeypatch) -> None:
+    nested_dir = tmp_path / "docs" / "foo"
+    nested_dir.mkdir(parents=True)
+    first = tmp_path / "docs" / "foo-bar.md"
+    second = nested_dir / "bar.md"
+    first.write_text("First.", encoding="utf-8")
+    second.write_text("Second.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    first_evidence = read_file("docs/foo-bar.md", "s1")
+    second_evidence = read_file("docs/foo/bar.md", "s1")
+
+    assert first_evidence[0].id == tool_id("read-file", "docs/foo-bar.md")
+    assert second_evidence[0].id == tool_id("read-file", "docs/foo/bar.md")
+    assert first_evidence[0].id != second_evidence[0].id
+
+
+def test_list_directory_returns_one_level_listing(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "docs"
+    target.mkdir()
+    (target / "b.md").write_text("b", encoding="utf-8")
+    (target / "A.txt").write_text("a", encoding="utf-8")
+    (target / "nested").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    evidence = list_directory("docs", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("list-directory", "docs")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "Directory listing: docs"
+    assert evidence[0].source_url == target.resolve().as_uri()
+    assert evidence[0].snippet == "A.txt\nb.md\nnested/"
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_list_directory_handles_root_and_empty_directory(tmp_path, monkeypatch) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    root_evidence = list_directory(".", "s1")
+    empty_evidence = list_directory("empty", "s1")
+
+    assert root_evidence[0].id == tool_id("list-directory", ".", "root")
+    assert root_evidence[0].title == "Directory listing: ."
+    assert empty_evidence[0].snippet == "(empty directory)"
+
+
+def test_list_directory_rejects_invalid_paths(tmp_path, monkeypatch) -> None:
+    (tmp_path / "file.md").write_text("file", encoding="utf-8")
+    (tmp_path.parent / "outside").mkdir(exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    assert list_directory("missing", "s1") == []
+    assert list_directory("file.md", "s1") == []
+    assert list_directory("../outside", "s1") == []
+
+
 def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(
@@ -271,6 +380,29 @@ def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:
 
     assert len(evidence) == 1
     assert evidence[0].id == document_id_for("sample.md")
+    assert evidence[0].source_type == "docs"
+
+
+def test_registry_runs_read_file_tool(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "sample.md"
+    document.write_text("Local file evidence.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = ToolRegistry().run("read_file", "sample.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("read-file", "sample.md")
+    assert evidence[0].source_type == "docs"
+
+
+def test_registry_runs_list_directory_tool(tmp_path, monkeypatch) -> None:
+    (tmp_path / "sample.md").write_text("Local file evidence.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = ToolRegistry().run("list_directory", ".", "s1")
+
+    assert len(evidence) == 1
+    assert "sample.md" in evidence[0].snippet
     assert evidence[0].source_type == "docs"
 
 
