@@ -4,6 +4,7 @@ from insight_graph.tools.search_providers import (
     DuckDuckGoSearchProvider,
     MockSearchProvider,
     SearchResult,
+    _create_duckduckgo_client,
     get_search_provider,
     parse_search_limit,
 )
@@ -78,6 +79,12 @@ def test_get_search_provider_reads_duckduckgo_from_env(monkeypatch) -> None:
     provider = get_search_provider()
 
     assert isinstance(provider, DuckDuckGoSearchProvider)
+
+
+def test_create_duckduckgo_client_uses_ddgs_package() -> None:
+    client = _create_duckduckgo_client()
+
+    assert type(client).__module__.startswith("ddgs")
 
 
 def test_duckduckgo_provider_maps_results() -> None:

@@ -57,7 +57,7 @@ def parse_search_limit(default: int = 3) -> int:
 
 
 def _create_duckduckgo_client() -> Any:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     return DDGS()
 
