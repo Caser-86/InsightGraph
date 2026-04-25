@@ -6,6 +6,7 @@ from insight_graph.state import Evidence
 from insight_graph.tools import (
     SearchResult,
     ToolRegistry,
+    document_reader,
     fetch_url,
     github_search,
     news_search,
@@ -37,6 +38,10 @@ def test_tools_package_exports_github_search_callable() -> None:
 
 def test_tools_package_exports_news_search_callable() -> None:
     assert callable(news_search)
+
+
+def test_tools_package_exports_document_reader_callable() -> None:
+    assert callable(document_reader)
 
 
 def test_github_search_returns_deterministic_verified_github_evidence() -> None:
@@ -79,6 +84,57 @@ def test_news_search_returns_deterministic_verified_news_evidence() -> None:
         "https://openai.com/index/introducing-codex/",
         "https://www.cursor.com/changelog",
     ]
+
+
+def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    document = docs_dir / "Market Report.md"
+    document.write_text(
+        "# Market Report\n\nCursor   launches features.\nGitHub Copilot updates docs.",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("docs/Market Report.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == "document-market-report"
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "Market Report.md"
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].snippet == (
+        "# Market Report Cursor launches features. GitHub Copilot updates docs."
+    )
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_document_reader_limits_snippet_length(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "long.md"
+    document.write_text("a" * 600, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("long.md", "s1")
+
+    assert len(evidence[0].snippet) == 500
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "missing.md",
+        ".",
+        "unsupported.pdf",
+        "../outside.md",
+    ],
+)
+def test_document_reader_rejects_invalid_paths(query, tmp_path, monkeypatch) -> None:
+    (tmp_path / "unsupported.pdf").write_text("pdf text", encoding="utf-8")
+    (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader(query, "s1") == []
 
 
 def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
@@ -143,6 +199,18 @@ def test_registry_runs_news_search_tool() -> None:
     assert evidence[0].id == "news-github-copilot-changelog"
     assert evidence[0].subtask_id == "s1"
     assert {item.source_type for item in evidence} == {"news"}
+
+
+def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "sample.md"
+    document.write_text("Local document evidence.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = ToolRegistry().run("document_reader", "sample.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == "document-sample"
+    assert evidence[0].source_type == "docs"
 
 
 def test_registry_unknown_tool_still_raises_key_error() -> None:
