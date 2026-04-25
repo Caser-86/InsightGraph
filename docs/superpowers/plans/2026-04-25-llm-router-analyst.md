@@ -133,11 +133,15 @@ def resolve_llm_config(
     model: str | None = None,
 ) -> LLMConfig:
     return LLMConfig(
-        api_key=api_key or os.getenv("INSIGHT_GRAPH_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        api_key=api_key
+        if api_key is not None
+        else os.getenv("INSIGHT_GRAPH_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
         base_url=base_url
-        or os.getenv("INSIGHT_GRAPH_LLM_BASE_URL")
-        or os.getenv("OPENAI_BASE_URL"),
-        model=model or os.getenv("INSIGHT_GRAPH_LLM_MODEL") or "gpt-4o-mini",
+        if base_url is not None
+        else os.getenv("INSIGHT_GRAPH_LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+        model=model
+        if model is not None
+        else os.getenv("INSIGHT_GRAPH_LLM_MODEL") or "gpt-4o-mini",
     )
 ```
 

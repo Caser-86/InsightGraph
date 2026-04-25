@@ -1,0 +1,137 @@
+import pytest
+
+from insight_graph.llm import (
+    ChatCompletionClient,
+    ChatMessage,
+    LLMConfig,
+    OpenAICompatibleChatClient,
+    get_llm_client,
+    resolve_llm_config,
+)
+
+
+class FakeOpenAIMessage:
+    def __init__(self, content: str | None) -> None:
+        self.content = content
+
+
+class FakeOpenAIChoice:
+    def __init__(self, message: FakeOpenAIMessage) -> None:
+        self.message = message
+
+
+class FakeOpenAIResponse:
+    def __init__(self, content: str | None) -> None:
+        self.choices = [FakeOpenAIChoice(FakeOpenAIMessage(content))]
+
+
+class FakeOpenAICompletions:
+    def __init__(
+        self,
+        content: str | None = '{"ok": true}',
+        error: Exception | None = None,
+    ) -> None:
+        self.content = content
+        self.error = error
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs) -> FakeOpenAIResponse:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return FakeOpenAIResponse(self.content)
+
+
+class FakeOpenAIChat:
+    def __init__(self, completions: FakeOpenAICompletions) -> None:
+        self.completions = completions
+
+
+class FakeOpenAIClient:
+    def __init__(self, completions: FakeOpenAICompletions | None = None) -> None:
+        self.completions = completions or FakeOpenAICompletions()
+        self.chat = FakeOpenAIChat(self.completions)
+
+
+def test_openai_compatible_chat_client_completes_json() -> None:
+    completions = FakeOpenAICompletions(content='{"answer": "yes"}')
+    fake_client = FakeOpenAIClient(completions)
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(api_key="test-key", base_url=None, model="test-model"),
+        client=fake_client,
+    )
+
+    result = client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
+
+    assert result == '{"answer": "yes"}'
+    assert completions.calls == [
+        {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Reply as JSON"}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+        }
+    ]
+
+
+def test_openai_compatible_chat_client_uses_factory_with_base_url() -> None:
+    created: list[dict] = []
+
+    def client_factory(**kwargs) -> FakeOpenAIClient:
+        created.append(kwargs)
+        return FakeOpenAIClient()
+
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url="https://openai-compatible.example/v1",
+            model="test-model",
+        ),
+        client_factory=client_factory,
+    )
+
+    result = client.complete_json([ChatMessage(role="system", content="Return JSON")])
+
+    assert result == '{"ok": true}'
+    assert created == [
+        {
+            "api_key": "test-key",
+            "base_url": "https://openai-compatible.example/v1",
+        }
+    ]
+
+
+def test_openai_compatible_chat_client_requires_api_key() -> None:
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(api_key=None, base_url=None, model="test-model"),
+        client=FakeOpenAIClient(),
+    )
+
+    with pytest.raises(ValueError, match="api_key"):
+        client.complete_json([ChatMessage(role="user", content="Return JSON")])
+
+
+def test_openai_compatible_chat_client_propagates_api_error() -> None:
+    api_error = RuntimeError("upstream failed")
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(api_key="test-key", base_url=None, model="test-model"),
+        client=FakeOpenAIClient(FakeOpenAICompletions(error=api_error)),
+    )
+
+    with pytest.raises(RuntimeError, match="upstream failed"):
+        client.complete_json([ChatMessage(role="user", content="Return JSON")])
+
+
+def test_get_llm_client_returns_openai_compatible_client() -> None:
+    client = get_llm_client(config=LLMConfig(api_key="test-key", base_url=None, model="test-model"))
+
+    assert isinstance(client, OpenAICompatibleChatClient)
+
+
+def test_llm_package_exports_core_types() -> None:
+    assert ChatCompletionClient is not None
+    assert ChatMessage(role="user", content="Hello").content == "Hello"
+    assert LLMConfig(api_key="key", base_url=None, model="model").model == "model"
+    assert OpenAICompatibleChatClient is not None
+    assert get_llm_client is not None
+    assert resolve_llm_config is not None

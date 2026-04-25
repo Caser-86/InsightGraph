@@ -4,11 +4,11 @@ from insight_graph.agents.relevance import (
     DeterministicRelevanceJudge,
     EvidenceRelevanceDecision,
     OpenAICompatibleRelevanceJudge,
-    _resolve_openai_compatible_config,
     filter_relevant_evidence,
     get_relevance_judge,
     is_relevance_filter_enabled,
 )
+from insight_graph.llm.config import resolve_llm_config
 from insight_graph.state import Evidence, Subtask
 
 
@@ -93,7 +93,7 @@ def test_openai_compatible_config_prefers_insight_graph_env(monkeypatch) -> None
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-    config = _resolve_openai_compatible_config()
+    config = resolve_llm_config()
 
     assert config.api_key == "ig-key"
     assert config.base_url == "https://relay.example/v1"
@@ -107,7 +107,7 @@ def test_openai_compatible_config_falls_back_to_openai_env(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-    config = _resolve_openai_compatible_config()
+    config = resolve_llm_config()
 
     assert config.api_key == "openai-key"
     assert config.base_url == "https://api.openai.com/v1"
@@ -185,14 +185,27 @@ class FakeOpenAIClient:
         self.chat = FakeOpenAIChat(completions)
 
 
+class FakeChatCompletionClient:
+    def __init__(self, content: str | None = None, error: Exception | None = None) -> None:
+        self.content = content
+        self.error = error
+        self.messages = []
+
+    def complete_json(self, messages):
+        self.messages = messages
+        if self.error is not None:
+            raise self.error
+        return self.content
+
+
 def test_openai_compatible_judge_uses_client_factory_with_base_url() -> None:
     completions = FakeOpenAICompletions(
         '{"relevant": true, "reason": "Factory client response."}'
     )
     calls = []
 
-    def fake_client_factory(api_key: str, base_url: str | None):
-        calls.append((api_key, base_url))
+    def fake_client_factory(**kwargs):
+        calls.append((kwargs["api_key"], kwargs.get("base_url")))
         return FakeOpenAIClient(completions)
 
     judge = OpenAICompatibleRelevanceJudge(
@@ -211,11 +224,11 @@ def test_openai_compatible_judge_uses_client_factory_with_base_url() -> None:
 
 
 def test_filter_relevant_evidence_uses_openai_compatible_judge() -> None:
-    completions = FakeOpenAICompletions(
+    client = FakeChatCompletionClient(
         '{"relevant": false, "reason": "LLM filtered this evidence."}'
     )
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
     )
     subtask = Subtask(id="collect", description="Collect pricing evidence")
@@ -233,11 +246,11 @@ def test_filter_relevant_evidence_uses_openai_compatible_judge() -> None:
 
 
 def test_openai_compatible_judge_keeps_relevant_json_response() -> None:
-    completions = FakeOpenAICompletions(
+    client = FakeChatCompletionClient(
         '{"relevant": true, "reason": "Evidence directly matches the query."}'
     )
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
         model="relay-model",
     )
@@ -251,21 +264,18 @@ def test_openai_compatible_judge_keeps_relevant_json_response() -> None:
         relevant=True,
         reason="Evidence directly matches the query.",
     )
-    assert completions.calls[0]["model"] == "relay-model"
-    assert completions.calls[0]["response_format"] == {"type": "json_object"}
-    messages = completions.calls[0]["messages"]
-    assert messages[0]["role"] == "system"
-    assert messages[1]["role"] == "user"
-    assert "Compare AI coding agents" in messages[1]["content"]
-    assert "Cursor Pricing" in messages[1]["content"]
+    assert client.messages[0].role == "system"
+    assert client.messages[1].role == "user"
+    assert "Compare AI coding agents" in client.messages[1].content
+    assert "Cursor Pricing" in client.messages[1].content
 
 
 def test_openai_compatible_judge_filters_false_json_response() -> None:
-    completions = FakeOpenAICompletions(
+    client = FakeChatCompletionClient(
         '{"relevant": false, "reason": "Evidence is unrelated."}'
     )
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
     )
     evidence = make_evidence(id="openai-filtered")
@@ -301,9 +311,9 @@ def test_openai_compatible_judge_fails_closed_for_missing_api_key(monkeypatch) -
 
 
 def test_openai_compatible_judge_fails_closed_for_api_error() -> None:
-    completions = FakeOpenAICompletions(error=RuntimeError("relay unavailable"))
+    client = FakeChatCompletionClient(error=RuntimeError("relay unavailable"))
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
     )
     evidence = make_evidence(id="api-error")
@@ -316,9 +326,9 @@ def test_openai_compatible_judge_fails_closed_for_api_error() -> None:
 
 
 def test_openai_compatible_judge_fails_closed_for_invalid_json() -> None:
-    completions = FakeOpenAICompletions("not json")
+    client = FakeChatCompletionClient("not json")
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
     )
     evidence = make_evidence(id="invalid-json")
@@ -334,9 +344,9 @@ def test_openai_compatible_judge_fails_closed_for_invalid_json() -> None:
 
 
 def test_openai_compatible_judge_fails_closed_for_invalid_schema() -> None:
-    completions = FakeOpenAICompletions('{"reason": "Missing relevant field."}')
+    client = FakeChatCompletionClient('{"reason": "Missing relevant field."}')
     judge = OpenAICompatibleRelevanceJudge(
-        client=FakeOpenAIClient(completions),
+        client=client,
         api_key="test-key",
     )
     evidence = make_evidence(id="invalid-schema")

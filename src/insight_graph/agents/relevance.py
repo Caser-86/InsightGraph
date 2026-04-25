@@ -1,10 +1,16 @@
 import json
 import os
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Protocol
 
 from pydantic import BaseModel
 
+from insight_graph.llm.client import (
+    ChatCompletionClient,
+    ChatMessage,
+    OpenAICompatibleChatClient,
+)
+from insight_graph.llm.config import resolve_llm_config
 from insight_graph.state import Evidence, Subtask
 
 
@@ -12,12 +18,6 @@ class EvidenceRelevanceDecision(BaseModel):
     evidence_id: str
     relevant: bool
     reason: str
-
-
-class OpenAICompatibleConfig(BaseModel):
-    api_key: str | None
-    base_url: str | None
-    model: str
 
 
 class RelevanceJudge(Protocol):
@@ -70,23 +70,22 @@ class DeterministicRelevanceJudge:
 class OpenAICompatibleRelevanceJudge:
     def __init__(
         self,
-        client: Any | None = None,
+        client: ChatCompletionClient | None = None,
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        client_factory: Callable[[str, str | None], Any] | None = None,
+        client_factory: Callable[..., object] | None = None,
     ) -> None:
-        config = _resolve_openai_compatible_config(
+        config = resolve_llm_config(
             api_key=api_key,
             base_url=base_url,
             model=model,
         )
         self._config = config
-        self._client = client
-        self._client_factory = client_factory or _create_openai_client
-        self._api_key = config.api_key
-        self._base_url = config.base_url
-        self._model = config.model
+        self._client = client or OpenAICompatibleChatClient(
+            config=config,
+            client_factory=client_factory,
+        )
 
     def judge(
         self,
@@ -94,7 +93,7 @@ class OpenAICompatibleRelevanceJudge:
         subtask: Subtask,
         evidence: Evidence,
     ) -> EvidenceRelevanceDecision:
-        if not self._api_key:
+        if not self._config.api_key:
             return EvidenceRelevanceDecision(
                 evidence_id=evidence.id,
                 relevant=False,
@@ -102,14 +101,9 @@ class OpenAICompatibleRelevanceJudge:
             )
 
         try:
-            client = self._client or self._client_factory(self._api_key, self._base_url)
-            response = client.chat.completions.create(
-                model=self._model,
-                messages=_build_relevance_messages(query, subtask, evidence),
-                response_format={"type": "json_object"},
-                temperature=0,
+            content = self._client.complete_json(
+                _build_relevance_messages(query, subtask, evidence)
             )
-            content = response.choices[0].message.content
             return _parse_relevance_json(content, evidence.id)
         except ValueError:
             return EvidenceRelevanceDecision(
@@ -124,45 +118,22 @@ class OpenAICompatibleRelevanceJudge:
                 reason=f"OpenAI-compatible relevance judge failed: {exc}",
             )
 
-
-def _resolve_openai_compatible_config(
-    api_key: str | None = None,
-    base_url: str | None = None,
-    model: str | None = None,
-) -> OpenAICompatibleConfig:
-    return OpenAICompatibleConfig(
-        api_key=api_key or os.getenv("INSIGHT_GRAPH_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        base_url=base_url
-        or os.getenv("INSIGHT_GRAPH_LLM_BASE_URL")
-        or os.getenv("OPENAI_BASE_URL"),
-        model=model or os.getenv("INSIGHT_GRAPH_LLM_MODEL") or "gpt-4o-mini",
-    )
-
-
-def _create_openai_client(api_key: str, base_url: str | None) -> Any:
-    from openai import OpenAI
-
-    if base_url:
-        return OpenAI(api_key=api_key, base_url=base_url)
-    return OpenAI(api_key=api_key)
-
-
 def _build_relevance_messages(
     query: str,
     subtask: Subtask,
     evidence: Evidence,
-) -> list[dict[str, str]]:
+) -> list[ChatMessage]:
     return [
-        {
-            "role": "system",
-            "content": (
+        ChatMessage(
+            role="system",
+            content=(
                 "You judge whether evidence is relevant to a research query and subtask. "
                 "Return only JSON with boolean field relevant and string field reason."
             ),
-        },
-        {
-            "role": "user",
-            "content": (
+        ),
+        ChatMessage(
+            role="user",
+            content=(
                 f"Query: {query}\n"
                 f"Subtask ID: {subtask.id}\n"
                 f"Subtask description: {subtask.description}\n"
@@ -172,7 +143,7 @@ def _build_relevance_messages(
                 f"Evidence verified: {evidence.verified}\n"
                 f"Evidence snippet: {evidence.snippet}"
             ),
-        },
+        ),
     ]
 
 

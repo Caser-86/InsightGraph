@@ -11,6 +11,7 @@
 | LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
 | CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
 | 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider；报告引用仅来自 verified evidence |
+| Analyst | 默认 `deterministic`，离线且不调用真实 LLM；可通过 `INSIGHT_GRAPH_ANALYST_PROVIDER=llm` opt-in 使用 OpenAI-compatible LLM 生成 evidence-grounded findings |
 | Critic | 已实现证据数量、分析结果、citation support 检查；失败路径最多重试一次后输出失败评估 |
 | 测试 | 已实现 pytest 覆盖 state、agents、graph、CLI |
 
@@ -60,6 +61,27 @@ INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
 INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 ```
+
+### LLM Analyst 配置
+
+Analyst 默认使用 `deterministic` provider，离线且不调用真实 LLM，适合本地开发、测试和 CLI smoke。需要 OpenAI-compatible LLM 生成 evidence-grounded findings 时，可显式 opt-in：
+
+```bash
+INSIGHT_GRAPH_ANALYST_PROVIDER=llm \
+INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
+INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
+INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_ANALYST_PROVIDER` | Analyst provider 类型，支持默认离线行为的 `deterministic` 或 `llm` opt-in | `deterministic` |
+| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
+| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
+| `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Analyst model | `gpt-4o-mini` |
+
+LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings。缺少 key/API、LLM 返回非 JSON、schema 不合法或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
 ---
 
@@ -435,7 +457,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 ## 计划配置（后续路线图）
 
-当前 MVP 不读取环境变量；以下配置项用于后续接入真实 LLM、搜索、数据库和预算控制时落地。
+默认 CLI 不需要环境变量；真实搜索、relevance、LLM Analyst 等能力通过上文列出的环境变量 opt-in。以下配置项用于后续接入数据库、预算控制和更多 provider 时落地。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
