@@ -280,6 +280,9 @@ def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
 
 def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
     state = GraphState(user_request="Compare Cursor and GitHub Copilot")
     state = plan_research(state)
 
