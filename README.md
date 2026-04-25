@@ -32,7 +32,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
 
-当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；尚未包含 LLM relevance 判断、多轮 agentic tool loop、conversation compression 或收敛检测。
+当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用，尚未包含多轮 agentic tool loop、conversation compression 或收敛检测。
 
 Relevance filtering 默认关闭。需要过滤工具返回的 evidence 时，可显式启用 deterministic/offline judge：
 
@@ -43,9 +43,23 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `INSIGHT_GRAPH_RELEVANCE_FILTER` | `1` / `true` / `yes` 时启用 Executor evidence relevance filtering | 未启用 |
-| `INSIGHT_GRAPH_RELEVANCE_JUDGE` | 当前仅支持 `deterministic` | `deterministic` |
+| `INSIGHT_GRAPH_RELEVANCE_JUDGE` | Relevance judge 类型，支持 `deterministic` 或 `openai_compatible` | `deterministic` |
+| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
+| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
+| `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible relevance model | `gpt-4o-mini` |
 
-当前 relevance judge 不调用真实 LLM，只进行 deterministic/offline 过滤：未 verified 或缺少 title/source URL/snippet 的 evidence 会被丢弃。真实 Qwen/OpenAI relevance judge 属于后续阶段。
+默认 `deterministic` judge 不调用真实 LLM，适合离线过滤：未 verified 或缺少 title/source URL/snippet 的 evidence 会被丢弃。需要真实 LLM relevance 判断时，可设置 `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`，并通过 API key、base URL 和 model 指向 OpenAI-compatible provider。
+
+OpenAI-compatible relay 示例：
+
+```bash
+INSIGHT_GRAPH_RELEVANCE_FILTER=1 \
+INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible \
+INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
+INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
+INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
 
 ---
 
