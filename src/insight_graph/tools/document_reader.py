@@ -54,7 +54,7 @@ def _normalize_snippet(text: str) -> str:
 
 
 def _evidence_id(root: Path, path: Path) -> str:
-    relative_path = path.relative_to(root).with_suffix("")
+    relative_path = path.relative_to(root)
     return f"document-{_slugify(str(relative_path))}"
 
 

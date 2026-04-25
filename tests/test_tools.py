@@ -99,7 +99,7 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     evidence = document_reader("docs/Market Report.md", "s1")
 
     assert len(evidence) == 1
-    assert evidence[0].id == "document-docs-market-report"
+    assert evidence[0].id == "document-docs-market-report-md"
     assert evidence[0].subtask_id == "s1"
     assert evidence[0].title == "Market Report.md"
     assert evidence[0].source_url == document.resolve().as_uri()
@@ -128,24 +128,30 @@ def test_document_reader_rejects_invalid_utf8(tmp_path, monkeypatch) -> None:
     assert document_reader("bad.md", "s1") == []
 
 
+def test_document_reader_rejects_empty_normalized_snippet(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "empty.md"
+    document.write_text("\n\t   \n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader("empty.md", "s1") == []
+
+
 def test_document_reader_uses_relative_path_in_evidence_id(
     tmp_path, monkeypatch
 ) -> None:
-    first_dir = tmp_path / "docs" / "a"
-    second_dir = tmp_path / "docs" / "b"
-    first_dir.mkdir(parents=True)
-    second_dir.mkdir(parents=True)
-    first = first_dir / "Report.md"
-    second = second_dir / "Report.txt"
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    first = docs_dir / "Report.md"
+    second = docs_dir / "Report.txt"
     first.write_text("First report.", encoding="utf-8")
     second.write_text("Second report.", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    first_evidence = document_reader("docs/a/Report.md", "s1")
-    second_evidence = document_reader("docs/b/Report.txt", "s1")
+    first_evidence = document_reader("docs/Report.md", "s1")
+    second_evidence = document_reader("docs/Report.txt", "s1")
 
-    assert first_evidence[0].id == "document-docs-a-report"
-    assert second_evidence[0].id == "document-docs-b-report"
+    assert first_evidence[0].id == "document-docs-report-md"
+    assert second_evidence[0].id == "document-docs-report-txt"
 
 
 @pytest.mark.parametrize(
@@ -237,7 +243,7 @@ def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:
     evidence = ToolRegistry().run("document_reader", "sample.md", "s1")
 
     assert len(evidence) == 1
-    assert evidence[0].id == "document-sample"
+    assert evidence[0].id == "document-sample-md"
     assert evidence[0].source_type == "docs"
 
 

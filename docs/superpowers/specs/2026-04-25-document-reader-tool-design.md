@@ -60,16 +60,18 @@ if not candidate.is_relative_to(root):
 Evidence ID 应稳定且可读：
 
 ```text
-document-<relative-path-without-suffix-slug>
+document-<relative-path-with-extension-slug>
 ```
 
-Slug 规则：相对 `Path.cwd().resolve()` 的路径去掉后缀后转字符串，小写，路径分隔符和非字母数字字符替换为 `-`，去掉首尾 `-`；空值 fallback 为 `document`。
+Slug 规则：相对 `Path.cwd().resolve()` 的完整路径转字符串并保留后缀，小写，路径分隔符和非字母数字字符替换为 `-`，去掉首尾 `-`；空值 fallback 为 `document`。
 
 示例：
 
 ```text
-docs/Market Report.md -> document-docs-market-report
-sample.md -> document-sample
+docs/Market Report.md -> document-docs-market-report-md
+sample.md -> document-sample-md
+docs/report.md -> document-docs-report-md
+docs/report.txt -> document-docs-report-txt
 ```
 
 ## ToolRegistry 集成
@@ -126,7 +128,7 @@ Planner 采集工具选择优先级：
 - `document_reader()` 读取当前工作目录内 Markdown 文件并返回 1 条 verified docs evidence。
 - `document_reader()` 归一化 snippet 空白并限制长度。
 - `document_reader()` 对缺失文件、目录、不支持后缀、工作区外路径和 UTF-8 解码失败返回空列表。
-- `document_reader()` 使用相对路径去后缀后的 slug 生成稳定且不易碰撞的 evidence ID。
+- `document_reader()` 使用包含后缀的相对路径 slug 生成稳定且不易碰撞的 evidence ID。
 - `insight_graph.tools` 导出可调用 `document_reader`。
 - `ToolRegistry().run("document_reader", "docs/sample.md", "s1")` 执行新工具。
 - Planner 默认仍返回 `mock_search`。
