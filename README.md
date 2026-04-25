@@ -34,12 +34,16 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 需要从本地 text/Markdown 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。第一版 `document_reader` 只读取当前工作目录内的 `.txt`、`.md`、`.markdown` 文件；不读取工作目录外路径、不读取 URL，也不解析 PDF/HTML。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
 
+需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码；`write_file` 和 `code_execute` 将单独设计。
+
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `INSIGHT_GRAPH_USE_WEB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 `web_search` | 未启用 |
 | `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `github_search`；若同时启用 web search，则 web search 优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `news_search`；若同时启用 web 或 GitHub search，则前者优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `document_reader`；若同时启用搜索工具，则搜索工具优先 | 未启用 |
+| `INSIGHT_GRAPH_USE_READ_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `read_file`；搜索工具和 `document_reader` 优先 | 未启用 |
+| `INSIGHT_GRAPH_USE_LIST_DIRECTORY` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `list_directory`；搜索工具、`document_reader` 和 `read_file` 优先 | 未启用 |
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
 
@@ -421,7 +425,7 @@ flowchart TB
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
 | `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown` 文件；PDF/HTML、分页读取与语义检索属于后续路线图 |
 | `code_execute` | 沙箱 Python 代码执行，用于数据清洗、表格计算和趋势统计 |
-| `read_file` / `write_file` / `list_directory` | 本地文件读写与目录浏览 |
+| `read_file` / `list_directory` | 当前支持 cwd 内只读安全文本读取与一层目录列表；`write_file` 属于后续路线图 |
 
 ---
 
