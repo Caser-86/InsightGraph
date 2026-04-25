@@ -263,6 +263,44 @@ def test_planner_prefers_read_file_over_list_directory(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["read_file"]
 
 
+def test_planner_prefers_web_search_over_readonly_file_tools(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search"]
+
+
+def test_planner_prefers_github_search_over_readonly_file_tools(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["github_search"]
+
+
+def test_planner_prefers_news_search_over_readonly_file_tools(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["news_search"]
+
+
 def test_planner_prefers_web_search_over_github_search(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
