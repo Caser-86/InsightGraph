@@ -367,7 +367,7 @@ flowchart TB
     subgraph 数据采集
         T1[web_search / news_search] --> T2[fetch_url]
         T3[github_search] --> T4[repo / release / issue / README]
-        T5[document_reader] --> T6[PDF / HTML / Markdown]
+        T5[document_reader] --> T6[local TXT / Markdown (MVP); PDF / HTML later]
         T2 --> T7[content_extract]
         T4 --> T7
         T6 --> T7
@@ -419,7 +419,7 @@ flowchart TB
 | `fetch_url` | 抓取 direct HTTP/HTTPS URL，并从 HTML 页面生成 verified Evidence |
 | `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
-| `document_reader` | 大文档分页读取与语义检索，支持行业报告和技术白皮书 |
+| `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown` 文件；PDF/HTML、分页读取与语义检索属于后续路线图 |
 | `code_execute` | 沙箱 Python 代码执行，用于数据清洗、表格计算和趋势统计 |
 | `read_file` / `write_file` / `list_directory` | 本地文件读写与目录浏览 |
 
@@ -563,7 +563,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `scripts/run_with_llm_log.py` | 执行任务并记录全部 LLM 调用到 `llm_logs/` |
 | `scripts/validate_sources.py` | 批量校验报告中的 URL 与 citation |
 | `scripts/benchmark_research.py` | 对固定研究任务进行回归测试与成本统计 |
-| `scripts/validate_document_reader.py` | 验证 PDF / HTML / Markdown 文档读取和分块检索 |
+| `scripts/validate_document_reader.py` | 验证当前本地 TXT/Markdown 读取；未来扩展 PDF/HTML 与分块检索验证 |
 
 ---
 
