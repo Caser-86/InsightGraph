@@ -1,4 +1,6 @@
+import hashlib
 import importlib
+import re
 
 import pytest
 
@@ -13,6 +15,12 @@ from insight_graph.tools import (
     web_search,
 )
 from insight_graph.tools.http_client import FetchedPage
+
+
+def document_id_for(relative_path: str) -> str:
+    digest = hashlib.sha1(relative_path.encode("utf-8")).hexdigest()[:8]
+    slug = re.sub(r"[^a-z0-9]+", "-", relative_path.lower()).strip("-")
+    return f"document-{slug or 'document'}-{digest}"
 
 
 def test_tools_package_exports_fetch_url_callable() -> None:
@@ -99,7 +107,7 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     evidence = document_reader("docs/Market Report.md", "s1")
 
     assert len(evidence) == 1
-    assert evidence[0].id == "document-docs-market-report-md"
+    assert evidence[0].id == document_id_for("docs/Market Report.md")
     assert evidence[0].subtask_id == "s1"
     assert evidence[0].title == "Market Report.md"
     assert evidence[0].source_url == document.resolve().as_uri()
@@ -150,8 +158,27 @@ def test_document_reader_uses_relative_path_in_evidence_id(
     first_evidence = document_reader("docs/Report.md", "s1")
     second_evidence = document_reader("docs/Report.txt", "s1")
 
-    assert first_evidence[0].id == "document-docs-report-md"
-    assert second_evidence[0].id == "document-docs-report-txt"
+    assert first_evidence[0].id == document_id_for("docs/Report.md")
+    assert second_evidence[0].id == document_id_for("docs/Report.txt")
+
+
+def test_document_reader_hash_prevents_separator_slug_collisions(
+    tmp_path, monkeypatch
+) -> None:
+    nested_dir = tmp_path / "docs" / "foo"
+    nested_dir.mkdir(parents=True)
+    first = tmp_path / "docs" / "foo-bar.md"
+    second = nested_dir / "bar.md"
+    first.write_text("First report.", encoding="utf-8")
+    second.write_text("Second report.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    first_evidence = document_reader("docs/foo-bar.md", "s1")
+    second_evidence = document_reader("docs/foo/bar.md", "s1")
+
+    assert first_evidence[0].id == document_id_for("docs/foo-bar.md")
+    assert second_evidence[0].id == document_id_for("docs/foo/bar.md")
+    assert first_evidence[0].id != second_evidence[0].id
 
 
 @pytest.mark.parametrize(
@@ -243,7 +270,7 @@ def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:
     evidence = ToolRegistry().run("document_reader", "sample.md", "s1")
 
     assert len(evidence) == 1
-    assert evidence[0].id == "document-sample-md"
+    assert evidence[0].id == document_id_for("sample.md")
     assert evidence[0].source_type == "docs"
 
 

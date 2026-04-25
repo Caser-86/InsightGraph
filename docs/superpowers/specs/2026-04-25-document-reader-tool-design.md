@@ -60,18 +60,20 @@ if not candidate.is_relative_to(root):
 Evidence ID 应稳定且可读：
 
 ```text
-document-<relative-path-with-extension-slug>
+document-<relative-path-with-extension-slug>-<hash8>
 ```
 
-Slug 规则：相对 `Path.cwd().resolve()` 的完整路径转字符串并保留后缀，小写，路径分隔符和非字母数字字符替换为 `-`，去掉首尾 `-`；空值 fallback 为 `document`。
+Slug 规则：相对 `Path.cwd().resolve()` 的完整路径转 POSIX 字符串并保留后缀，小写，路径分隔符和非字母数字字符替换为 `-`，去掉首尾 `-`；空值 fallback 为 `document`。
+
+`hash8` 是 POSIX 相对路径字符串的 SHA-1 digest 前 8 位十六进制字符，用于避免不同路径 slug 相同导致 citation/reference key 冲突。
 
 示例：
 
 ```text
-docs/Market Report.md -> document-docs-market-report-md
-sample.md -> document-sample-md
-docs/report.md -> document-docs-report-md
-docs/report.txt -> document-docs-report-txt
+docs/Market Report.md -> document-docs-market-report-md-<hash8>
+sample.md -> document-sample-md-<hash8>
+docs/report.md -> document-docs-report-md-<hash8>
+docs/report.txt -> document-docs-report-txt-<hash8>
 ```
 
 ## ToolRegistry 集成
@@ -128,7 +130,7 @@ Planner 采集工具选择优先级：
 - `document_reader()` 读取当前工作目录内 Markdown 文件并返回 1 条 verified docs evidence。
 - `document_reader()` 归一化 snippet 空白并限制长度。
 - `document_reader()` 对缺失文件、目录、不支持后缀、工作区外路径和 UTF-8 解码失败返回空列表。
-- `document_reader()` 使用包含后缀的相对路径 slug 生成稳定且不易碰撞的 evidence ID。
+- `document_reader()` 使用包含后缀的 POSIX 相对路径 slug 和 SHA-1 hash 后缀生成稳定且 collision-resistant 的 evidence ID。
 - `insight_graph.tools` 导出可调用 `document_reader`。
 - `ToolRegistry().run("document_reader", "docs/sample.md", "s1")` 执行新工具。
 - Planner 默认仍返回 `mock_search`。

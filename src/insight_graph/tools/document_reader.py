@@ -1,3 +1,4 @@
+import hashlib
 import re
 from pathlib import Path
 
@@ -55,7 +56,9 @@ def _normalize_snippet(text: str) -> str:
 
 def _evidence_id(root: Path, path: Path) -> str:
     relative_path = path.relative_to(root)
-    return f"document-{_slugify(str(relative_path))}"
+    relative_path_text = relative_path.as_posix()
+    digest = hashlib.sha1(relative_path_text.encode("utf-8")).hexdigest()[:8]
+    return f"document-{_slugify(relative_path_text)}-{digest}"
 
 
 def _slugify(value: str) -> str:
