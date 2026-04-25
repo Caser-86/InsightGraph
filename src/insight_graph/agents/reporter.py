@@ -159,6 +159,7 @@ def _build_reporter_messages(
                 "Return strict JSON only with this shape: "
                 '{"markdown": "# InsightGraph Research Report\\n..."}. '
                 "The markdown must include # InsightGraph Research Report and ## Key Findings. "
+                "Use ASCII-only punctuation and quotes. "
                 "Use only the allowed bracket citations, cite at least one source, and do not "
                 "include References or Sources sections because references will be appended "
                 "deterministically."

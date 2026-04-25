@@ -371,6 +371,7 @@ def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
     assert "cursor-pricing" in prompt
     assert "copilot-docs" in prompt
     assert "unverified-blog" not in prompt
+    assert "Use ASCII-only punctuation and quotes" in prompt
 
 
 def test_write_report_strips_llm_references_and_appends_deterministic_references(
