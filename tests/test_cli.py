@@ -280,6 +280,7 @@ def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
+    assert "| Input tokens | Output tokens | Total tokens |" in result.output
     assert "No LLM calls were recorded." in result.output
 
 

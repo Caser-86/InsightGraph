@@ -47,10 +47,6 @@ def _configure_output_encoding(stdout=None, stderr=None) -> None:
 
 def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
     lines = ["## LLM Call Log", ""]
-    if not records:
-        lines.append("No LLM calls were recorded.")
-        return "\n".join(lines)
-
     lines.extend(
         [
             "| Stage | Provider | Model | Success | Duration ms | "
@@ -58,6 +54,11 @@ def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
             "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
         ]
     )
+    if not records:
+        lines.append("")
+        lines.append("No LLM calls were recorded.")
+        return "\n".join(lines)
+
     for record in records:
         lines.append(
             "| "
