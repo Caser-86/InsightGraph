@@ -67,9 +67,56 @@ class FakeOpenAIChat:
         self.completions = completions
 
 
+class FakeResponsesUsage:
+    def __init__(
+        self,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+    ) -> None:
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.total_tokens = total_tokens
+
+
+class FakeResponsesResponse:
+    def __init__(
+        self,
+        output_text: str | None = '{"ok": true}',
+        usage: FakeResponsesUsage | None = None,
+    ) -> None:
+        self.output_text = output_text
+        self.output = []
+        self.usage = usage
+
+
+class FakeOpenAIResponses:
+    def __init__(
+        self,
+        output_text: str | None = '{"ok": true}',
+        error: Exception | None = None,
+        usage: FakeResponsesUsage | None = None,
+    ) -> None:
+        self.output_text = output_text
+        self.error = error
+        self.usage = usage
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs) -> FakeResponsesResponse:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return FakeResponsesResponse(self.output_text, usage=self.usage)
+
+
 class FakeOpenAIClient:
-    def __init__(self, completions: FakeOpenAICompletions | None = None) -> None:
+    def __init__(
+        self,
+        completions: FakeOpenAICompletions | None = None,
+        responses: FakeOpenAIResponses | None = None,
+    ) -> None:
         self.completions = completions or FakeOpenAICompletions()
+        self.responses = responses or FakeOpenAIResponses()
         self.chat = FakeOpenAIChat(self.completions)
 
 
@@ -142,6 +189,58 @@ def test_openai_compatible_chat_client_complete_json_still_returns_content() -> 
 
     assert client.complete_json([ChatMessage(role="user", content="Reply as JSON")]) == (
         '{"answer": "yes"}'
+    )
+
+
+def test_openai_compatible_chat_client_uses_responses_wire_api() -> None:
+    responses = FakeOpenAIResponses(output_text='{"answer": "yes"}')
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            wire_api="responses",
+        ),
+        client=FakeOpenAIClient(responses=responses),
+    )
+
+    result = client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
+
+    assert result == '{"answer": "yes"}'
+    assert responses.calls == [
+        {
+            "model": "test-model",
+            "input": [{"role": "user", "content": "Reply as JSON"}],
+            "text": {"format": {"type": "json_object"}},
+            "temperature": 0,
+        }
+    ]
+
+
+def test_openai_compatible_chat_client_maps_responses_usage() -> None:
+    responses = FakeOpenAIResponses(
+        output_text='{"answer": "yes"}',
+        usage=FakeResponsesUsage(input_tokens=13, output_tokens=5, total_tokens=18),
+    )
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            wire_api="responses",
+        ),
+        client=FakeOpenAIClient(responses=responses),
+    )
+
+    result = client.complete_json_with_usage(
+        [ChatMessage(role="user", content="Reply as JSON")]
+    )
+
+    assert result == ChatCompletionResult(
+        content='{"answer": "yes"}',
+        input_tokens=13,
+        output_tokens=5,
+        total_tokens=18,
     )
 
 

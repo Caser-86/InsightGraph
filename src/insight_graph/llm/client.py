@@ -53,6 +53,14 @@ class OpenAICompatibleChatClient:
         if not self.config.api_key:
             raise ValueError("LLM api_key is required")
 
+        if self.config.wire_api == "responses":
+            return self._complete_json_with_responses(messages)
+        return self._complete_json_with_chat_completions(messages)
+
+    def _complete_json_with_chat_completions(
+        self,
+        messages: list[ChatMessage],
+    ) -> ChatCompletionResult:
         response = self._get_client().chat.completions.create(
             model=self.config.model,
             messages=[message.model_dump() for message in messages],
@@ -67,6 +75,25 @@ class OpenAICompatibleChatClient:
             content=content,
             input_tokens=getattr(usage, "prompt_tokens", None),
             output_tokens=getattr(usage, "completion_tokens", None),
+            total_tokens=getattr(usage, "total_tokens", None),
+        )
+
+    def _complete_json_with_responses(
+        self,
+        messages: list[ChatMessage],
+    ) -> ChatCompletionResult:
+        response = self._get_client().responses.create(
+            model=self.config.model,
+            input=[message.model_dump() for message in messages],
+            text={"format": {"type": "json_object"}},
+            temperature=0,
+        )
+        content = _extract_responses_content(response)
+        usage = getattr(response, "usage", None)
+        return ChatCompletionResult(
+            content=content,
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
             total_tokens=getattr(usage, "total_tokens", None),
         )
 
@@ -86,3 +113,10 @@ def _create_openai_client(api_key: str, base_url: str | None = None) -> Any:
     if base_url:
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
+
+
+def _extract_responses_content(response: Any) -> str:
+    output_text = getattr(response, "output_text", None)
+    if output_text:
+        return output_text
+    raise ValueError("LLM response content is required")
