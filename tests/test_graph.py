@@ -15,8 +15,19 @@ def clear_llm_env(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def clear_planner_tool_env(monkeypatch) -> None:
+    for name in [
+        "INSIGHT_GRAPH_USE_WEB_SEARCH",
+        "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
+        "INSIGHT_GRAPH_USE_NEWS_SEARCH",
+        "INSIGHT_GRAPH_USE_DOCUMENT_READER",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_run_research_executes_full_graph(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
 
     result = run_research("Compare Cursor, OpenCode, and GitHub Copilot")
 
@@ -30,6 +41,7 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
 
 def test_run_research_stops_after_failed_retry(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
     import insight_graph.graph as graph_module
 
     def collect_no_evidence(state: GraphState) -> GraphState:
