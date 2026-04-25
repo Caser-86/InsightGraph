@@ -403,6 +403,45 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
     }
 
 
+def test_cli_research_output_json_includes_tool_fallback_records(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.tool_call_log.extend(
+            [
+                ToolCallRecord(
+                    subtask_id="collect",
+                    tool_name="web_search",
+                    query=query,
+                    success=False,
+                    error="web_search returned no evidence; falling back to mock_search",
+                ),
+                ToolCallRecord(
+                    subtask_id="collect",
+                    tool_name="mock_search",
+                    query=query,
+                    evidence_count=3,
+                    success=True,
+                    error="fallback for web_search",
+                ),
+            ]
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    result = CliRunner().invoke(
+        app, ["research", "Compare AI coding agents", "--output-json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [record["tool_name"] for record in payload["tool_call_log"]] == [
+        "web_search",
+        "mock_search",
+    ]
+    assert payload["tool_call_log"][0]["success"] is False
+    assert payload["tool_call_log"][1]["error"] == "fallback for web_search"
+
+
 def test_cli_research_default_output_is_not_json(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return GraphState(user_request=query, report_markdown="# Report\n")
