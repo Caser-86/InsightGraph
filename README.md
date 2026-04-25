@@ -49,6 +49,7 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 | `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
 | `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible relevance model | `gpt-4o-mini` |
+| `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
 默认 `deterministic` judge 不调用真实 LLM，适合离线过滤：未 verified 或缺少 title/source URL/snippet 的 evidence 会被丢弃。需要真实 LLM relevance 判断时，可设置 `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`，并通过 API key、base URL 和 model 指向 OpenAI-compatible provider。
 
@@ -81,6 +82,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
 | `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Analyst model | `gpt-4o-mini` |
+| `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
 LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings。缺少 key/API、LLM 返回非 JSON、schema 不合法或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
@@ -102,6 +104,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
 | `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Reporter model | `gpt-4o-mini` |
+| `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
 LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
 
@@ -124,11 +127,13 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 `live-llm` applies missing runtime defaults for DuckDuckGo search, relevance filtering, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter. It does not permanently modify your environment and does not accept API keys as command-line arguments.
 
+`live-llm` does not set `INSIGHT_GRAPH_LLM_WIRE_API`; by default LLM calls use Chat Completions. To test a provider's Responses API support, explicitly set `INSIGHT_GRAPH_LLM_WIRE_API=responses`. If the provider does not support `/v1/responses` or the JSON response format, InsightGraph records the sanitized failure in `llm_call_log` and does not automatically fall back to Chat Completions.
+
 If live `web_search` returns no evidence or fails, the executor records the failed `web_search` attempt and falls back to deterministic `mock_search` evidence. This keeps live smoke/demo runs from producing empty reports while making the fallback visible in `tool_call_log` and `--output-json`.
 
 ### LLM Observability
 
-Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LLM calls. Each record includes the stage (`relevance`, `analyst`, or `reporter`), provider, model, success flag, duration in milliseconds, and a short sanitized error summary when a call fails. When the provider returns usage data, records also include nullable `input_tokens`, `output_tokens`, and `total_tokens` fields. InsightGraph does not estimate cost in this version.
+Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LLM calls. Each record includes the stage (`relevance`, `analyst`, or `reporter`), provider, model, configured wire API when available, success flag, duration in milliseconds, and a short sanitized error summary when a call fails. When the provider returns usage data, records also include nullable `input_tokens`, `output_tokens`, and `total_tokens` fields. InsightGraph does not estimate cost in this version.
 
 The log is in-memory only for this MVP. It does not store prompts, completions, raw response JSON, API keys, authorization headers, or request bodies.
 
@@ -138,7 +143,7 @@ Use `--show-llm-log` to append the in-memory LLM call metadata after the Markdow
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm --show-llm-log
 ```
 
-The appended table is opt-in and contains only stage, provider, model, success, duration, token counts when available, and sanitized error metadata.
+The appended table is opt-in and contains only stage, provider, model, wire API when available, success, duration, token counts when available, and sanitized error metadata.
 
 Use `--output-json` when scripts need a structured summary instead of Markdown:
 
