@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 import insight_graph.cli as cli_module
 from insight_graph.cli import app
-from insight_graph.state import GraphState
+from insight_graph.state import GraphState, LLMCallRecord
 
 
 def clear_llm_env(monkeypatch) -> None:
@@ -156,3 +156,120 @@ def test_cli_rejects_unknown_preset_before_workflow(monkeypatch) -> None:
 
     assert result.exit_code != 0
     assert "bad" in result.output
+
+
+def test_cli_research_does_not_show_llm_log_by_default(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=12,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["research", "Compare AI coding agents"])
+
+    assert result.exit_code == 0
+    assert "# Report" in result.output
+    assert "## LLM Call Log" not in result.output
+    assert "relay-model" not in result.output
+
+
+def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.extend(
+            [
+                LLMCallRecord(
+                    stage="relevance",
+                    provider="openai_compatible",
+                    model="relay-model",
+                    success=True,
+                    duration_ms=7,
+                ),
+                LLMCallRecord(
+                    stage="reporter",
+                    provider="llm",
+                    model="relay-model",
+                    success=False,
+                    duration_ms=9,
+                    error="ReporterFallbackError: LLM call failed.",
+                ),
+            ]
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "# Report" in result.output
+    assert "## LLM Call Log" in result.output
+    assert "| Stage | Provider | Model | Success | Duration ms | Error |" in result.output
+    assert "| relevance | openai_compatible | relay-model | true | 7 |  |" in result.output
+    assert (
+        "| reporter | llm | relay-model | false | 9 | "
+        "ReporterFallbackError: LLM call failed. |"
+    ) in result.output
+
+
+def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return GraphState(user_request=query, report_markdown="# Report\n")
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "# Report" in result.output
+    assert "## LLM Call Log" in result.output
+    assert "No LLM calls were recorded." in result.output
+
+
+def test_cli_research_show_llm_log_escapes_cells_and_omits_raw_payloads(
+    monkeypatch,
+) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="relay|model\nsecond-line",
+                success=False,
+                duration_ms=3,
+                error="RuntimeError: LLM call failed.",
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "relay\\|model second-line" in result.output
+    assert "RuntimeError: LLM call failed." in result.output
+    assert "Sensitive prompt" not in result.output
+    assert "Raw response" not in result.output
+    assert "sk-secret" not in result.output
+    assert "Authorization" not in result.output

@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from insight_graph.graph import run_research
+from insight_graph.state import LLMCallRecord
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
 
@@ -43,6 +44,35 @@ def _configure_output_encoding(stdout=None, stderr=None) -> None:
                 pass
 
 
+def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
+    lines = ["## LLM Call Log", ""]
+    if not records:
+        lines.append("No LLM calls were recorded.")
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            "| Stage | Provider | Model | Success | Duration ms | Error |",
+            "| --- | --- | --- | --- | ---: | --- |",
+        ]
+    )
+    for record in records:
+        lines.append(
+            "| "
+            f"{_markdown_table_cell(record.stage)} | "
+            f"{_markdown_table_cell(record.provider)} | "
+            f"{_markdown_table_cell(record.model)} | "
+            f"{str(record.success).lower()} | "
+            f"{record.duration_ms} | "
+            f"{_markdown_table_cell(record.error or '')} |"
+        )
+    return "\n".join(lines)
+
+
+def _markdown_table_cell(value: str) -> str:
+    return " ".join(value.replace("|", r"\|").splitlines())
+
+
 @app.callback()
 def main() -> None:
     """InsightGraph research workflow CLI."""
@@ -56,11 +86,21 @@ def research(
         ResearchPreset,
         typer.Option("--preset", help="Runtime preset: offline or live-llm."),
     ] = ResearchPreset.offline,
+    show_llm_log: Annotated[
+        bool,
+        typer.Option(
+            "--show-llm-log",
+            help="Append safe LLM call metadata after the Markdown report.",
+        ),
+    ] = False,
 ) -> None:
     """Run a research workflow and print a Markdown report."""
     _apply_research_preset(preset)
     state = run_research(query)
-    typer.echo(state.report_markdown or "")
+    output = state.report_markdown or ""
+    if show_llm_log:
+        output = f"{output.rstrip()}\n\n{_format_llm_call_log(state.llm_call_log)}\n"
+    typer.echo(output)
 
 
 if __name__ == "__main__":
