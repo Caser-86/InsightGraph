@@ -40,6 +40,8 @@ def _collection_tool_name() -> str:
         return "web_search"
     if _is_truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"):
         return "github_search"
+    if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
+        return "news_search"
     return "mock_search"
 
 
