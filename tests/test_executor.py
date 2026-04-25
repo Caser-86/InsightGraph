@@ -128,6 +128,119 @@ def test_executor_falls_back_to_mock_search_for_empty_web_search(monkeypatch) ->
     assert updated.tool_call_log[1].error == "fallback for web_search"
 
 
+def test_executor_falls_back_to_mock_search_for_web_search_exception(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    fallback = Evidence(
+        id="fallback",
+        subtask_id="collect",
+        title="Fallback Evidence",
+        source_url="https://example.com/fallback",
+        snippet="Fallback evidence.",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            if name == "web_search":
+                raise RuntimeError("live search unavailable")
+            if name == "mock_search":
+                return [fallback]
+            raise AssertionError(f"unexpected tool: {name}")
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["fallback"]
+    assert [record.tool_name for record in updated.tool_call_log] == [
+        "web_search",
+        "mock_search",
+    ]
+    assert updated.tool_call_log[0].success is False
+    assert "live search unavailable" in updated.tool_call_log[0].error
+    assert updated.tool_call_log[1].success is True
+    assert updated.tool_call_log[1].error == "fallback for web_search"
+
+
+def test_executor_records_failed_mock_search_fallback(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            if name == "web_search":
+                return []
+            if name == "mock_search":
+                raise RuntimeError("mock unavailable")
+            raise AssertionError(f"unexpected tool: {name}")
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.evidence_pool == []
+    assert [record.tool_name for record in updated.tool_call_log] == [
+        "web_search",
+        "mock_search",
+    ]
+    assert updated.tool_call_log[0].success is False
+    assert updated.tool_call_log[1].success is False
+    assert updated.tool_call_log[1].error == (
+        "fallback for web_search failed: mock unavailable"
+    )
+
+
+def test_executor_applies_relevance_filter_to_mock_search_fallback(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
+
+    kept = Evidence(
+        id="kept",
+        subtask_id="collect",
+        title="Kept",
+        source_url="https://example.com/kept",
+        snippet="Kept evidence.",
+        verified=True,
+    )
+    dropped = Evidence(
+        id="dropped",
+        subtask_id="collect",
+        title="Dropped",
+        source_url="https://example.com/dropped",
+        snippet="Dropped evidence.",
+        verified=False,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            if name == "web_search":
+                return []
+            if name == "mock_search":
+                return [kept, dropped]
+            raise AssertionError(f"unexpected tool: {name}")
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["kept"]
+    assert updated.tool_call_log[1].tool_name == "mock_search"
+    assert updated.tool_call_log[1].evidence_count == 2
+    assert updated.tool_call_log[1].filtered_count == 1
+
+
 def test_executor_keeps_successful_empty_results_for_non_web_search(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
 
