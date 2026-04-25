@@ -99,7 +99,7 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     evidence = document_reader("docs/Market Report.md", "s1")
 
     assert len(evidence) == 1
-    assert evidence[0].id == "document-market-report"
+    assert evidence[0].id == "document-docs-market-report"
     assert evidence[0].subtask_id == "s1"
     assert evidence[0].title == "Market Report.md"
     assert evidence[0].source_url == document.resolve().as_uri()
@@ -118,6 +118,34 @@ def test_document_reader_limits_snippet_length(tmp_path, monkeypatch) -> None:
     evidence = document_reader("long.md", "s1")
 
     assert len(evidence[0].snippet) == 500
+
+
+def test_document_reader_rejects_invalid_utf8(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "bad.md"
+    document.write_bytes(b"\xff\xfe\xfa")
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader("bad.md", "s1") == []
+
+
+def test_document_reader_uses_relative_path_in_evidence_id(
+    tmp_path, monkeypatch
+) -> None:
+    first_dir = tmp_path / "docs" / "a"
+    second_dir = tmp_path / "docs" / "b"
+    first_dir.mkdir(parents=True)
+    second_dir.mkdir(parents=True)
+    first = first_dir / "Report.md"
+    second = second_dir / "Report.txt"
+    first.write_text("First report.", encoding="utf-8")
+    second.write_text("Second report.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    first_evidence = document_reader("docs/a/Report.md", "s1")
+    second_evidence = document_reader("docs/b/Report.txt", "s1")
+
+    assert first_evidence[0].id == "document-docs-a-report"
+    assert second_evidence[0].id == "document-docs-b-report"
 
 
 @pytest.mark.parametrize(

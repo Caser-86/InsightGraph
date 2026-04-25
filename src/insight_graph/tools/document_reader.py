@@ -15,7 +15,7 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
 
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
 
     snippet = _normalize_snippet(text)
@@ -24,7 +24,7 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
 
     return [
         Evidence(
-            id=f"document-{_slugify(path.stem)}",
+            id=_evidence_id(root, path),
             subtask_id=subtask_id,
             title=path.name,
             source_url=path.as_uri(),
@@ -51,6 +51,11 @@ def _resolve_inside_root(root: Path, query: str) -> Path | None:
 
 def _normalize_snippet(text: str) -> str:
     return " ".join(text.split())[:MAX_SNIPPET_CHARS]
+
+
+def _evidence_id(root: Path, path: Path) -> str:
+    relative_path = path.relative_to(root).with_suffix("")
+    return f"document-{_slugify(str(relative_path))}"
 
 
 def _slugify(value: str) -> str:
