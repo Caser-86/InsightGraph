@@ -6,7 +6,8 @@ from insight_graph.agents.reporter import write_report
 from insight_graph.state import Evidence, Finding, GraphState
 
 
-def test_planner_creates_core_research_subtasks() -> None:
+def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -19,6 +20,24 @@ def test_planner_creates_core_research_subtasks() -> None:
         "Analyze competitive patterns, differentiators, risks, and trends",
         "Synthesize findings into a cited research report",
     ]
+    assert updated.subtasks[1].suggested_tools == ["mock_search"]
+
+
+def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search"]
+
+
+def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "0")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
     assert updated.subtasks[1].suggested_tools == ["mock_search"]
 
 

@@ -1,3 +1,5 @@
+import os
+
 from insight_graph.state import GraphState, Subtask
 
 
@@ -15,7 +17,7 @@ def plan_research(state: GraphState) -> GraphState:
             ),
             subtask_type="research",
             dependencies=["scope"],
-            suggested_tools=["mock_search"],
+            suggested_tools=[_collection_tool_name()],
         ),
         Subtask(
             id="analyze",
@@ -31,3 +33,10 @@ def plan_research(state: GraphState) -> GraphState:
         ),
     ]
     return state
+
+
+def _collection_tool_name() -> str:
+    use_web_search = os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "").lower()
+    if use_web_search in {"1", "true", "yes"}:
+        return "web_search"
+    return "mock_search"
