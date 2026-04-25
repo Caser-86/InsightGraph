@@ -90,22 +90,43 @@ class FakeResponsesResponse:
         self.usage = usage
 
 
+class FakeResponsesContent:
+    def __init__(self, text: str | None) -> None:
+        self.text = text
+
+
+class FakeResponsesOutput:
+    def __init__(self, content: list[FakeResponsesContent]) -> None:
+        self.content = content
+
+
+class FakeNestedResponsesResponse:
+    def __init__(self, output: list[FakeResponsesOutput]) -> None:
+        self.output_text = None
+        self.output = output
+        self.usage = None
+
+
 class FakeOpenAIResponses:
     def __init__(
         self,
         output_text: str | None = '{"ok": true}',
         error: Exception | None = None,
         usage: FakeResponsesUsage | None = None,
+        response: object | None = None,
     ) -> None:
         self.output_text = output_text
         self.error = error
         self.usage = usage
+        self.response = response
         self.calls: list[dict] = []
 
-    def create(self, **kwargs) -> FakeResponsesResponse:
+    def create(self, **kwargs) -> object:
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        if self.response is not None:
+            return self.response
         return FakeResponsesResponse(self.output_text, usage=self.usage)
 
 
@@ -242,6 +263,45 @@ def test_openai_compatible_chat_client_maps_responses_usage() -> None:
         output_tokens=5,
         total_tokens=18,
     )
+
+
+def test_openai_compatible_chat_client_reads_nested_responses_output_text() -> None:
+    responses = FakeOpenAIResponses(
+        response=FakeNestedResponsesResponse(
+            [FakeResponsesOutput([FakeResponsesContent('{"answer": "nested"}')])]
+        )
+    )
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            wire_api="responses",
+        ),
+        client=FakeOpenAIClient(responses=responses),
+    )
+
+    result = client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
+
+    assert result == '{"answer": "nested"}'
+
+
+def test_openai_compatible_chat_client_requires_responses_content() -> None:
+    responses = FakeOpenAIResponses(
+        response=FakeNestedResponsesResponse([FakeResponsesOutput([FakeResponsesContent(None)])])
+    )
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            wire_api="responses",
+        ),
+        client=FakeOpenAIClient(responses=responses),
+    )
+
+    with pytest.raises(ValueError, match="response content"):
+        client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
 
 
 def test_openai_compatible_chat_client_uses_factory_with_base_url() -> None:

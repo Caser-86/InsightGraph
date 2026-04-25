@@ -116,7 +116,24 @@ def _create_openai_client(api_key: str, base_url: str | None = None) -> Any:
 
 
 def _extract_responses_content(response: Any) -> str:
-    output_text = getattr(response, "output_text", None)
+    output_text = _get_attr_or_key(response, "output_text")
     if output_text:
         return output_text
+
+    parts: list[str] = []
+    for output_item in _get_attr_or_key(response, "output") or []:
+        for content_item in _get_attr_or_key(output_item, "content") or []:
+            text = _get_attr_or_key(content_item, "text")
+            if text:
+                parts.append(text)
+
+    content = "".join(parts)
+    if content:
+        return content
     raise ValueError("LLM response content is required")
+
+
+def _get_attr_or_key(value: Any, name: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
