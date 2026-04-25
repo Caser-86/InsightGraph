@@ -4,7 +4,6 @@ import os
 
 from pydantic import BaseModel, field_validator
 
-
 DEFAULT_LLM_WIRE_API = "chat_completions"
 SUPPORTED_LLM_WIRE_APIS = frozenset({"chat_completions", "responses"})
 
