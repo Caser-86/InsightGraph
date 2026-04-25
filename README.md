@@ -34,7 +34,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 需要从本地 text/Markdown 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。第一版 `document_reader` 只读取当前工作目录内的 `.txt`、`.md`、`.markdown` 文件；不读取工作目录外路径、不读取 URL，也不解析 PDF/HTML。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
 
-需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码；`write_file` 和 `code_execute` 将单独设计。
+需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，当前支持 `.txt`、`.md`、`.markdown`、`.py`、`.json`、`.toml`、`.yaml`、`.yml` 且单文件不超过 64 KiB；`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码；`write_file` 和 `code_execute` 将单独设计。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -257,7 +257,8 @@ src/insight_graph/
 │ github_search     │ 实体画像与证据片段      │ 状态快照                   │
 │ fetch_url         │                       │                           │
 │ document_reader   │                       │                           │
-│ read_file/list_dir│                       │                           │
+│ read_file         │                       │                           │
+│ list_directory    │                       │                           │
 └───────────────────┴───────────────────────┴───────────────────────────┘
 ```
 
@@ -283,7 +284,7 @@ flowchart TB
         E --> E1{还有 subtask?}
         E1 -->|是| E2[多轮工具调用]
         E2 --> E3[web_search / news_search / github_search]
-        E3 --> E4[fetch_url + document_reader]
+        E3 --> E4[fetch_url + document_reader/read_file/list_directory]
         E4 --> E5[LLM 判断相关性与可信度]
         E5 --> E6[global_evidence_pool 累积]
         E6 --> E1
@@ -371,7 +372,7 @@ flowchart TB
     subgraph 数据采集
         T1[web_search / news_search] --> T2[fetch_url]
         T3[github_search] --> T4[repo / release / issue / README]
-        T5[document_reader] --> T6[local TXT / Markdown (MVP); PDF / HTML later]
+        T5[document_reader / read_file / list_directory] --> T6[local files and directory listings]
         T2 --> T7[content_extract]
         T4 --> T7
         T6 --> T7
@@ -442,7 +443,7 @@ flowchart TB
 ### 2. Collector
 
 - **多轮循环**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用
-- **多源采集**：结合 web_search、news_search、github_search、fetch_url、document_reader
+- **多源采集**：结合 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory
 - **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
 - **上下文控制**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据
 - **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据
