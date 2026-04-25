@@ -1,6 +1,10 @@
 from insight_graph import __version__
 from insight_graph.cli import app
-from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.llm import ChatCompletionResult, ChatMessage
+from insight_graph.llm.observability import (
+    build_llm_call_record,
+    complete_json_with_observability,
+)
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 
 
@@ -81,6 +85,23 @@ def test_llm_call_record_stores_metadata_only() -> None:
     assert record.error is None
 
 
+def test_llm_call_record_stores_nullable_token_fields() -> None:
+    record = LLMCallRecord(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        success=True,
+        duration_ms=12,
+        input_tokens=10,
+        output_tokens=5,
+        total_tokens=15,
+    )
+
+    assert record.input_tokens == 10
+    assert record.output_tokens == 5
+    assert record.total_tokens == 15
+
+
 def test_graph_state_starts_with_empty_llm_call_log() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 
@@ -102,6 +123,60 @@ def test_build_llm_call_record_sanitizes_secret_values() -> None:
     assert "sk-secret-value" not in record.model_dump_json()
 
 
+def test_build_llm_call_record_normalizes_negative_token_values() -> None:
+    record = build_llm_call_record(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        success=True,
+        duration_ms=12,
+        input_tokens=-1,
+        output_tokens=2,
+        total_tokens=-3,
+    )
+
+    assert record.input_tokens is None
+    assert record.output_tokens == 2
+    assert record.total_tokens is None
+
+
+def test_complete_json_with_observability_uses_usage_aware_client() -> None:
+    class UsageAwareClient:
+        def complete_json_with_usage(self, messages: list[ChatMessage]) -> ChatCompletionResult:
+            return ChatCompletionResult(
+                content='{"ok": true}',
+                input_tokens=3,
+                output_tokens=4,
+                total_tokens=7,
+            )
+
+        def complete_json(self, messages: list[ChatMessage]) -> str:
+            raise AssertionError("complete_json should not be called")
+
+    result = complete_json_with_observability(
+        UsageAwareClient(), [ChatMessage(role="user", content="Return JSON")]
+    )
+
+    assert result == ChatCompletionResult(
+        content='{"ok": true}',
+        input_tokens=3,
+        output_tokens=4,
+        total_tokens=7,
+    )
+
+
+def test_complete_json_with_observability_falls_back_to_legacy_client() -> None:
+    class LegacyClient:
+        def complete_json(self, messages: list[ChatMessage]) -> str:
+            return '{"ok": true}'
+
+    result = complete_json_with_observability(
+        LegacyClient(), [ChatMessage(role="user", content="Return JSON")]
+    )
+
+    assert result == ChatCompletionResult(content='{"ok": true}')
+
+
 def test_build_llm_call_record_does_not_store_raw_exception_payloads() -> None:
     record = build_llm_call_record(
         stage="reporter",
@@ -120,4 +195,4 @@ def test_build_llm_call_record_does_not_store_raw_exception_payloads() -> None:
     assert "Sensitive prompt" not in serialized
     assert "Raw response" not in serialized
     assert "Bearer" not in serialized
-    assert "token" not in serialized
+    assert "Bearer token" not in serialized

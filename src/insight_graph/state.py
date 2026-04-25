@@ -59,6 +59,9 @@ class LLMCallRecord(BaseModel):
     model: str
     success: bool
     duration_ms: int
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
     error: str | None = None
 
 

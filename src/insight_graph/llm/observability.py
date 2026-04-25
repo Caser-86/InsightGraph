@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from insight_graph.llm.client import ChatCompletionClient, ChatCompletionResult, ChatMessage
 from insight_graph.state import LLMCallRecord
 
 
@@ -12,6 +13,9 @@ def build_llm_call_record(
     duration_ms: int,
     error: Exception | None = None,
     secrets: list[str | None] | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    total_tokens: int | None = None,
 ) -> LLMCallRecord:
     return LLMCallRecord(
         stage=stage,
@@ -19,8 +23,27 @@ def build_llm_call_record(
         model=model,
         success=success,
         duration_ms=max(duration_ms, 0),
+        input_tokens=_normalize_token_count(input_tokens),
+        output_tokens=_normalize_token_count(output_tokens),
+        total_tokens=_normalize_token_count(total_tokens),
         error=_summarize_error(error, secrets or []) if error is not None else None,
     )
+
+
+def complete_json_with_observability(
+    llm_client: ChatCompletionClient,
+    messages: list[ChatMessage],
+) -> ChatCompletionResult:
+    complete_with_usage = getattr(llm_client, "complete_json_with_usage", None)
+    if complete_with_usage is not None:
+        return complete_with_usage(messages)
+    return ChatCompletionResult(content=llm_client.complete_json(messages))
+
+
+def _normalize_token_count(value: int | None) -> int | None:
+    if value is None or value < 0:
+        return None
+    return value
 
 
 def _summarize_error(error: Exception, secrets: list[str | None]) -> str:
