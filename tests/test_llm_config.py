@@ -1,3 +1,5 @@
+import pytest
+
 from insight_graph.llm.config import resolve_llm_config
 
 
@@ -27,6 +29,36 @@ def test_resolve_llm_config_falls_back_to_openai_env(monkeypatch) -> None:
     assert config.api_key == "openai-key"
     assert config.base_url == "https://openai.example/v1"
     assert config.model == "gpt-4o-mini"
+
+
+def test_resolve_llm_config_defaults_to_chat_completions(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_WIRE_API", raising=False)
+
+    config = resolve_llm_config()
+
+    assert config.wire_api == "chat_completions"
+
+
+def test_resolve_llm_config_reads_wire_api_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_WIRE_API", "responses")
+
+    config = resolve_llm_config()
+    assert config.wire_api == "responses"
+
+
+def test_resolve_llm_config_explicit_wire_api_overrides_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_WIRE_API", "responses")
+
+    config = resolve_llm_config(wire_api="chat_completions")
+
+    assert config.wire_api == "chat_completions"
+
+
+def test_resolve_llm_config_rejects_unknown_wire_api(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_WIRE_API", "not-real")
+
+    with pytest.raises(ValueError, match="wire_api"):
+        resolve_llm_config()
 
 
 def test_resolve_llm_config_explicit_args_override_env(monkeypatch) -> None:
