@@ -105,6 +105,25 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
 
+### Live LLM Preset
+
+The default CLI remains deterministic/offline:
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+To enable the live pipeline with one explicit switch, configure your LLM endpoint and use `--preset live-llm`:
+
+```bash
+INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
+INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
+INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
+```
+
+`live-llm` applies missing runtime defaults for DuckDuckGo search, relevance filtering, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter. It does not permanently modify your environment and does not accept API keys as command-line arguments.
+
 ---
 
 ## 目标项目结构（蓝图）
