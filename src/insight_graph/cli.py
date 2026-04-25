@@ -53,8 +53,9 @@ def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
 
     lines.extend(
         [
-            "| Stage | Provider | Model | Success | Duration ms | Error |",
-            "| --- | --- | --- | --- | ---: | --- |",
+            "| Stage | Provider | Model | Success | Duration ms | "
+            "Input tokens | Output tokens | Total tokens | Error |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     for record in records:
@@ -65,9 +66,16 @@ def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
             f"{_markdown_table_cell(record.model)} | "
             f"{str(record.success).lower()} | "
             f"{record.duration_ms} | "
+            f"{_format_optional_int(record.input_tokens)} | "
+            f"{_format_optional_int(record.output_tokens)} | "
+            f"{_format_optional_int(record.total_tokens)} | "
             f"{_markdown_table_cell(record.error or '')} |"
         )
     return "\n".join(lines)
+
+
+def _format_optional_int(value: int | None) -> str:
+    return "" if value is None else str(value)
 
 
 def _markdown_table_cell(value: str) -> str:

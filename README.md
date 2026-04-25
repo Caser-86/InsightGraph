@@ -126,7 +126,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 ### LLM Observability
 
-Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LLM calls. Each record includes the stage (`relevance`, `analyst`, or `reporter`), provider, model, success flag, duration in milliseconds, and a short sanitized error summary when a call fails.
+Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LLM calls. Each record includes the stage (`relevance`, `analyst`, or `reporter`), provider, model, success flag, duration in milliseconds, and a short sanitized error summary when a call fails. When the provider returns usage data, records also include nullable `input_tokens`, `output_tokens`, and `total_tokens` fields. InsightGraph does not estimate cost in this version.
 
 The log is in-memory only for this MVP. It does not store prompts, completions, raw response JSON, API keys, authorization headers, or request bodies.
 
@@ -136,7 +136,7 @@ Use `--show-llm-log` to append the in-memory LLM call metadata after the Markdow
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm --show-llm-log
 ```
 
-The appended table is opt-in and contains only stage, provider, model, success, duration, and sanitized error metadata.
+The appended table is opt-in and contains only stage, provider, model, success, duration, token counts when available, and sanitized error metadata.
 
 Use `--output-json` when scripts need a structured summary instead of Markdown:
 

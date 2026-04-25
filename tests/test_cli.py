@@ -226,12 +226,44 @@ def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
-    assert "| Stage | Provider | Model | Success | Duration ms | Error |" in result.output
-    assert "| relevance | openai_compatible | relay-model | true | 7 |  |" in result.output
     assert (
-        "| reporter | llm | relay-model | false | 9 | "
+        "| Stage | Provider | Model | Success | Duration ms | "
+        "Input tokens | Output tokens | Total tokens | Error |"
+    ) in result.output
+    assert (
+        "| relevance | openai_compatible | relay-model | true | 7 |  |  |  |  |"
+        in result.output
+    )
+    assert (
+        "| reporter | llm | relay-model | false | 9 |  |  |  | "
         "ReporterFallbackError: LLM call failed. |"
     ) in result.output
+
+
+def test_cli_research_show_llm_log_includes_token_columns(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=12,
+                input_tokens=10,
+                output_tokens=5,
+                total_tokens=15,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    result = CliRunner().invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "| analyst | llm | relay-model | true | 12 | 10 | 5 | 15 |  |" in result.output
 
 
 def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
@@ -360,6 +392,9 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 "model": "relay-model",
                 "success": True,
                 "duration_ms": 12,
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
                 "error": None,
             }
         ],
