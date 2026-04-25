@@ -21,7 +21,8 @@ def clear_llm_env(monkeypatch) -> None:
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
-        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
 
 
 def test_cli_research_outputs_markdown_report(monkeypatch) -> None:
