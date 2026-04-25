@@ -71,8 +71,7 @@ def list_directory(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     entry_names = [
-        f"{entry.name}/" if entry.is_dir() else entry.name
-        for entry in entries[:MAX_DIRECTORY_ENTRIES]
+        _directory_entry_name(root, entry) for entry in entries[:MAX_DIRECTORY_ENTRIES]
     ]
     snippet = "\n".join(entry_names)[:MAX_SNIPPET_CHARS]
     relative_title = _relative_path_text(root, path, root_text=".")
@@ -116,6 +115,16 @@ def _coerce_query(query: str, *, empty_as_root: bool = False) -> str | None:
     if empty_as_root and query == "":
         return "."
     return query
+
+
+def _directory_entry_name(root: Path, entry: Path) -> str:
+    try:
+        resolved_entry = entry.resolve()
+    except OSError:
+        return entry.name
+    if resolved_entry.is_relative_to(root) and resolved_entry.is_dir():
+        return f"{entry.name}/"
+    return entry.name
 
 
 def _evidence_id(

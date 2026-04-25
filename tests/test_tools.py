@@ -336,6 +336,24 @@ def test_list_directory_limits_entries_and_snippet_length(tmp_path, monkeypatch)
     assert len(evidence[0].snippet) <= 500
 
 
+def test_list_directory_does_not_follow_outside_directory_symlink(
+    tmp_path, monkeypatch
+) -> None:
+    outside = tmp_path.parent / "outside-dir"
+    outside.mkdir(exist_ok=True)
+    link = tmp_path / "outside-link"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are not supported in this environment")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = list_directory(".", "s1")
+
+    assert "outside-link" in evidence[0].snippet.split("\n")
+    assert "outside-link/" not in evidence[0].snippet.split("\n")
+
+
 def test_list_directory_rejects_invalid_paths(tmp_path, monkeypatch) -> None:
     (tmp_path / "file.md").write_text("file", encoding="utf-8")
     (tmp_path.parent / "outside").mkdir(exist_ok=True)
