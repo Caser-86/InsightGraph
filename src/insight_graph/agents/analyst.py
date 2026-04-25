@@ -1,7 +1,9 @@
 import json
 import os
+import time
 
 from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client, resolve_llm_config
+from insight_graph.llm.observability import build_llm_call_record
 from insight_graph.state import Evidence, Finding, GraphState
 
 
@@ -53,19 +55,58 @@ def _analyze_evidence_with_llm(
     state: GraphState,
     llm_client: ChatCompletionClient | None = None,
 ) -> GraphState:
+    config = resolve_llm_config()
     if llm_client is None:
-        config = resolve_llm_config()
         if not config.api_key:
             raise ValueError("LLM api_key is required")
         llm_client = get_llm_client(config)
 
     messages = _build_analyst_messages(state)
+    started = time.perf_counter()
     try:
         content = llm_client.complete_json(messages)
     except Exception as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="analyst",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=duration_ms,
+                error=exc,
+                secrets=[config.api_key],
+            )
+        )
         raise ValueError("LLM analyst failed.") from exc
 
-    state.findings = _parse_analyst_findings(content, state.evidence_pool)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    try:
+        state.findings = _parse_analyst_findings(content, state.evidence_pool)
+    except ValueError as exc:
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="analyst",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=duration_ms,
+                error=exc,
+                secrets=[config.api_key],
+            )
+        )
+        raise
+
+    state.llm_call_log.append(
+        build_llm_call_record(
+            stage="analyst",
+            provider="llm",
+            model=config.model,
+            success=True,
+            duration_ms=duration_ms,
+            secrets=[config.api_key],
+        )
+    )
     return state
 
 

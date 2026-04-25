@@ -1,8 +1,10 @@
 import json
 import os
 import re
+import time
 
 from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client, resolve_llm_config
+from insight_graph.llm.observability import build_llm_call_record
 from insight_graph.state import Evidence, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
@@ -89,24 +91,75 @@ def _write_report_with_llm(
     if not reference_numbers:
         raise ReporterFallbackError("Verified references are required")
 
+    config = resolve_llm_config()
     if llm_client is None:
-        config = resolve_llm_config()
         if not config.api_key:
             raise ReporterFallbackError("LLM api_key is required")
         llm_client = get_llm_client(config)
 
     messages = _build_reporter_messages(state, verified_evidence, reference_numbers)
+    started = time.perf_counter()
     try:
         content = llm_client.complete_json(messages)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="reporter",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=duration_ms,
+                error=exc,
+                secrets=[config.api_key],
+            )
+        )
         raise
     except Exception as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="reporter",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=duration_ms,
+                error=exc,
+                secrets=[config.api_key],
+            )
+        )
         raise ReporterFallbackError("LLM reporter failed.") from exc
 
-    body = _parse_llm_report_body(content)
-    body = _strip_references_section(body)
-    body = _normalize_smart_punctuation(body)
-    _validate_llm_report_body(body, set(reference_numbers.values()))
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    try:
+        body = _parse_llm_report_body(content)
+        body = _strip_references_section(body)
+        body = _normalize_smart_punctuation(body)
+        _validate_llm_report_body(body, set(reference_numbers.values()))
+    except ReporterFallbackError as exc:
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="reporter",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=duration_ms,
+                error=exc,
+                secrets=[config.api_key],
+            )
+        )
+        raise
+
+    state.llm_call_log.append(
+        build_llm_call_record(
+            stage="reporter",
+            provider="llm",
+            model=config.model,
+            success=True,
+            duration_ms=duration_ms,
+            secrets=[config.api_key],
+        )
+    )
 
     lines = [body.rstrip(), ""]
     if state.critique is not None and "## Critic Assessment" not in body:

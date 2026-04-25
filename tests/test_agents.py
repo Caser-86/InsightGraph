@@ -199,6 +199,49 @@ def test_analyze_evidence_uses_llm_provider_when_enabled(monkeypatch) -> None:
     assert "copilot-docs" in prompt
 
 
+def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "relay-model")
+    client = FakeLLMClient(
+        content=(
+            '{"findings": [{"title": "Pricing differs", '
+            '"summary": "Cursor and Copilot differ.", '
+            '"evidence_ids": ["cursor-pricing"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(make_analyst_state(), llm_client=client)
+
+    assert len(updated.llm_call_log) == 1
+    record = updated.llm_call_log[0]
+    assert record.stage == "analyst"
+    assert record.provider == "llm"
+    assert record.model == "relay-model"
+    assert record.success is True
+    assert record.duration_ms >= 0
+    assert record.error is None
+
+
+def test_analyze_evidence_records_failed_llm_call_without_prompt_or_response(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "relay-model")
+
+    updated = analyze_evidence(
+        make_analyst_state(), llm_client=FakeLLMClient(content="not json")
+    )
+
+    assert len(updated.llm_call_log) == 1
+    record = updated.llm_call_log[0]
+    assert record.stage == "analyst"
+    assert record.success is False
+    assert "JSON" in (record.error or "")
+    serialized = record.model_dump_json()
+    assert "not json" not in serialized
+    assert "Cursor Pricing" not in serialized
+
+
 def test_analyze_evidence_falls_back_without_api_key(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
     monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
@@ -372,6 +415,50 @@ def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
     assert "copilot-docs" in prompt
     assert "unverified-blog" not in prompt
     assert "Use ASCII-only punctuation and quotes" in prompt
+
+
+def test_write_report_records_successful_llm_call(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "relay-model")
+    client = FakeLLMClient(
+        content={
+            "markdown": (
+                "# InsightGraph Research Report\n\n"
+                "## Key Findings\n\n"
+                "### Pricing and packaging differ\n\n"
+                "The verified sources support this comparison [1]."
+            )
+        }
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert len(updated.llm_call_log) == 1
+    record = updated.llm_call_log[0]
+    assert record.stage == "reporter"
+    assert record.provider == "llm"
+    assert record.model == "relay-model"
+    assert record.success is True
+    assert record.duration_ms >= 0
+    assert record.error is None
+
+
+def test_write_report_records_failed_llm_call_without_prompt_or_response(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "relay-model")
+
+    updated = write_report(make_reporter_state(), llm_client=FakeLLMClient(content="not json"))
+
+    assert len(updated.llm_call_log) == 1
+    record = updated.llm_call_log[0]
+    assert record.stage == "reporter"
+    assert record.success is False
+    assert "JSON" in (record.error or "")
+    serialized = record.model_dump_json()
+    assert "not json" not in serialized
+    assert "Cursor Pricing" not in serialized
 
 
 def test_write_report_strips_llm_references_and_appends_deterministic_references(
