@@ -36,7 +36,12 @@ def plan_research(state: GraphState) -> GraphState:
 
 
 def _collection_tool_name() -> str:
-    use_web_search = os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "").lower()
-    if use_web_search in {"1", "true", "yes"}:
+    if _is_truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"):
         return "web_search"
+    if _is_truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"):
+        return "github_search"
     return "mock_search"
+
+
+def _is_truthy_env(name: str) -> bool:
+    return os.getenv(name, "").lower() in {"1", "true", "yes"}

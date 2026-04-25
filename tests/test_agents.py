@@ -131,6 +131,7 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_LLM_API_KEY",
         "INSIGHT_GRAPH_LLM_BASE_URL",
         "INSIGHT_GRAPH_LLM_MODEL",
+        "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -139,6 +140,7 @@ def clear_llm_env(monkeypatch) -> None:
 
 def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -163,8 +165,29 @@ def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["web_search"]
 
 
+def test_planner_uses_github_search_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["github_search"]
+
+
+def test_planner_prefers_web_search_over_github_search(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search"]
+
+
 def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "0")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "0")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -185,6 +208,20 @@ def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     assert updated.global_evidence_pool == updated.evidence_pool
     assert len(updated.tool_call_log) == 1
     assert updated.tool_call_log[0].tool_name == "mock_search"
+
+
+def test_collector_adds_verified_github_search_evidence(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot")
+    state = plan_research(state)
+
+    updated = collect_evidence(state)
+
+    assert len(updated.evidence_pool) == 3
+    assert all(item.verified for item in updated.evidence_pool)
+    assert {item.source_type for item in updated.evidence_pool} == {"github"}
+    assert updated.tool_call_log[0].tool_name == "github_search"
 
 
 def test_get_analyst_provider_defaults_to_deterministic(monkeypatch) -> None:
