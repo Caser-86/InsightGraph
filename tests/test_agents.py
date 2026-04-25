@@ -41,7 +41,8 @@ def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["mock_search"]
 
 
-def test_collector_adds_verified_mock_evidence() -> None:
+def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     state = GraphState(user_request="Compare Cursor and GitHub Copilot")
     state = plan_research(state)
 
@@ -52,7 +53,8 @@ def test_collector_adds_verified_mock_evidence() -> None:
     assert {item.source_type for item in updated.evidence_pool} >= {"official_site", "github"}
 
 
-def test_analysis_critic_and_reporter_create_cited_report() -> None:
+def test_analysis_critic_and_reporter_create_cited_report(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     state = GraphState(user_request="Compare AI coding agents")
     state = collect_evidence(plan_research(state))
 
