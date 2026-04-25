@@ -13,8 +13,20 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatCompletionResult(BaseModel):
+    content: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+
+
 class ChatCompletionClient(Protocol):
     def complete_json(self, messages: list[ChatMessage]) -> str: ...
+
+    def complete_json_with_usage(
+        self,
+        messages: list[ChatMessage],
+    ) -> ChatCompletionResult: ...
 
 
 ClientFactory = Callable[..., Any]
@@ -32,6 +44,12 @@ class OpenAICompatibleChatClient:
         self._client_factory = client_factory or _create_openai_client
 
     def complete_json(self, messages: list[ChatMessage]) -> str:
+        return self.complete_json_with_usage(messages).content
+
+    def complete_json_with_usage(
+        self,
+        messages: list[ChatMessage],
+    ) -> ChatCompletionResult:
         if not self.config.api_key:
             raise ValueError("LLM api_key is required")
 
@@ -44,7 +62,13 @@ class OpenAICompatibleChatClient:
         content = response.choices[0].message.content
         if content is None:
             raise ValueError("LLM response content is required")
-        return content
+        usage = getattr(response, "usage", None)
+        return ChatCompletionResult(
+            content=content,
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            total_tokens=getattr(usage, "total_tokens", None),
+        )
 
     def _get_client(self) -> Any:
         if self._client is None:
