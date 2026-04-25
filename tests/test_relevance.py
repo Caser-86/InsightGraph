@@ -210,6 +210,11 @@ class FakeChatCompletionClient:
         )
 
 
+class FakeClientConfig:
+    def __init__(self, wire_api: str) -> None:
+        self.wire_api = wire_api
+
+
 def test_openai_compatible_judge_uses_client_factory_with_base_url() -> None:
     completions = FakeOpenAICompletions(
         '{"relevant": true, "reason": "Factory client response."}'
@@ -306,6 +311,29 @@ def test_openai_compatible_judge_records_successful_llm_call() -> None:
     assert records[0].success is True
     assert records[0].duration_ms >= 0
     assert records[0].error is None
+
+
+def test_openai_compatible_judge_records_llm_wire_api() -> None:
+    records: list[LLMCallRecord] = []
+    client = FakeChatCompletionClient(
+        '{"relevant": true, "reason": "Evidence directly matches."}'
+    )
+    client.config = FakeClientConfig(wire_api="responses")
+    judge = OpenAICompatibleRelevanceJudge(
+        client=client,
+        api_key="test-key",
+        model="relay-model",
+        llm_call_log=records,
+    )
+
+    decision = judge.judge(
+        "Compare AI coding agents",
+        Subtask(id="collect", description="Collect pricing evidence"),
+        make_evidence(id="observed-kept"),
+    )
+
+    assert decision.relevant is True
+    assert records[0].wire_api == "responses"
 
 
 def test_openai_compatible_judge_records_llm_token_usage() -> None:

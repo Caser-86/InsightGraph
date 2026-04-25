@@ -6,6 +6,7 @@ from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client,
 from insight_graph.llm.observability import (
     build_llm_call_record,
     complete_json_with_observability,
+    get_llm_wire_api,
 )
 from insight_graph.state import Evidence, Finding, GraphState
 
@@ -64,6 +65,7 @@ def _analyze_evidence_with_llm(
             raise ValueError("LLM api_key is required")
         llm_client = get_llm_client(config)
 
+    wire_api = get_llm_wire_api(llm_client)
     messages = _build_analyst_messages(state)
     started = time.perf_counter()
     try:
@@ -77,6 +79,7 @@ def _analyze_evidence_with_llm(
                 model=config.model,
                 success=False,
                 duration_ms=duration_ms,
+                wire_api=wire_api,
                 error=exc,
                 secrets=[config.api_key],
             )
@@ -94,6 +97,7 @@ def _analyze_evidence_with_llm(
                 model=config.model,
                 success=False,
                 duration_ms=duration_ms,
+                wire_api=wire_api,
                 error=exc,
                 secrets=[config.api_key],
                 input_tokens=result.input_tokens,
@@ -110,6 +114,7 @@ def _analyze_evidence_with_llm(
             model=config.model,
             success=True,
             duration_ms=duration_ms,
+            wire_api=wire_api,
             secrets=[config.api_key],
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,

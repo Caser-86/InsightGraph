@@ -47,6 +47,11 @@ class UsageLLMClient(FakeLLMClient):
         return ChatCompletionResult(content=self.content)
 
 
+class FakeClientConfig:
+    def __init__(self, wire_api: str) -> None:
+        self.wire_api = wire_api
+
+
 def make_analyst_state() -> GraphState:
     return GraphState(
         user_request="Compare Cursor and GitHub Copilot",
@@ -240,6 +245,22 @@ def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_analyze_evidence_records_llm_wire_api(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    client = FakeLLMClient(
+        content=(
+            '{"findings": [{"title": "Pricing differs", '
+            '"summary": "Cursor and Copilot differ.", '
+            '"evidence_ids": ["cursor-pricing"]}]}'
+        )
+    )
+    client.config = FakeClientConfig(wire_api="responses")
+
+    updated = analyze_evidence(make_analyst_state(), llm_client=client)
+
+    assert updated.llm_call_log[0].wire_api == "responses"
 
 
 def test_analyze_evidence_records_llm_token_usage(monkeypatch) -> None:
@@ -502,6 +523,25 @@ def test_write_report_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_write_report_records_llm_wire_api(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = FakeLLMClient(
+        content={
+            "markdown": (
+                "# InsightGraph Research Report\n\n"
+                "## Key Findings\n\n"
+                "### Pricing and packaging differ\n\n"
+                "The verified sources support this comparison [1]."
+            )
+        }
+    )
+    client.config = FakeClientConfig(wire_api="responses")
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.llm_call_log[0].wire_api == "responses"
 
 
 def test_write_report_records_llm_token_usage(monkeypatch) -> None:

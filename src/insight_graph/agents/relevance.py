@@ -16,6 +16,7 @@ from insight_graph.llm.config import resolve_llm_config
 from insight_graph.llm.observability import (
     build_llm_call_record,
     complete_json_with_observability,
+    get_llm_wire_api,
 )
 from insight_graph.state import Evidence, LLMCallRecord, Subtask
 
@@ -159,6 +160,7 @@ class OpenAICompatibleRelevanceJudge:
                 model=self._config.model,
                 success=success,
                 duration_ms=duration_ms,
+                wire_api=get_llm_wire_api(self._client),
                 error=error,
                 secrets=[self._config.api_key],
                 input_tokens=result.input_tokens if result is not None else None,
