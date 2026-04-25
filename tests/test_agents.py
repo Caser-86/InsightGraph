@@ -133,6 +133,7 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_LLM_MODEL",
         "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
         "INSIGHT_GRAPH_USE_NEWS_SEARCH",
+        "INSIGHT_GRAPH_USE_DOCUMENT_READER",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -143,6 +144,7 @@ def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -188,6 +190,18 @@ def test_planner_uses_news_search_when_enabled(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["news_search"]
 
 
+def test_planner_uses_document_reader_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["document_reader"]
+
+
 def test_planner_prefers_web_search_over_github_search(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
@@ -219,10 +233,44 @@ def test_planner_prefers_web_search_over_news_search(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["web_search"]
 
 
+def test_planner_prefers_news_search_over_document_reader(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["news_search"]
+
+
+def test_planner_prefers_github_search_over_document_reader(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["github_search"]
+
+
+def test_planner_prefers_web_search_over_document_reader(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search"]
+
+
 def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "0")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "0")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
