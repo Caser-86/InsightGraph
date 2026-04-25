@@ -57,6 +57,7 @@ class LLMCallRecord(BaseModel):
     stage: str
     provider: str
     model: str
+    wire_api: str | None = None
     success: bool
     duration_ms: int
     input_tokens: int | None = None

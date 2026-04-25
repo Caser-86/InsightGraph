@@ -13,6 +13,7 @@ def build_llm_call_record(
     duration_ms: int,
     error: Exception | None = None,
     secrets: list[str | None] | None = None,
+    wire_api: str | None = None,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     total_tokens: int | None = None,
@@ -21,6 +22,7 @@ def build_llm_call_record(
         stage=stage,
         provider=provider,
         model=model,
+        wire_api=wire_api,
         success=success,
         duration_ms=max(duration_ms, 0),
         input_tokens=_normalize_token_count(input_tokens),
@@ -38,6 +40,10 @@ def complete_json_with_observability(
     if complete_with_usage is not None:
         return complete_with_usage(messages)
     return ChatCompletionResult.model_construct(content=llm_client.complete_json(messages))
+
+
+def get_llm_wire_api(llm_client: ChatCompletionClient) -> str | None:
+    return getattr(getattr(llm_client, "config", None), "wire_api", None)
 
 
 def _normalize_token_count(value: int | None) -> int | None:

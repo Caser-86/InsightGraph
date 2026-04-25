@@ -4,6 +4,7 @@ from insight_graph.llm import ChatCompletionResult, ChatMessage
 from insight_graph.llm.observability import (
     build_llm_call_record,
     complete_json_with_observability,
+    get_llm_wire_api,
 )
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 
@@ -102,6 +103,27 @@ def test_llm_call_record_stores_nullable_token_fields() -> None:
     assert record.total_tokens == 15
 
 
+def test_llm_call_record_stores_nullable_wire_api() -> None:
+    default_record = LLMCallRecord(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        success=True,
+        duration_ms=12,
+    )
+    responses_record = LLMCallRecord(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        wire_api="responses",
+        success=True,
+        duration_ms=12,
+    )
+
+    assert default_record.wire_api is None
+    assert responses_record.wire_api == "responses"
+
+
 def test_graph_state_starts_with_empty_llm_call_log() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 
@@ -138,6 +160,33 @@ def test_build_llm_call_record_normalizes_negative_token_values() -> None:
     assert record.input_tokens is None
     assert record.output_tokens == 2
     assert record.total_tokens is None
+
+
+def test_build_llm_call_record_stores_wire_api() -> None:
+    record = build_llm_call_record(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        wire_api="responses",
+        success=True,
+        duration_ms=12,
+    )
+
+    assert record.wire_api == "responses"
+
+
+def test_get_llm_wire_api_reads_optional_client_config() -> None:
+    class ClientConfig:
+        wire_api = "responses"
+
+    class ConfiguredClient:
+        config = ClientConfig()
+
+    class LegacyClient:
+        pass
+
+    assert get_llm_wire_api(ConfiguredClient()) == "responses"
+    assert get_llm_wire_api(LegacyClient()) is None
 
 
 def test_complete_json_with_observability_uses_usage_aware_client() -> None:
