@@ -2,8 +2,15 @@ from insight_graph.agents.relevance import (
     filter_relevant_evidence,
     is_relevance_filter_enabled,
 )
-from insight_graph.state import Evidence, GraphState, ToolCallRecord
+from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
+
+WEB_SEARCH_TOOL = "web_search"
+MOCK_SEARCH_TOOL = "mock_search"
+WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
+    "web_search returned no evidence; falling back to mock_search"
+)
+WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 
 
 def execute_subtasks(state: GraphState) -> GraphState:
@@ -14,48 +21,127 @@ def execute_subtasks(state: GraphState) -> GraphState:
 
     for subtask in state.subtasks:
         for tool_name in subtask.suggested_tools:
-            try:
-                results = registry.run(tool_name, state.user_request, subtask.id)
-            except Exception as exc:
-                records.append(
-                    ToolCallRecord(
-                        subtask_id=subtask.id,
-                        tool_name=tool_name,
-                        query=state.user_request,
-                        success=False,
-                        error=str(exc),
-                    )
-                )
-                continue
-
-            deduped_results = _deduplicate_evidence(results)
-            filtered_count = 0
-            if filter_enabled:
-                kept_results, filtered_count = filter_relevant_evidence(
-                    state.user_request,
-                    subtask,
-                    deduped_results,
-                    llm_call_log=state.llm_call_log,
-                )
-            else:
-                kept_results = deduped_results
-
-            collected.extend(kept_results)
-            records.append(
-                ToolCallRecord(
-                    subtask_id=subtask.id,
-                    tool_name=tool_name,
-                    query=state.user_request,
-                    evidence_count=len(results),
-                    filtered_count=filtered_count,
-                )
+            kept_results, new_records = _run_tool_with_fallback(
+                registry,
+                tool_name,
+                state.user_request,
+                subtask,
+                filter_enabled,
+                state.llm_call_log,
             )
+            collected.extend(kept_results)
+            records.extend(new_records)
 
     deduped = _deduplicate_evidence(collected)
     state.evidence_pool = deduped
     state.global_evidence_pool = deduped
     state.tool_call_log = records
     return state
+
+
+def _run_tool_with_fallback(
+    registry: ToolRegistry,
+    tool_name: str,
+    query: str,
+    subtask: Subtask,
+    filter_enabled: bool,
+    llm_call_log: list[LLMCallRecord],
+) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    try:
+        results = registry.run(tool_name, query, subtask.id)
+    except Exception as exc:
+        failed_record = ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            success=False,
+            error=str(exc),
+        )
+        if tool_name != WEB_SEARCH_TOOL:
+            return [], [failed_record]
+        fallback_results, fallback_records = _run_mock_search_fallback(
+            registry, query, subtask, filter_enabled, llm_call_log
+        )
+        return fallback_results, [failed_record, *fallback_records]
+
+    if tool_name == WEB_SEARCH_TOOL and not results:
+        failed_record = ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            success=False,
+            error=WEB_SEARCH_EMPTY_FALLBACK_ERROR,
+        )
+        fallback_results, fallback_records = _run_mock_search_fallback(
+            registry, query, subtask, filter_enabled, llm_call_log
+        )
+        return fallback_results, [failed_record, *fallback_records]
+
+    kept_results, filtered_count = _process_tool_results(
+        query, subtask, results, filter_enabled, llm_call_log
+    )
+    return kept_results, [
+        ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            evidence_count=len(results),
+            filtered_count=filtered_count,
+        )
+    ]
+
+
+def _process_tool_results(
+    query: str,
+    subtask: Subtask,
+    results: list[Evidence],
+    filter_enabled: bool,
+    llm_call_log: list[LLMCallRecord],
+) -> tuple[list[Evidence], int]:
+    deduped_results = _deduplicate_evidence(results)
+    if not filter_enabled:
+        return deduped_results, 0
+    return filter_relevant_evidence(
+        query,
+        subtask,
+        deduped_results,
+        llm_call_log=llm_call_log,
+    )
+
+
+def _run_mock_search_fallback(
+    registry: ToolRegistry,
+    query: str,
+    subtask: Subtask,
+    filter_enabled: bool,
+    llm_call_log: list[LLMCallRecord],
+) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    try:
+        results = registry.run(MOCK_SEARCH_TOOL, query, subtask.id)
+    except Exception as exc:
+        return [], [
+            ToolCallRecord(
+                subtask_id=subtask.id,
+                tool_name=MOCK_SEARCH_TOOL,
+                query=query,
+                success=False,
+                error=f"fallback for web_search failed: {exc}",
+            )
+        ]
+
+    kept_results, filtered_count = _process_tool_results(
+        query, subtask, results, filter_enabled, llm_call_log
+    )
+    return kept_results, [
+        ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=MOCK_SEARCH_TOOL,
+            query=query,
+            evidence_count=len(results),
+            filtered_count=filtered_count,
+            error=WEB_SEARCH_FALLBACK_NOTE,
+        )
+    ]
 
 
 def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:
