@@ -100,7 +100,7 @@ Create `src/insight_graph/llm/__init__.py`:
 
 ```python
 from insight_graph.llm.client import ChatCompletionClient, ChatMessage, OpenAICompatibleChatClient
-from insight_graph.llm.config import resolve_llm_config
+from insight_graph.llm.config import LLMConfig, resolve_llm_config
 from insight_graph.llm.router import get_llm_client
 
 __all__ = [
@@ -269,6 +269,12 @@ def test_get_llm_client_returns_openai_compatible_client() -> None:
     client = get_llm_client(config)
 
     assert isinstance(client, OpenAICompatibleChatClient)
+
+
+def test_llm_package_exports_core_types() -> None:
+    from insight_graph.llm import LLMConfig as ExportedLLMConfig
+
+    assert ExportedLLMConfig is LLMConfig
 ```
 
 - [ ] **Step 6: Run client tests to verify they fail**
@@ -352,7 +358,7 @@ def get_llm_client(config: LLMConfig | None = None) -> ChatCompletionClient:
 
 Run: `python -m pytest tests/test_llm_config.py tests/test_llm_client.py -v`
 
-Expected: 8 passed.
+Expected: 9 passed.
 
 Run: `python -m ruff check .`
 
