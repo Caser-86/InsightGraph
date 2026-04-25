@@ -283,8 +283,8 @@ flowchart TB
 
         E --> E1{还有 subtask?}
         E1 -->|是| E2[多轮工具调用]
-        E2 --> E3[web_search / news_search / github_search]
-        E3 --> E4[fetch_url + document_reader/read_file/list_directory]
+        E2 --> E3[planned collection tool]
+        E3 --> E4[verified Evidence]
         E4 --> E5[LLM 判断相关性与可信度]
         E5 --> E6[global_evidence_pool 累积]
         E6 --> E1
@@ -370,13 +370,10 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph 数据采集
-        T1[web_search / news_search] --> T2[fetch_url]
-        T3[github_search] --> T4[repo / release / issue / README]
-        T5[document_reader / read_file / list_directory] --> T6[local files and directory listings]
-        T2 --> T7[content_extract]
-        T4 --> T7
-        T6 --> T7
-        T7 --> T8[evidence_snippets]
+        T1[web_search] --> T2[fetch_url + content_extract]
+        T3[github_search / news_search] --> T8[evidence_snippets]
+        T5[document_reader / read_file / list_directory] --> T8
+        T2 --> T8
     end
 
     subgraph State 传递
@@ -443,7 +440,7 @@ flowchart TB
 ### 2. Collector
 
 - **多轮循环**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用
-- **多源采集**：结合 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory
+- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory；当前 Planner collect subtask 按 opt-in 优先级选择一个主采集工具
 - **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
 - **上下文控制**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据
 - **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据
