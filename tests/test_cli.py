@@ -1,10 +1,19 @@
+import json
 import os
 
 from typer.testing import CliRunner
 
 import insight_graph.cli as cli_module
 from insight_graph.cli import app
-from insight_graph.state import GraphState, LLMCallRecord
+from insight_graph.state import (
+    Critique,
+    Evidence,
+    Finding,
+    GraphState,
+    LLMCallRecord,
+    Subtask,
+    ToolCallRecord,
+)
 
 
 def clear_llm_env(monkeypatch) -> None:
@@ -273,3 +282,195 @@ def test_cli_research_show_llm_log_escapes_cells_and_omits_raw_payloads(
     assert "Raw response" not in result.output
     assert "sk-secret" not in result.output
     assert "Authorization" not in result.output
+
+
+def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(
+            user_request=query,
+            report_markdown="# Report\n",
+            findings=[
+                Finding(
+                    title="Pricing differs",
+                    summary="Pricing and packaging differ.",
+                    evidence_ids=["cursor-pricing"],
+                )
+            ],
+            critique=Critique(passed=True, reason="Enough evidence."),
+            iterations=1,
+        )
+        state.tool_call_log.append(
+            ToolCallRecord(
+                subtask_id="collect",
+                tool_name="mock_search",
+                query=query,
+                evidence_count=2,
+            )
+        )
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=12,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--output-json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {
+        "user_request": "Compare AI coding agents",
+        "report_markdown": "# Report\n",
+        "findings": [
+            {
+                "title": "Pricing differs",
+                "summary": "Pricing and packaging differ.",
+                "evidence_ids": ["cursor-pricing"],
+            }
+        ],
+        "critique": {
+            "passed": True,
+            "reason": "Enough evidence.",
+            "missing_topics": [],
+        },
+        "tool_call_log": [
+            {
+                "subtask_id": "collect",
+                "tool_name": "mock_search",
+                "query": "Compare AI coding agents",
+                "evidence_count": 2,
+                "filtered_count": 0,
+                "success": True,
+                "error": None,
+            }
+        ],
+        "llm_call_log": [
+            {
+                "stage": "analyst",
+                "provider": "llm",
+                "model": "relay-model",
+                "success": True,
+                "duration_ms": 12,
+                "error": None,
+            }
+        ],
+        "iterations": 1,
+    }
+
+
+def test_cli_research_default_output_is_not_json(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return GraphState(user_request=query, report_markdown="# Report\n")
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["research", "Compare AI coding agents"])
+
+    assert result.exit_code == 0
+    assert result.output.startswith("# Report")
+    try:
+        json.loads(result.output)
+    except json.JSONDecodeError:
+        pass
+    else:
+        raise AssertionError("Default research output should remain Markdown")
+
+
+def test_cli_research_output_json_omits_evidence_and_private_strings(
+    monkeypatch,
+) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(
+            user_request=query,
+            report_markdown="# Report\n",
+            subtasks=[Subtask(id="secret-subtask", description="Sensitive prompt")],
+            evidence_pool=[
+                Evidence(
+                    id="secret-evidence",
+                    subtask_id="collect",
+                    title="Raw response",
+                    source_url="https://example.com/private",
+                    snippet="sk-secret Authorization request-body Sensitive prompt",
+                    verified=True,
+                )
+            ],
+            global_evidence_pool=[
+                Evidence(
+                    id="global-secret-evidence",
+                    subtask_id="collect",
+                    title="Header",
+                    source_url="https://example.com/global-private",
+                    snippet="Raw response should not be exported",
+                    verified=True,
+                )
+            ],
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--output-json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert "subtasks" not in payload
+    assert "evidence_pool" not in payload
+    assert "global_evidence_pool" not in payload
+    serialized = json.dumps(payload)
+    assert "secret-subtask" not in serialized
+    assert "secret-evidence" not in serialized
+    assert "global-secret-evidence" not in serialized
+    assert "Sensitive prompt" not in serialized
+    assert "Raw response" not in serialized
+    assert "sk-secret" not in serialized
+    assert "Authorization" not in serialized
+    assert "request-body" not in serialized
+
+
+def test_cli_research_output_json_takes_precedence_over_show_llm_log(
+    monkeypatch,
+) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="reporter",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=4,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "research",
+            "Compare AI coding agents",
+            "--output-json",
+            "--show-llm-log",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["llm_call_log"][0]["stage"] == "reporter"
+    assert "## LLM Call Log" not in result.output
+    assert "| Stage | Provider | Model |" not in result.output

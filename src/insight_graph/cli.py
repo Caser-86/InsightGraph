@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from enum import StrEnum
@@ -6,7 +7,7 @@ from typing import Annotated
 import typer
 
 from insight_graph.graph import run_research
-from insight_graph.state import LLMCallRecord
+from insight_graph.state import GraphState, LLMCallRecord
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
 
@@ -73,6 +74,22 @@ def _markdown_table_cell(value: str) -> str:
     return " ".join(value.replace("|", r"\|").splitlines())
 
 
+def _build_research_json_payload(state: GraphState) -> dict[str, object]:
+    return {
+        "user_request": state.user_request,
+        "report_markdown": state.report_markdown or "",
+        "findings": [finding.model_dump(mode="json") for finding in state.findings],
+        "critique": state.critique.model_dump(mode="json")
+        if state.critique is not None
+        else None,
+        "tool_call_log": [
+            record.model_dump(mode="json") for record in state.tool_call_log
+        ],
+        "llm_call_log": [record.model_dump(mode="json") for record in state.llm_call_log],
+        "iterations": state.iterations,
+    }
+
+
 @app.callback()
 def main() -> None:
     """InsightGraph research workflow CLI."""
@@ -93,10 +110,27 @@ def research(
             help="Append safe LLM call metadata after the Markdown report.",
         ),
     ] = False,
+    output_json: Annotated[
+        bool,
+        typer.Option(
+            "--output-json",
+            help="Print a safe structured JSON summary instead of Markdown.",
+        ),
+    ] = False,
 ) -> None:
     """Run a research workflow and print a Markdown report."""
     _apply_research_preset(preset)
     state = run_research(query)
+    if output_json:
+        typer.echo(
+            json.dumps(
+                _build_research_json_payload(state),
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return
+
     output = state.report_markdown or ""
     if show_llm_log:
         output = f"{output.rstrip()}\n\n{_format_llm_call_log(state.llm_call_log)}\n"
