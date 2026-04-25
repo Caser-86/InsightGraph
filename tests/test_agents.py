@@ -4,9 +4,9 @@ from insight_graph.agents.analyst import analyze_evidence, get_analyst_provider
 from insight_graph.agents.collector import collect_evidence
 from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
-from insight_graph.agents.reporter import write_report
+from insight_graph.agents.reporter import get_reporter_provider, write_report
 from insight_graph.llm import ChatMessage
-from insight_graph.state import Evidence, Finding, GraphState
+from insight_graph.state import Critique, Evidence, Finding, GraphState
 
 
 class FakeLLMClient:
@@ -53,9 +53,56 @@ def make_analyst_state() -> GraphState:
     )
 
 
+def make_reporter_state() -> GraphState:
+    return GraphState(
+        user_request="Compare Cursor and GitHub Copilot",
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor lists Pro and Business pricing tiers.",
+                source_type="official_site",
+                verified=True,
+            ),
+            Evidence(
+                id="copilot-docs",
+                subtask_id="collect",
+                title="GitHub Copilot Documentation",
+                source_url="https://docs.github.com/en/copilot",
+                snippet="GitHub Copilot documentation describes coding assistant features.",
+                source_type="docs",
+                verified=True,
+            ),
+            Evidence(
+                id="unverified-blog",
+                subtask_id="collect",
+                title="Unverified Blog",
+                source_url="https://example.com/blog",
+                snippet="Unverified opinion.",
+                source_type="blog",
+                verified=False,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Pricing and packaging differ",
+                summary=(
+                    "Cursor pricing and Copilot documentation show different packaging "
+                    "signals for buyers."
+                ),
+                evidence_ids=["cursor-pricing", "copilot-docs"],
+            )
+        ],
+        critique=Critique(passed=True, reason="Findings cite verified evidence."),
+    )
+
+
 def clear_llm_env(monkeypatch) -> None:
     for name in [
         "INSIGHT_GRAPH_ANALYST_PROVIDER",
+        "INSIGHT_GRAPH_REPORTER_PROVIDER",
         "INSIGHT_GRAPH_LLM_API_KEY",
         "INSIGHT_GRAPH_LLM_BASE_URL",
         "INSIGHT_GRAPH_LLM_MODEL",
@@ -280,6 +327,253 @@ def test_analysis_critic_and_reporter_create_cited_report(monkeypatch) -> None:
     assert "[1]" in state.report_markdown
 
 
+def test_get_reporter_provider_defaults_to_deterministic(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
+    assert get_reporter_provider() == "deterministic"
+
+
+def test_get_reporter_provider_rejects_unknown_name(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "unknown")
+
+    with pytest.raises(ValueError, match="Unknown reporter provider: unknown"):
+        get_reporter_provider()
+
+
+def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    messages: list[list[ChatMessage]] = []
+    client = FakeLLMClient(
+        content=(
+            '{"markdown": "# InsightGraph Research Report\\n\\n'
+            '## Key Findings\\n\\n'
+            '### Pricing and packaging differ\\n\\n'
+            'Cursor and Copilot package their assistants differently for buyers [1] [2]."}'
+        ),
+        messages=messages,
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.report_markdown is not None
+    assert "Cursor and Copilot package their assistants differently" in updated.report_markdown
+    assert "## Critic Assessment" in updated.report_markdown
+    assert "## References" in updated.report_markdown
+    assert "[1] Cursor Pricing. https://cursor.com/pricing" in updated.report_markdown
+    assert (
+        "[2] GitHub Copilot Documentation. https://docs.github.com/en/copilot"
+        in updated.report_markdown
+    )
+    assert "Unverified Blog" not in updated.report_markdown
+    assert len(messages) == 1
+    prompt = messages[0][-1].content
+    assert "Compare Cursor and GitHub Copilot" in prompt
+    assert "cursor-pricing" in prompt
+    assert "copilot-docs" in prompt
+    assert "unverified-blog" not in prompt
+
+
+def test_write_report_strips_llm_references_and_appends_deterministic_references(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = FakeLLMClient(
+        content=(
+            '{"markdown": "# InsightGraph Research Report\\n\\n'
+            '## Key Findings\\n\\n'
+            '### Pricing and packaging differ\\n\\n'
+            'The verified sources support this comparison [1].\\n\\n'
+            '## References\\n\\n'
+            '[1] Fabricated source. https://example.com/fake"}'
+        )
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.report_markdown is not None
+    assert "Fabricated source" not in updated.report_markdown
+    assert updated.report_markdown.count("## References") == 1
+    assert "[1] Cursor Pricing. https://cursor.com/pricing" in updated.report_markdown
+    assert (
+        "[2] GitHub Copilot Documentation. https://docs.github.com/en/copilot"
+        in updated.report_markdown
+    )
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References",
+        "  ## References",
+        "### References",
+        "## Sources",
+        "### Sources",
+        "   ### Sources",
+    ],
+)
+def test_write_report_strips_llm_reference_and_source_heading_variants(
+    monkeypatch,
+    heading,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = FakeLLMClient(
+        content={
+            "markdown": (
+                "# InsightGraph Research Report\n\n"
+                "## Key Findings\n\n"
+                "### Pricing and packaging differ\n\n"
+                "The verified sources support this comparison [1].\n\n"
+                f"{heading}\n\n"
+                "[1] Fake Source. https://fake.example"
+            )
+        }
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.report_markdown is not None
+    assert "Fake Source" not in updated.report_markdown
+    assert "https://fake.example" not in updated.report_markdown
+    assert "[1] Cursor Pricing. https://cursor.com/pricing" in updated.report_markdown
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "not json",
+        {},
+        {"markdown": ""},
+        {"markdown": "## Key Findings\n\nMissing title [1]."},
+        {"markdown": "# InsightGraph Research Report\n\nMissing required section [1]."},
+        {"markdown": "# InsightGraph Research Report\n\n## Key Findings\n\nIllegal citation [99]."},
+        {"markdown": "# InsightGraph Research Report\n\n## Key Findings\n\nNo citation."},
+        {
+            "markdown": (
+                "# InsightGraph Research Report\n\n"
+                "## Key Findings\n\n"
+                "No citation here.\n\n"
+                "## Appendix\n\n"
+                "Citation appears outside key findings [1]."
+            )
+        },
+    ],
+)
+def test_write_report_falls_back_for_invalid_llm_output(monkeypatch, content) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    updated = write_report(make_reporter_state(), llm_client=FakeLLMClient(content=content))
+
+    assert updated.report_markdown is not None
+    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert (
+        "Cursor pricing and Copilot documentation show different packaging signals"
+        in updated.report_markdown
+    )
+    assert "[1] Cursor Pricing. https://cursor.com/pricing" in updated.report_markdown
+
+
+def test_write_report_falls_back_without_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    updated = write_report(make_reporter_state())
+
+    assert updated.report_markdown is not None
+    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert "## References" in updated.report_markdown
+
+
+def test_write_report_falls_back_for_llm_error(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    updated = write_report(
+        make_reporter_state(), llm_client=FakeLLMClient(error=RuntimeError("boom"))
+    )
+
+    assert updated.report_markdown is not None
+    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert "## References" in updated.report_markdown
+
+
+def test_write_report_does_not_fallback_for_unexpected_client_value_error(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    with pytest.raises(ValueError, match="bug"):
+        write_report(make_reporter_state(), llm_client=FakeLLMClient(error=ValueError("bug")))
+
+
+def test_write_report_does_not_fallback_for_unexpected_client_type_error(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    with pytest.raises(TypeError, match="bug"):
+        write_report(make_reporter_state(), llm_client=FakeLLMClient(error=TypeError("bug")))
+
+
+def test_write_report_does_not_fallback_for_unexpected_bug(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    def broken_build_messages(state, verified_evidence, reference_numbers) -> list[ChatMessage]:
+        raise TypeError("bug")
+
+    monkeypatch.setattr(
+        "insight_graph.agents.reporter._build_reporter_messages",
+        broken_build_messages,
+        raising=False,
+    )
+
+    with pytest.raises(TypeError, match="bug"):
+        write_report(make_reporter_state(), llm_client=FakeLLMClient(content='{"markdown": ""}'))
+
+
+def test_write_report_does_not_fallback_for_unexpected_value_error(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+
+    def broken_build_messages(state, verified_evidence, reference_numbers) -> list[ChatMessage]:
+        raise ValueError("bug")
+
+    monkeypatch.setattr(
+        "insight_graph.agents.reporter._build_reporter_messages",
+        broken_build_messages,
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="bug"):
+        write_report(make_reporter_state(), llm_client=FakeLLMClient(content='{"markdown": ""}'))
+
+
+def test_reporter_defaults_to_deterministic_when_env_is_clear(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="verified-source",
+                subtask_id="collect",
+                title="Verified Source",
+                source_url="https://example.com/verified",
+                snippet="Verified evidence snippet.",
+                verified=True,
+            )
+        ],
+        findings=[
+            Finding(
+                title="Verified finding",
+                summary="This finding cites verified evidence.",
+                evidence_ids=["verified-source"],
+            )
+        ],
+    )
+
+    updated = write_report(state)
+
+    assert updated.report_markdown is not None
+    assert "# InsightGraph Research Report" in updated.report_markdown
+    assert "### Verified finding" in updated.report_markdown
+    assert "[1] Verified Source. https://example.com/verified" in updated.report_markdown
+
+
 def test_critic_rejects_findings_without_verified_evidence() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
@@ -309,7 +603,8 @@ def test_critic_rejects_findings_without_verified_evidence() -> None:
     assert "citation support" in updated.critique.missing_topics
 
 
-def test_reporter_excludes_unverified_sources() -> None:
+def test_reporter_excludes_unverified_sources(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
     state = GraphState(
         user_request="Compare AI coding agents",
         evidence_pool=[

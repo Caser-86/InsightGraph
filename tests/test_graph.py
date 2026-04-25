@@ -2,7 +2,22 @@ from insight_graph.graph import run_research
 from insight_graph.state import GraphState
 
 
-def test_run_research_executes_full_graph() -> None:
+def clear_llm_env(monkeypatch) -> None:
+    for name in [
+        "INSIGHT_GRAPH_ANALYST_PROVIDER",
+        "INSIGHT_GRAPH_REPORTER_PROVIDER",
+        "INSIGHT_GRAPH_LLM_API_KEY",
+        "INSIGHT_GRAPH_LLM_BASE_URL",
+        "INSIGHT_GRAPH_LLM_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_run_research_executes_full_graph(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
     result = run_research("Compare Cursor, OpenCode, and GitHub Copilot")
 
     assert result.critique is not None
@@ -13,6 +28,7 @@ def test_run_research_executes_full_graph() -> None:
 
 
 def test_run_research_stops_after_failed_retry(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
     import insight_graph.graph as graph_module
 
     def collect_no_evidence(state: GraphState) -> GraphState:

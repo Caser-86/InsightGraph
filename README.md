@@ -12,10 +12,11 @@
 | CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
 | 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider；报告引用仅来自 verified evidence |
 | Analyst | 默认 `deterministic`，离线且不调用真实 LLM；可通过 `INSIGHT_GRAPH_ANALYST_PROVIDER=llm` opt-in 使用 OpenAI-compatible LLM 生成 evidence-grounded findings |
+| Reporter | 默认 deterministic/offline；可通过 `INSIGHT_GRAPH_REPORTER_PROVIDER=llm` opt-in 使用 OpenAI-compatible LLM 生成更专业的报告正文，References 仍由系统基于 verified evidence 生成 |
 | Critic | 已实现证据数量、分析结果、citation support 检查；失败路径最多重试一次后输出失败评估 |
 | 测试 | 已实现 pytest 覆盖 state、agents、graph、CLI |
 
-> MVP 阶段默认 CLI 仍使用固定 mock evidence，适合验证架构闭环；工具层已支持 direct URL 抓取、HTML evidence 提取、默认 mock web_search pre-fetch 链路，以及通过 `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo` 启用的 DuckDuckGo 搜索入口。新闻/GitHub 专用搜索、FastAPI、PostgreSQL、pgvector、LLM 路由和可观测性属于后续路线图。
+> MVP 阶段默认 CLI 仍使用固定 mock evidence，适合验证架构闭环；工具层已支持 direct URL 抓取、HTML evidence 提取、默认 mock web_search pre-fetch 链路，以及通过 `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo` 启用的 DuckDuckGo 搜索入口。当前已有 OpenAI-compatible LLM 层供 Analyst/Reporter opt-in 使用；更完整的多 provider LLM 路由和可观测性属于后续路线图。
 
 ### Search Provider 配置
 
@@ -82,6 +83,27 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Analyst model | `gpt-4o-mini` |
 
 LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings。缺少 key/API、LLM 返回非 JSON、schema 不合法或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
+
+### LLM Reporter 配置
+
+Reporter 默认使用 deterministic/offline provider，离线且不调用真实 LLM，适合本地开发、测试和 CLI smoke。需要 OpenAI-compatible LLM 生成更专业的报告正文时，可显式 opt-in：
+
+```bash
+INSIGHT_GRAPH_REPORTER_PROVIDER=llm \
+INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
+INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
+INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_REPORTER_PROVIDER` | Reporter provider 类型，支持默认离线行为的 `deterministic` 或 `llm` opt-in | `deterministic` |
+| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
+| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
+| `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Reporter model | `gpt-4o-mini` |
+
+LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
 
 ---
 
