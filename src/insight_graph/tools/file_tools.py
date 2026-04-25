@@ -20,8 +20,12 @@ MAX_DIRECTORY_ENTRIES = 50
 
 
 def read_file(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    query_text = _coerce_query(query)
+    if query_text is None:
+        return []
+
     root = Path.cwd().resolve()
-    path = _resolve_inside_root(root, query)
+    path = _resolve_inside_root(root, query_text)
     if path is None or not path.is_file():
         return []
     if path.suffix.lower() not in SUPPORTED_READ_SUFFIXES:
@@ -52,8 +56,12 @@ def read_file(query: str, subtask_id: str = "collect") -> list[Evidence]:
 
 
 def list_directory(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    query_text = _coerce_query(query, empty_as_root=True)
+    if query_text is None:
+        return []
+
     root = Path.cwd().resolve()
-    path = _resolve_inside_root(root, query or ".")
+    path = _resolve_inside_root(root, query_text)
     if path is None or not path.is_dir():
         return []
 
@@ -94,12 +102,20 @@ def _resolve_inside_root(root: Path, query: str) -> Path | None:
         if not candidate.is_absolute():
             candidate = root / candidate
         candidate = candidate.resolve()
-    except OSError:
+    except (OSError, TypeError, ValueError):
         return None
 
     if not candidate.is_relative_to(root):
         return None
     return candidate
+
+
+def _coerce_query(query: str, *, empty_as_root: bool = False) -> str | None:
+    if not isinstance(query, str):
+        return None
+    if empty_as_root and query == "":
+        return "."
+    return query
 
 
 def _evidence_id(

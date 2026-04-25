@@ -247,6 +247,12 @@ def test_read_file_rejects_unsafe_or_invalid_files(tmp_path, monkeypatch) -> Non
     assert read_file("../outside.md", "s1") == []
 
 
+def test_read_file_rejects_malformed_query(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert read_file(None, "s1") == []  # type: ignore[arg-type]
+
+
 def test_read_file_hash_prevents_slug_collisions(tmp_path, monkeypatch) -> None:
     nested_dir = tmp_path / "docs" / "foo"
     nested_dir.mkdir(parents=True)
@@ -295,6 +301,39 @@ def test_list_directory_handles_root_and_empty_directory(tmp_path, monkeypatch) 
     assert root_evidence[0].id == tool_id("list-directory", ".", "root")
     assert root_evidence[0].title == "Directory listing: ."
     assert empty_evidence[0].snippet == "(empty directory)"
+
+
+def test_list_directory_handles_empty_string_as_root(tmp_path, monkeypatch) -> None:
+    (tmp_path / "sample.md").write_text("sample", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = list_directory("", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("list-directory", ".", "root")
+    assert evidence[0].title == "Directory listing: ."
+    assert "sample.md" in evidence[0].snippet
+
+
+def test_list_directory_rejects_malformed_query(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert list_directory(None, "s1") == []  # type: ignore[arg-type]
+
+
+def test_list_directory_limits_entries_and_snippet_length(tmp_path, monkeypatch) -> None:
+    for index in range(60):
+        (tmp_path / f"e{index:02d}.md").write_text("sample", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = list_directory(".", "s1")
+
+    entries = evidence[0].snippet.split("\n")
+    assert len(entries) == 50
+    assert entries[0] == "e00.md"
+    assert entries[-1] == "e49.md"
+    assert "e50.md" not in entries
+    assert len(evidence[0].snippet) <= 500
 
 
 def test_list_directory_rejects_invalid_paths(tmp_path, monkeypatch) -> None:
