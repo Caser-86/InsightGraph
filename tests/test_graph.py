@@ -25,6 +25,7 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
     assert result.report_markdown is not None
     assert "# InsightGraph Research Report" in result.report_markdown
     assert "https://cursor.com/pricing" in result.report_markdown
+    assert result.llm_call_log == []
 
 
 def test_run_research_stops_after_failed_retry(monkeypatch) -> None:

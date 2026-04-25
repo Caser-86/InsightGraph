@@ -124,6 +124,12 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 `live-llm` applies missing runtime defaults for DuckDuckGo search, relevance filtering, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter. It does not permanently modify your environment and does not accept API keys as command-line arguments.
 
+### LLM Observability
+
+Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LLM calls. Each record includes the stage (`relevance`, `analyst`, or `reporter`), provider, model, success flag, duration in milliseconds, and a short sanitized error summary when a call fails.
+
+The log is in-memory only for this MVP. It does not store prompts, completions, raw response JSON, API keys, authorization headers, or request bodies.
+
 ---
 
 ## 目标项目结构（蓝图）
