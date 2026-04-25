@@ -130,6 +130,14 @@ Live LLM paths populate `GraphState.llm_call_log` with metadata for attempted LL
 
 The log is in-memory only for this MVP. It does not store prompts, completions, raw response JSON, API keys, authorization headers, or request bodies.
 
+Use `--show-llm-log` to append the in-memory LLM call metadata after the Markdown report:
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm --show-llm-log
+```
+
+The appended table is opt-in and contains only stage, provider, model, success, duration, and sanitized error metadata.
+
 ---
 
 ## 目标项目结构（蓝图）
