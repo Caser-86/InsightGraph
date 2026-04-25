@@ -34,14 +34,14 @@ def news_search(query: str, subtask_id: str = "collect") -> list[Evidence]
 - 所有 evidence `verified=True`。
 - `subtask_id` 使用调用方传入值。
 - 不使用 `query` 过滤结果；第一版只保证稳定新闻/公告 evidence。
-- `source_type` 使用可读字符串，例如 `news` 和 `official_announcement`。
+- `source_type` 使用现有 `SourceType` 允许值；第一版统一使用 `news`。
 
 ## 默认证据
 
 第一版返回 3 条新闻/公告类 evidence：
 
 - `news-github-copilot-changelog`：GitHub Copilot product changelog，`https://github.blog/changelog/`，`source_type="news"`
-- `news-openai-codex-update`：OpenAI Codex product update，`https://openai.com/index/introducing-codex/`，`source_type="official_announcement"`
+- `news-openai-codex-update`：OpenAI Codex product update，`https://openai.com/index/introducing-codex/`，`source_type="news"`
 - `news-cursor-changelog`：Cursor product changelog，`https://www.cursor.com/changelog`，`source_type="news"`
 
 每条 evidence 的 `id` 必须稳定、可读，避免测试和报告引用漂移。

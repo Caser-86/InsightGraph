@@ -4,6 +4,7 @@ from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
 from insight_graph.tools.github_search import github_search
 from insight_graph.tools.mock_search import mock_search
+from insight_graph.tools.news_search import news_search
 from insight_graph.tools.web_search import web_search
 
 ToolFn = Callable[[str, str], list[Evidence]]
@@ -15,6 +16,7 @@ class ToolRegistry:
             "fetch_url": fetch_url,
             "github_search": github_search,
             "mock_search": mock_search,
+            "news_search": news_search,
             "web_search": web_search,
         }
 

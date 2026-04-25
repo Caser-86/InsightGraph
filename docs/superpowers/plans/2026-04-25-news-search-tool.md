@@ -74,7 +74,7 @@ def test_news_search_returns_deterministic_verified_news_evidence() -> None:
     assert all(item.verified for item in evidence)
     assert [item.source_type for item in evidence] == [
         "news",
-        "official_announcement",
+        "news",
         "news",
     ]
     assert [item.source_url for item in evidence] == [
@@ -93,7 +93,7 @@ def test_registry_runs_news_search_tool() -> None:
     assert len(evidence) == 3
     assert evidence[0].id == "news-github-copilot-changelog"
     assert evidence[0].subtask_id == "s1"
-    assert {item.source_type for item in evidence} == {"news", "official_announcement"}
+    assert {item.source_type for item in evidence} == {"news"}
 ```
 
 - [ ] **Step 2: Run tool tests and verify RED**
@@ -137,7 +137,7 @@ def news_search(query: str, subtask_id: str = "collect") -> list[Evidence]:
                 "OpenAI's Codex announcement describes product capabilities and release "
                 "context for cloud-based coding assistance."
             ),
-            source_type="official_announcement",
+            source_type="news",
             verified=True,
         ),
         Evidence(
@@ -295,10 +295,7 @@ def test_collector_adds_verified_news_search_evidence(monkeypatch) -> None:
 
     assert len(updated.evidence_pool) == 3
     assert all(item.verified for item in updated.evidence_pool)
-    assert {item.source_type for item in updated.evidence_pool} == {
-        "news",
-        "official_announcement",
-    }
+    assert {item.source_type for item in updated.evidence_pool} == {"news"}
     assert updated.tool_call_log[0].tool_name == "news_search"
 ```
 

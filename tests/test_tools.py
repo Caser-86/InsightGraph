@@ -3,7 +3,14 @@ import importlib
 import pytest
 
 from insight_graph.state import Evidence
-from insight_graph.tools import SearchResult, ToolRegistry, fetch_url, github_search, web_search
+from insight_graph.tools import (
+    SearchResult,
+    ToolRegistry,
+    fetch_url,
+    github_search,
+    news_search,
+    web_search,
+)
 from insight_graph.tools.http_client import FetchedPage
 
 
@@ -28,6 +35,10 @@ def test_tools_package_exports_github_search_callable() -> None:
     assert callable(github_search)
 
 
+def test_tools_package_exports_news_search_callable() -> None:
+    assert callable(news_search)
+
+
 def test_github_search_returns_deterministic_verified_github_evidence() -> None:
     evidence = github_search("Compare Cursor, OpenCode, and GitHub Copilot", "s1")
 
@@ -44,6 +55,29 @@ def test_github_search_returns_deterministic_verified_github_evidence() -> None:
         "https://github.com/sst/opencode",
         "https://github.com/github/docs/tree/main/content/copilot",
         "https://github.com/safishamsi/graphify",
+    ]
+
+
+def test_news_search_returns_deterministic_verified_news_evidence() -> None:
+    evidence = news_search("AI coding agent funding", "s1")
+
+    assert len(evidence) == 3
+    assert [item.id for item in evidence] == [
+        "news-github-copilot-changelog",
+        "news-openai-codex-update",
+        "news-cursor-changelog",
+    ]
+    assert {item.subtask_id for item in evidence} == {"s1"}
+    assert all(item.verified for item in evidence)
+    assert [item.source_type for item in evidence] == [
+        "news",
+        "news",
+        "news",
+    ]
+    assert [item.source_url for item in evidence] == [
+        "https://github.blog/changelog/",
+        "https://openai.com/index/introducing-codex/",
+        "https://www.cursor.com/changelog",
     ]
 
 
@@ -100,6 +134,15 @@ def test_registry_runs_github_search_tool() -> None:
     assert evidence[0].id == "github-opencode-repository"
     assert evidence[0].subtask_id == "s1"
     assert all(item.source_type == "github" for item in evidence)
+
+
+def test_registry_runs_news_search_tool() -> None:
+    evidence = ToolRegistry().run("news_search", "AI coding agent funding", "s1")
+
+    assert len(evidence) == 3
+    assert evidence[0].id == "news-github-copilot-changelog"
+    assert evidence[0].subtask_id == "s1"
+    assert {item.source_type for item in evidence} == {"news"}
 
 
 def test_registry_unknown_tool_still_raises_key_error() -> None:
