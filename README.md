@@ -389,9 +389,9 @@ flowchart TB
         R2 --> R3[References 章节]
     end
 
-    T1 -.->|搜索结果| T2
-    T2 -.->|网页正文| T7
-    T3 -.->|GitHub 证据| T4
+    T1 -.->|搜索结果 pre-fetch| T2
+    T3 -.->|离线证据| T8
+    T5 -.->|本地证据| T8
 ```
 
 ---
