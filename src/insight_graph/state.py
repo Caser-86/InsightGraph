@@ -48,6 +48,7 @@ class ToolCallRecord(BaseModel):
     tool_name: str
     query: str
     evidence_count: int = 0
+    filtered_count: int = 0
     success: bool = True
     error: str | None = None
 

@@ -51,6 +51,7 @@ def test_tool_call_record_defaults_to_success() -> None:
     )
 
     assert record.evidence_count == 0
+    assert record.filtered_count == 0
     assert record.success is True
     assert record.error is None
 
