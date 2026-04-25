@@ -257,7 +257,7 @@ src/insight_graph/
 │ github_search     │ 实体画像与证据片段      │ 状态快照                   │
 │ fetch_url         │                       │                           │
 │ document_reader   │                       │                           │
-│ code_execute      │                       │                           │
+│ read_file/list_dir│                       │                           │
 └───────────────────┴───────────────────────┴───────────────────────────┘
 ```
 
@@ -424,8 +424,9 @@ flowchart TB
 | `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
 | `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown` 文件；PDF/HTML、分页读取与语义检索属于后续路线图 |
-| `code_execute` | 沙箱 Python 代码执行，用于数据清洗、表格计算和趋势统计 |
 | `read_file` / `list_directory` | 当前支持 cwd 内只读安全文本读取与一层目录列表；`write_file` 属于后续路线图 |
+
+`code_execute` 计划用于沙箱 Python 代码执行和表格计算，当前尚未实现，将单独设计。
 
 ---
 
