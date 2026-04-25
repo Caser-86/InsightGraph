@@ -51,6 +51,9 @@ def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     assert len(updated.evidence_pool) >= 3
     assert all(item.verified for item in updated.evidence_pool)
     assert {item.source_type for item in updated.evidence_pool} >= {"official_site", "github"}
+    assert updated.global_evidence_pool == updated.evidence_pool
+    assert len(updated.tool_call_log) == 1
+    assert updated.tool_call_log[0].tool_name == "mock_search"
 
 
 def test_analysis_critic_and_reporter_create_cited_report(monkeypatch) -> None:
