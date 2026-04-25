@@ -1,6 +1,7 @@
 from insight_graph import __version__
 from insight_graph.cli import app
-from insight_graph.state import Evidence, GraphState, Subtask, ToolCallRecord
+from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 
 
 def test_package_version_is_defined() -> None:
@@ -61,3 +62,41 @@ def test_graph_state_starts_with_executor_collections() -> None:
 
     assert state.global_evidence_pool == []
     assert state.tool_call_log == []
+
+
+def test_llm_call_record_stores_metadata_only() -> None:
+    record = LLMCallRecord(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        success=True,
+        duration_ms=12,
+    )
+
+    assert record.stage == "analyst"
+    assert record.provider == "llm"
+    assert record.model == "relay-model"
+    assert record.success is True
+    assert record.duration_ms == 12
+    assert record.error is None
+
+
+def test_graph_state_starts_with_empty_llm_call_log() -> None:
+    state = GraphState(user_request="Analyze AI coding agents")
+
+    assert state.llm_call_log == []
+
+
+def test_build_llm_call_record_sanitizes_secret_values() -> None:
+    record = build_llm_call_record(
+        stage="reporter",
+        provider="llm",
+        model="relay-model",
+        success=False,
+        duration_ms=3,
+        error=RuntimeError("request failed for sk-secret-value"),
+        secrets=["sk-secret-value"],
+    )
+
+    assert record.error == "RuntimeError: request failed for [REDACTED]"
+    assert "sk-secret-value" not in record.model_dump_json()

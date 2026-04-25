@@ -53,12 +53,22 @@ class ToolCallRecord(BaseModel):
     error: str | None = None
 
 
+class LLMCallRecord(BaseModel):
+    stage: str
+    provider: str
+    model: str
+    success: bool
+    duration_ms: int
+    error: str | None = None
+
+
 class GraphState(BaseModel):
     user_request: str
     subtasks: list[Subtask] = Field(default_factory=list)
     evidence_pool: list[Evidence] = Field(default_factory=list)
     global_evidence_pool: list[Evidence] = Field(default_factory=list)
     tool_call_log: list[ToolCallRecord] = Field(default_factory=list)
+    llm_call_log: list[LLMCallRecord] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
     critique: Critique | None = None
     report_markdown: str | None = None
