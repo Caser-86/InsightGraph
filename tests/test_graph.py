@@ -21,6 +21,8 @@ def clear_planner_tool_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
         "INSIGHT_GRAPH_USE_NEWS_SEARCH",
         "INSIGHT_GRAPH_USE_DOCUMENT_READER",
+        "INSIGHT_GRAPH_USE_READ_FILE",
+        "INSIGHT_GRAPH_USE_LIST_DIRECTORY",
     ]:
         monkeypatch.delenv(name, raising=False)
 

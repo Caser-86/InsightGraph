@@ -134,6 +134,8 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
         "INSIGHT_GRAPH_USE_NEWS_SEARCH",
         "INSIGHT_GRAPH_USE_DOCUMENT_READER",
+        "INSIGHT_GRAPH_USE_READ_FILE",
+        "INSIGHT_GRAPH_USE_LIST_DIRECTORY",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -145,6 +147,8 @@ def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", raising=False)
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -200,6 +204,63 @@ def test_planner_uses_document_reader_when_enabled(monkeypatch) -> None:
     updated = plan_research(state)
 
     assert updated.subtasks[1].suggested_tools == ["document_reader"]
+
+
+def test_planner_uses_read_file_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["read_file"]
+
+
+def test_planner_uses_list_directory_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request=".")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["list_directory"]
+
+
+def test_planner_prefers_document_reader_over_readonly_file_tools(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["document_reader"]
+
+
+def test_planner_prefers_read_file_over_list_directory(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["read_file"]
 
 
 def test_planner_prefers_web_search_over_github_search(monkeypatch) -> None:
@@ -271,6 +332,8 @@ def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "0")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "0")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "0")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -283,6 +346,8 @@ def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", raising=False)
     state = GraphState(user_request="Compare Cursor and GitHub Copilot")
     state = plan_research(state)
 
