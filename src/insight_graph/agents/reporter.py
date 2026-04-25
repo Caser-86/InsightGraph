@@ -14,6 +14,17 @@ RESIDUAL_REFERENCE_HEADING_PATTERN = re.compile(
 )
 KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+Key Findings\s*$")
 NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}##\s+")
+SMART_PUNCTUATION_TRANSLATION = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2026": "...",
+    }
+)
 
 
 class ReporterFallbackError(ValueError):
@@ -94,6 +105,7 @@ def _write_report_with_llm(
 
     body = _parse_llm_report_body(content)
     body = _strip_references_section(body)
+    body = _normalize_smart_punctuation(body)
     _validate_llm_report_body(body, set(reference_numbers.values()))
 
     lines = [body.rstrip(), ""]
@@ -202,6 +214,10 @@ def _parse_llm_report_body(content: object) -> str:
 
 def _strip_references_section(markdown: str) -> str:
     return REFERENCE_HEADING_PATTERN.sub("", markdown).strip()
+
+
+def _normalize_smart_punctuation(markdown: str) -> str:
+    return markdown.translate(SMART_PUNCTUATION_TRANSLATION)
 
 
 def _validate_llm_report_body(markdown: str, allowed_references: set[int]) -> None:

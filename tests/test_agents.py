@@ -401,6 +401,31 @@ def test_write_report_strips_llm_references_and_appends_deterministic_references
     )
 
 
+def test_write_report_normalizes_llm_smart_punctuation(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = FakeLLMClient(
+        content={
+            "markdown": (
+                "# InsightGraph Research Report\n\n"
+                "## Key Findings\n\n"
+                "### Pricing and packaging differ\n\n"
+                "GitHub\u2019s docs and Cursor\u2019s pricing show "
+                "\u201cpackaging\u201d tradeoffs\u2014not parity [1]."
+            )
+        }
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.report_markdown is not None
+    assert "GitHub's docs" in updated.report_markdown
+    assert '"packaging" tradeoffs-not parity' in updated.report_markdown
+    assert "\u2019" not in updated.report_markdown
+    assert "\u201c" not in updated.report_markdown
+    assert "\u201d" not in updated.report_markdown
+    assert "\u2014" not in updated.report_markdown
+
+
 @pytest.mark.parametrize(
     "heading",
     [
