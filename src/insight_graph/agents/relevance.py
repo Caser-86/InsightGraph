@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from collections.abc import Callable
 from typing import Protocol
 
@@ -11,7 +12,8 @@ from insight_graph.llm.client import (
     OpenAICompatibleChatClient,
 )
 from insight_graph.llm.config import resolve_llm_config
-from insight_graph.state import Evidence, Subtask
+from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.state import Evidence, LLMCallRecord, Subtask
 
 
 class EvidenceRelevanceDecision(BaseModel):
@@ -75,6 +77,7 @@ class OpenAICompatibleRelevanceJudge:
         base_url: str | None = None,
         model: str | None = None,
         client_factory: Callable[..., object] | None = None,
+        llm_call_log: list[LLMCallRecord] | None = None,
     ) -> None:
         config = resolve_llm_config(
             api_key=api_key,
@@ -86,6 +89,7 @@ class OpenAICompatibleRelevanceJudge:
             config=config,
             client_factory=client_factory,
         )
+        self._llm_call_log = llm_call_log
 
     def judge(
         self,
@@ -100,23 +104,59 @@ class OpenAICompatibleRelevanceJudge:
                 reason="OpenAI-compatible relevance judge is missing an API key.",
             )
 
+        started = time.perf_counter()
         try:
             content = self._client.complete_json(
                 _build_relevance_messages(query, subtask, evidence)
             )
-            return _parse_relevance_json(content, evidence.id)
-        except ValueError:
+        except ValueError as exc:
+            self._record_llm_call(False, started, exc)
             return EvidenceRelevanceDecision(
                 evidence_id=evidence.id,
                 relevant=False,
                 reason="OpenAI-compatible relevance judge returned invalid JSON.",
             )
         except Exception as exc:
+            self._record_llm_call(False, started, exc)
             return EvidenceRelevanceDecision(
                 evidence_id=evidence.id,
                 relevant=False,
                 reason=f"OpenAI-compatible relevance judge failed: {exc}",
             )
+
+        try:
+            decision = _parse_relevance_json(content, evidence.id)
+        except ValueError as exc:
+            self._record_llm_call(False, started, exc)
+            return EvidenceRelevanceDecision(
+                evidence_id=evidence.id,
+                relevant=False,
+                reason="OpenAI-compatible relevance judge returned invalid JSON.",
+            )
+
+        self._record_llm_call(True, started)
+        return decision
+
+    def _record_llm_call(
+        self,
+        success: bool,
+        started: float,
+        error: Exception | None = None,
+    ) -> None:
+        if self._llm_call_log is None:
+            return
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        self._llm_call_log.append(
+            build_llm_call_record(
+                stage="relevance",
+                provider="openai_compatible",
+                model=self._config.model,
+                success=success,
+                duration_ms=duration_ms,
+                error=error,
+                secrets=[self._config.api_key],
+            )
+        )
 
 def _build_relevance_messages(
     query: str,
@@ -171,12 +211,15 @@ def is_relevance_filter_enabled() -> bool:
     return value in {"1", "true", "yes"}
 
 
-def get_relevance_judge(name: str | None = None) -> RelevanceJudge:
+def get_relevance_judge(
+    name: str | None = None,
+    llm_call_log: list[LLMCallRecord] | None = None,
+) -> RelevanceJudge:
     judge_name = (name or os.getenv("INSIGHT_GRAPH_RELEVANCE_JUDGE", "deterministic")).lower()
     if judge_name == "deterministic":
         return DeterministicRelevanceJudge()
     if judge_name == "openai_compatible":
-        return OpenAICompatibleRelevanceJudge()
+        return OpenAICompatibleRelevanceJudge(llm_call_log=llm_call_log)
     raise ValueError(f"Unknown relevance judge: {judge_name}")
 
 
@@ -185,8 +228,9 @@ def filter_relevant_evidence(
     subtask: Subtask,
     evidence: list[Evidence],
     judge: RelevanceJudge | None = None,
+    llm_call_log: list[LLMCallRecord] | None = None,
 ) -> tuple[list[Evidence], int]:
-    active_judge = judge or get_relevance_judge()
+    active_judge = judge or get_relevance_judge(llm_call_log=llm_call_log)
     kept: list[Evidence] = []
     filtered_count = 0
     for item in evidence:

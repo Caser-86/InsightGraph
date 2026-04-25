@@ -1,7 +1,7 @@
 import importlib
 
 from insight_graph.agents.executor import execute_subtasks
-from insight_graph.state import Evidence, GraphState, Subtask
+from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask
 
 
 def test_executor_collects_evidence_and_records_success() -> None:
@@ -167,6 +167,51 @@ def test_executor_filters_unverified_evidence_when_enabled(monkeypatch) -> None:
     assert updated.global_evidence_pool == updated.evidence_pool
     assert updated.tool_call_log[0].evidence_count == 2
     assert updated.tool_call_log[0].filtered_count == 1
+
+
+def test_executor_passes_llm_call_log_to_relevance_filter(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
+
+    evidence = Evidence(
+        id="verified",
+        subtask_id="collect",
+        title="Verified",
+        source_url="https://example.com/verified",
+        snippet="Verified evidence.",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [evidence]
+
+    def fake_filter_relevant_evidence(query, subtask, evidence, judge=None, llm_call_log=None):
+        assert llm_call_log is not None
+        llm_call_log.append(
+            LLMCallRecord(
+                stage="relevance",
+                provider="openai_compatible",
+                model="relay-model",
+                success=True,
+                duration_ms=1,
+            )
+        )
+        return evidence, 0
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    monkeypatch.setattr(
+        executor_module, "filter_relevant_evidence", fake_filter_relevant_evidence
+    )
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.llm_call_log) == 1
+    assert updated.llm_call_log[0].stage == "relevance"
 
 
 def test_executor_filters_after_per_tool_deduplication(monkeypatch) -> None:

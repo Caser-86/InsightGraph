@@ -35,6 +35,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                     state.user_request,
                     subtask,
                     deduped_results,
+                    llm_call_log=state.llm_call_log,
                 )
             else:
                 kept_results = deduped_results

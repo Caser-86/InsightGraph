@@ -9,7 +9,7 @@ from insight_graph.agents.relevance import (
     is_relevance_filter_enabled,
 )
 from insight_graph.llm.config import resolve_llm_config
-from insight_graph.state import Evidence, Subtask
+from insight_graph.state import Evidence, LLMCallRecord, Subtask
 
 
 def make_evidence(**overrides) -> Evidence:
@@ -268,6 +268,57 @@ def test_openai_compatible_judge_keeps_relevant_json_response() -> None:
     assert client.messages[1].role == "user"
     assert "Compare AI coding agents" in client.messages[1].content
     assert "Cursor Pricing" in client.messages[1].content
+
+
+def test_openai_compatible_judge_records_successful_llm_call() -> None:
+    records: list[LLMCallRecord] = []
+    client = FakeChatCompletionClient(
+        '{"relevant": true, "reason": "Evidence directly matches."}'
+    )
+    judge = OpenAICompatibleRelevanceJudge(
+        client=client,
+        api_key="test-key",
+        model="relay-model",
+        llm_call_log=records,
+    )
+    evidence = make_evidence(id="observed-kept")
+    subtask = Subtask(id="collect", description="Collect pricing evidence")
+
+    decision = judge.judge("Compare AI coding agents", subtask, evidence)
+
+    assert decision.relevant is True
+    assert len(records) == 1
+    assert records[0].stage == "relevance"
+    assert records[0].provider == "openai_compatible"
+    assert records[0].model == "relay-model"
+    assert records[0].success is True
+    assert records[0].duration_ms >= 0
+    assert records[0].error is None
+
+
+def test_openai_compatible_judge_records_failed_llm_call_without_prompt_or_key() -> None:
+    records: list[LLMCallRecord] = []
+    client = FakeChatCompletionClient(error=RuntimeError("boom test-key"))
+    judge = OpenAICompatibleRelevanceJudge(
+        client=client,
+        api_key="test-key",
+        model="relay-model",
+        llm_call_log=records,
+    )
+    evidence = make_evidence(id="observed-failed")
+    subtask = Subtask(id="collect", description="Collect pricing evidence")
+
+    decision = judge.judge("Compare AI coding agents", subtask, evidence)
+
+    assert decision.relevant is False
+    assert len(records) == 1
+    record = records[0]
+    assert record.stage == "relevance"
+    assert record.success is False
+    assert "[REDACTED]" in (record.error or "")
+    serialized = record.model_dump_json()
+    assert "test-key" not in serialized
+    assert "Cursor Pricing" not in serialized
 
 
 def test_openai_compatible_judge_filters_false_json_response() -> None:
