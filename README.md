@@ -34,6 +34,19 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；尚未包含 LLM relevance 判断、多轮 agentic tool loop、conversation compression 或收敛检测。
 
+Relevance filtering 默认关闭。需要过滤工具返回的 evidence 时，可显式启用 deterministic/offline judge：
+
+```bash
+INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_RELEVANCE_FILTER` | `1` / `true` / `yes` 时启用 Executor evidence relevance filtering | 未启用 |
+| `INSIGHT_GRAPH_RELEVANCE_JUDGE` | 当前仅支持 `deterministic` | `deterministic` |
+
+当前 relevance judge 不调用真实 LLM，只进行 deterministic/offline 过滤：未 verified 或缺少 title/source URL/snippet 的 evidence 会被丢弃。真实 Qwen/OpenAI relevance judge 属于后续阶段。
+
 ---
 
 ## 目标项目结构（蓝图）
