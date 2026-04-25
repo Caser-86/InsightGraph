@@ -4,7 +4,10 @@ import re
 import time
 
 from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client, resolve_llm_config
-from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.llm.observability import (
+    build_llm_call_record,
+    complete_json_with_observability,
+)
 from insight_graph.state import Evidence, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
@@ -100,7 +103,7 @@ def _write_report_with_llm(
     messages = _build_reporter_messages(state, verified_evidence, reference_numbers)
     started = time.perf_counter()
     try:
-        content = llm_client.complete_json(messages)
+        result = complete_json_with_observability(llm_client, messages)
     except (ValueError, TypeError) as exc:
         duration_ms = int((time.perf_counter() - started) * 1000)
         state.llm_call_log.append(
@@ -132,7 +135,7 @@ def _write_report_with_llm(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     try:
-        body = _parse_llm_report_body(content)
+        body = _parse_llm_report_body(result.content)
         body = _strip_references_section(body)
         body = _normalize_smart_punctuation(body)
         _validate_llm_report_body(body, set(reference_numbers.values()))
@@ -146,6 +149,9 @@ def _write_report_with_llm(
                 duration_ms=duration_ms,
                 error=exc,
                 secrets=[config.api_key],
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                total_tokens=result.total_tokens,
             )
         )
         raise
@@ -158,6 +164,9 @@ def _write_report_with_llm(
             success=True,
             duration_ms=duration_ms,
             secrets=[config.api_key],
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
         )
     )
 

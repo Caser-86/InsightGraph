@@ -37,7 +37,7 @@ def complete_json_with_observability(
     complete_with_usage = getattr(llm_client, "complete_json_with_usage", None)
     if complete_with_usage is not None:
         return complete_with_usage(messages)
-    return ChatCompletionResult(content=llm_client.complete_json(messages))
+    return ChatCompletionResult.model_construct(content=llm_client.complete_json(messages))
 
 
 def _normalize_token_count(value: int | None) -> int | None:

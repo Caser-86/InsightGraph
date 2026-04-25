@@ -8,11 +8,15 @@ from pydantic import BaseModel
 
 from insight_graph.llm.client import (
     ChatCompletionClient,
+    ChatCompletionResult,
     ChatMessage,
     OpenAICompatibleChatClient,
 )
 from insight_graph.llm.config import resolve_llm_config
-from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.llm.observability import (
+    build_llm_call_record,
+    complete_json_with_observability,
+)
 from insight_graph.state import Evidence, LLMCallRecord, Subtask
 
 
@@ -106,8 +110,9 @@ class OpenAICompatibleRelevanceJudge:
 
         started = time.perf_counter()
         try:
-            content = self._client.complete_json(
-                _build_relevance_messages(query, subtask, evidence)
+            result = complete_json_with_observability(
+                self._client,
+                _build_relevance_messages(query, subtask, evidence),
             )
         except ValueError as exc:
             self._record_llm_call(False, started, exc)
@@ -125,16 +130,16 @@ class OpenAICompatibleRelevanceJudge:
             )
 
         try:
-            decision = _parse_relevance_json(content, evidence.id)
+            decision = _parse_relevance_json(result.content, evidence.id)
         except ValueError as exc:
-            self._record_llm_call(False, started, exc)
+            self._record_llm_call(False, started, exc, result=result)
             return EvidenceRelevanceDecision(
                 evidence_id=evidence.id,
                 relevant=False,
                 reason="OpenAI-compatible relevance judge returned invalid JSON.",
             )
 
-        self._record_llm_call(True, started)
+        self._record_llm_call(True, started, result=result)
         return decision
 
     def _record_llm_call(
@@ -142,6 +147,7 @@ class OpenAICompatibleRelevanceJudge:
         success: bool,
         started: float,
         error: Exception | None = None,
+        result: ChatCompletionResult | None = None,
     ) -> None:
         if self._llm_call_log is None:
             return
@@ -155,6 +161,9 @@ class OpenAICompatibleRelevanceJudge:
                 duration_ms=duration_ms,
                 error=error,
                 secrets=[self._config.api_key],
+                input_tokens=result.input_tokens if result is not None else None,
+                output_tokens=result.output_tokens if result is not None else None,
+                total_tokens=result.total_tokens if result is not None else None,
             )
         )
 

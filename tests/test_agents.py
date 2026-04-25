@@ -5,7 +5,7 @@ from insight_graph.agents.collector import collect_evidence
 from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import get_reporter_provider, write_report
-from insight_graph.llm import ChatMessage
+from insight_graph.llm import ChatCompletionResult, ChatMessage
 from insight_graph.state import Critique, Evidence, Finding, GraphState
 
 
@@ -25,6 +25,26 @@ class FakeLLMClient:
         if self.error is not None:
             raise self.error
         return self.content
+
+
+class UsageLLMClient(FakeLLMClient):
+    def __init__(
+        self,
+        content: str | None = None,
+        result: ChatCompletionResult | None = None,
+        error: Exception | None = None,
+        messages: list[list[ChatMessage]] | None = None,
+    ) -> None:
+        super().__init__(content=content, error=error, messages=messages)
+        self.result = result
+
+    def complete_json_with_usage(self, messages: list[ChatMessage]) -> ChatCompletionResult:
+        self.messages.append(messages)
+        if self.error is not None:
+            raise self.error
+        if self.result is not None:
+            return self.result
+        return ChatCompletionResult(content=self.content)
 
 
 def make_analyst_state() -> GraphState:
@@ -220,6 +240,47 @@ def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_analyze_evidence_records_llm_token_usage(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    client = UsageLLMClient(
+        result=ChatCompletionResult(
+            content=(
+                '{"findings": [{"title": "Pricing differs", '
+                '"summary": "Cursor and Copilot differ.", '
+                '"evidence_ids": ["cursor-pricing"]}]}'
+            ),
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+        )
+    )
+
+    updated = analyze_evidence(make_analyst_state(), llm_client=client)
+
+    assert updated.llm_call_log[0].input_tokens == 10
+    assert updated.llm_call_log[0].output_tokens == 5
+    assert updated.llm_call_log[0].total_tokens == 15
+
+
+def test_analyze_evidence_records_tokens_for_parse_failure(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    client = UsageLLMClient(
+        result=ChatCompletionResult(
+            content="not json",
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+        )
+    )
+
+    updated = analyze_evidence(make_analyst_state(), llm_client=client)
+
+    assert updated.llm_call_log[0].success is False
+    assert updated.llm_call_log[0].input_tokens == 10
+    assert updated.llm_call_log[0].output_tokens == 5
+    assert updated.llm_call_log[0].total_tokens == 15
 
 
 def test_analyze_evidence_records_failed_llm_call_without_prompt_or_response(
@@ -441,6 +502,29 @@ def test_write_report_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_write_report_records_llm_token_usage(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = UsageLLMClient(
+        result=ChatCompletionResult(
+            content=(
+                '{"markdown": "# InsightGraph Research Report\\n\\n'
+                '## Key Findings\\n\\n'
+                '### Pricing and packaging differ\\n\\n'
+                'The verified sources support this comparison [1]."}'
+            ),
+            input_tokens=20,
+            output_tokens=8,
+            total_tokens=28,
+        )
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    assert updated.llm_call_log[0].input_tokens == 20
+    assert updated.llm_call_log[0].output_tokens == 8
+    assert updated.llm_call_log[0].total_tokens == 28
 
 
 def test_write_report_records_failed_llm_call_without_prompt_or_response(

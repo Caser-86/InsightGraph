@@ -3,7 +3,10 @@ import os
 import time
 
 from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client, resolve_llm_config
-from insight_graph.llm.observability import build_llm_call_record
+from insight_graph.llm.observability import (
+    build_llm_call_record,
+    complete_json_with_observability,
+)
 from insight_graph.state import Evidence, Finding, GraphState
 
 
@@ -64,7 +67,7 @@ def _analyze_evidence_with_llm(
     messages = _build_analyst_messages(state)
     started = time.perf_counter()
     try:
-        content = llm_client.complete_json(messages)
+        result = complete_json_with_observability(llm_client, messages)
     except Exception as exc:
         duration_ms = int((time.perf_counter() - started) * 1000)
         state.llm_call_log.append(
@@ -82,7 +85,7 @@ def _analyze_evidence_with_llm(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     try:
-        state.findings = _parse_analyst_findings(content, state.evidence_pool)
+        state.findings = _parse_analyst_findings(result.content, state.evidence_pool)
     except ValueError as exc:
         state.llm_call_log.append(
             build_llm_call_record(
@@ -93,6 +96,9 @@ def _analyze_evidence_with_llm(
                 duration_ms=duration_ms,
                 error=exc,
                 secrets=[config.api_key],
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                total_tokens=result.total_tokens,
             )
         )
         raise
@@ -105,6 +111,9 @@ def _analyze_evidence_with_llm(
             success=True,
             duration_ms=duration_ms,
             secrets=[config.api_key],
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
         )
     )
     return state
