@@ -201,6 +201,7 @@ def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
                     stage="relevance",
                     provider="openai_compatible",
                     model="relay-model",
+                    wire_api="responses",
                     success=True,
                     duration_ms=7,
                 ),
@@ -227,15 +228,15 @@ def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
     assert (
-        "| Stage | Provider | Model | Success | Duration ms | "
+        "| Stage | Provider | Model | Wire API | Success | Duration ms | "
         "Input tokens | Output tokens | Total tokens | Error |"
     ) in result.output
     assert (
-        "| relevance | openai_compatible | relay-model | true | 7 |  |  |  |  |"
+        "| relevance | openai_compatible | relay-model | responses | true | 7 |  |  |  |  |"
         in result.output
     )
     assert (
-        "| reporter | llm | relay-model | false | 9 |  |  |  | "
+        "| reporter | llm | relay-model |  | false | 9 |  |  |  | "
         "ReporterFallbackError: LLM call failed. |"
     ) in result.output
 
@@ -263,7 +264,10 @@ def test_cli_research_show_llm_log_includes_token_columns(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "| analyst | llm | relay-model | true | 12 | 10 | 5 | 15 |  |" in result.output
+    assert (
+        "| analyst | llm | relay-model |  | true | 12 | 10 | 5 | 15 |  |"
+        in result.output
+    )
 
 
 def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
@@ -280,6 +284,7 @@ def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
+    assert "| Model | Wire API | Success |" in result.output
     assert "| Input tokens | Output tokens | Total tokens |" in result.output
     assert "No LLM calls were recorded." in result.output
 
@@ -345,6 +350,7 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 stage="analyst",
                 provider="llm",
                 model="relay-model",
+                wire_api="responses",
                 success=True,
                 duration_ms=12,
             )
@@ -391,6 +397,7 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 "stage": "analyst",
                 "provider": "llm",
                 "model": "relay-model",
+                "wire_api": "responses",
                 "success": True,
                 "duration_ms": 12,
                 "input_tokens": None,

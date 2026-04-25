@@ -49,9 +49,9 @@ def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
     lines = ["## LLM Call Log", ""]
     lines.extend(
         [
-            "| Stage | Provider | Model | Success | Duration ms | "
+            "| Stage | Provider | Model | Wire API | Success | Duration ms | "
             "Input tokens | Output tokens | Total tokens | Error |",
-            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+            "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     if not records:
@@ -65,6 +65,7 @@ def _format_llm_call_log(records: list[LLMCallRecord]) -> str:
             f"{_markdown_table_cell(record.stage)} | "
             f"{_markdown_table_cell(record.provider)} | "
             f"{_markdown_table_cell(record.model)} | "
+            f"{_markdown_table_cell(record.wire_api or '')} | "
             f"{str(record.success).lower()} | "
             f"{record.duration_ms} | "
             f"{_format_optional_int(record.input_tokens)} | "
