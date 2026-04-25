@@ -1,3 +1,5 @@
+import os
+
 from typer.testing import CliRunner
 
 import insight_graph.cli as cli_module
@@ -11,6 +13,10 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_LLM_API_KEY",
         "INSIGHT_GRAPH_LLM_BASE_URL",
         "INSIGHT_GRAPH_LLM_MODEL",
+        "INSIGHT_GRAPH_USE_WEB_SEARCH",
+        "INSIGHT_GRAPH_SEARCH_PROVIDER",
+        "INSIGHT_GRAPH_RELEVANCE_FILTER",
+        "INSIGHT_GRAPH_RELEVANCE_JUDGE",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -53,3 +59,42 @@ def test_configure_output_encoding_ignores_unsupported_streams() -> None:
     cli_module._configure_output_encoding(
         stdout=UnsupportedStream(), stderr=UnsupportedStream()
     )
+
+
+def test_apply_live_llm_preset_sets_missing_runtime_defaults(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
+    cli_module._apply_research_preset(cli_module.ResearchPreset.live_llm)
+
+    assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
+    assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
+    assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "openai_compatible"
+    assert os.environ["INSIGHT_GRAPH_ANALYST_PROVIDER"] == "llm"
+    assert os.environ["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "llm"
+
+
+def test_apply_live_llm_preset_preserves_explicit_env_values(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "deterministic")
+
+    cli_module._apply_research_preset(cli_module.ResearchPreset.live_llm)
+
+    assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "mock"
+    assert os.environ["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "deterministic"
+    assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert os.environ["INSIGHT_GRAPH_ANALYST_PROVIDER"] == "llm"
+
+
+def test_apply_offline_preset_does_not_set_live_defaults(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
+    cli_module._apply_research_preset(cli_module.ResearchPreset.offline)
+
+    assert "INSIGHT_GRAPH_USE_WEB_SEARCH" not in os.environ
+    assert "INSIGHT_GRAPH_SEARCH_PROVIDER" not in os.environ
+    assert "INSIGHT_GRAPH_RELEVANCE_FILTER" not in os.environ
+    assert "INSIGHT_GRAPH_RELEVANCE_JUDGE" not in os.environ
+    assert "INSIGHT_GRAPH_ANALYST_PROVIDER" not in os.environ
+    assert "INSIGHT_GRAPH_REPORTER_PROVIDER" not in os.environ
