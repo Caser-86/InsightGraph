@@ -99,3 +99,101 @@ def test_executor_appends_to_existing_tool_call_log() -> None:
     updated = execute_subtasks(state)
 
     assert [record.subtask_id for record in updated.tool_call_log] == ["previous", "collect"]
+
+
+def test_executor_does_not_filter_when_relevance_filter_disabled(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.delenv("INSIGHT_GRAPH_RELEVANCE_FILTER", raising=False)
+
+    unverified = Evidence(
+        id="unverified",
+        subtask_id="collect",
+        title="Unverified",
+        source_url="https://example.com/unverified",
+        snippet="Unverified evidence.",
+        verified=False,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [unverified]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["unverified"]
+    assert updated.tool_call_log[0].filtered_count == 0
+
+
+def test_executor_filters_unverified_evidence_when_enabled(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
+
+    verified = Evidence(
+        id="verified",
+        subtask_id="collect",
+        title="Verified",
+        source_url="https://example.com/verified",
+        snippet="Verified evidence.",
+        verified=True,
+    )
+    unverified = Evidence(
+        id="unverified",
+        subtask_id="collect",
+        title="Unverified",
+        source_url="https://example.com/unverified",
+        snippet="Unverified evidence.",
+        verified=False,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [verified, unverified]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["verified"]
+    assert updated.global_evidence_pool == updated.evidence_pool
+    assert updated.tool_call_log[0].evidence_count == 2
+    assert updated.tool_call_log[0].filtered_count == 1
+
+
+def test_executor_filters_after_per_tool_deduplication(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
+
+    duplicate_unverified = Evidence(
+        id="duplicate",
+        subtask_id="collect",
+        title="Duplicate",
+        source_url="https://example.com/duplicate",
+        snippet="Duplicate evidence.",
+        verified=False,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [duplicate_unverified, duplicate_unverified.model_copy()]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.evidence_pool == []
+    assert updated.tool_call_log[0].evidence_count == 2
+    assert updated.tool_call_log[0].filtered_count == 1
