@@ -138,6 +138,14 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 The appended table is opt-in and contains only stage, provider, model, success, duration, and sanitized error metadata.
 
+Use `--output-json` when scripts need a structured summary instead of Markdown:
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
+```
+
+JSON output includes `user_request`, `report_markdown`, `findings`, `critique`, `tool_call_log`, `llm_call_log`, and `iterations`. It intentionally omits `evidence_pool` and `global_evidence_pool` to avoid dumping fetched snippets. If `--output-json` and `--show-llm-log` are both provided, JSON output takes precedence.
+
 ---
 
 ## 目标项目结构（蓝图）
