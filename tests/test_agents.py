@@ -236,7 +236,7 @@ def test_analyze_evidence_records_failed_llm_call_without_prompt_or_response(
     record = updated.llm_call_log[0]
     assert record.stage == "analyst"
     assert record.success is False
-    assert "JSON" in (record.error or "")
+    assert record.error == "ValueError: LLM call failed."
     serialized = record.model_dump_json()
     assert "not json" not in serialized
     assert "Cursor Pricing" not in serialized
@@ -455,7 +455,7 @@ def test_write_report_records_failed_llm_call_without_prompt_or_response(
     record = updated.llm_call_log[0]
     assert record.stage == "reporter"
     assert record.success is False
-    assert "JSON" in (record.error or "")
+    assert record.error == "ReporterFallbackError: LLM call failed."
     serialized = record.model_dump_json()
     assert "not json" not in serialized
     assert "Cursor Pricing" not in serialized

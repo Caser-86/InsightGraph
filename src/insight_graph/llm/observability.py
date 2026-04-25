@@ -24,8 +24,4 @@ def build_llm_call_record(
 
 
 def _summarize_error(error: Exception, secrets: list[str | None]) -> str:
-    summary = f"{type(error).__name__}: {error}"
-    for secret in secrets:
-        if secret:
-            summary = summary.replace(secret, "[REDACTED]")
-    return summary
+    return f"{type(error).__name__}: LLM call failed."

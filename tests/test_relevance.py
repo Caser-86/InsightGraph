@@ -315,7 +315,7 @@ def test_openai_compatible_judge_records_failed_llm_call_without_prompt_or_key()
     record = records[0]
     assert record.stage == "relevance"
     assert record.success is False
-    assert "[REDACTED]" in (record.error or "")
+    assert record.error == "RuntimeError: LLM call failed."
     serialized = record.model_dump_json()
     assert "test-key" not in serialized
     assert "Cursor Pricing" not in serialized

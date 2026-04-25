@@ -98,5 +98,26 @@ def test_build_llm_call_record_sanitizes_secret_values() -> None:
         secrets=["sk-secret-value"],
     )
 
-    assert record.error == "RuntimeError: request failed for [REDACTED]"
+    assert record.error == "RuntimeError: LLM call failed."
     assert "sk-secret-value" not in record.model_dump_json()
+
+
+def test_build_llm_call_record_does_not_store_raw_exception_payloads() -> None:
+    record = build_llm_call_record(
+        stage="reporter",
+        provider="llm",
+        model="relay-model",
+        success=False,
+        duration_ms=3,
+        error=RuntimeError(
+            "prompt=Sensitive prompt completion=Raw response authorization=Bearer token"
+        ),
+        secrets=["token"],
+    )
+
+    serialized = record.model_dump_json()
+    assert record.error == "RuntimeError: LLM call failed."
+    assert "Sensitive prompt" not in serialized
+    assert "Raw response" not in serialized
+    assert "Bearer" not in serialized
+    assert "token" not in serialized
