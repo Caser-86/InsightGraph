@@ -1,6 +1,6 @@
 from insight_graph import __version__
 from insight_graph.cli import app
-from insight_graph.state import Evidence, GraphState, Subtask
+from insight_graph.state import Evidence, GraphState, Subtask, ToolCallRecord
 
 
 def test_package_version_is_defined() -> None:
@@ -41,3 +41,22 @@ def test_graph_state_starts_with_empty_collections() -> None:
     assert state.evidence_pool == []
     assert state.findings == []
     assert state.report_markdown is None
+
+
+def test_tool_call_record_defaults_to_success() -> None:
+    record = ToolCallRecord(
+        subtask_id="collect",
+        tool_name="mock_search",
+        query="Compare AI coding agents",
+    )
+
+    assert record.evidence_count == 0
+    assert record.success is True
+    assert record.error is None
+
+
+def test_graph_state_starts_with_executor_collections() -> None:
+    state = GraphState(user_request="Analyze AI coding agents")
+
+    assert state.global_evidence_pool == []
+    assert state.tool_call_log == []

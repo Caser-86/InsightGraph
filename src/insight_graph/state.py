@@ -43,10 +43,21 @@ class Critique(BaseModel):
     missing_topics: list[str] = Field(default_factory=list)
 
 
+class ToolCallRecord(BaseModel):
+    subtask_id: str
+    tool_name: str
+    query: str
+    evidence_count: int = 0
+    success: bool = True
+    error: str | None = None
+
+
 class GraphState(BaseModel):
     user_request: str
     subtasks: list[Subtask] = Field(default_factory=list)
     evidence_pool: list[Evidence] = Field(default_factory=list)
+    global_evidence_pool: list[Evidence] = Field(default_factory=list)
+    tool_call_log: list[ToolCallRecord] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
     critique: Critique | None = None
     report_markdown: str | None = None
