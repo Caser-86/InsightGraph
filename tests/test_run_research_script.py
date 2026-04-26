@@ -18,6 +18,12 @@ class BadStdout:
         raise OSError("cannot write")
 
 
+class Cp1252Stdout:
+    def write(self, value: str) -> int:
+        value.encode("cp1252")
+        return len(value)
+
+
 class BadStdin:
     def read(self) -> str:
         raise OSError("cannot read")
@@ -278,6 +284,46 @@ def test_main_returns_two_for_stdout_write_error_without_traceback():
         stdout=BadStdout(),
         stderr=stderr,
         run_research_func=make_state,
+    )
+
+    assert exit_code == 2
+    assert stderr.getvalue() == "Failed to write output.\n"
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_markdown_stdout_encoding_error_without_traceback():
+    def fake_run_research(query: str) -> GraphState:
+        state = make_state(query)
+        state.report_markdown = "snowman 雪\n"
+        return state
+
+    stderr = io.StringIO()
+    exit_code = run_research_script.main(
+        ["Compare"],
+        stdin=io.StringIO(),
+        stdout=Cp1252Stdout(),
+        stderr=stderr,
+        run_research_func=fake_run_research,
+    )
+
+    assert exit_code == 2
+    assert stderr.getvalue() == "Failed to write output.\n"
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_json_stdout_encoding_error_without_traceback():
+    def fake_run_research(query: str) -> GraphState:
+        state = make_state(query)
+        state.report_markdown = "snowman 雪\n"
+        return state
+
+    stderr = io.StringIO()
+    exit_code = run_research_script.main(
+        ["Compare", "--output-json"],
+        stdin=io.StringIO(),
+        stdout=Cp1252Stdout(),
+        stderr=stderr,
+        run_research_func=fake_run_research,
     )
 
     assert exit_code == 2

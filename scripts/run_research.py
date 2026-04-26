@@ -11,6 +11,7 @@ from insight_graph.cli import (
     ResearchPreset,
     _apply_research_preset,
     _build_research_json_payload,
+    _configure_output_encoding,
 )
 from insight_graph.graph import run_research
 from insight_graph.state import GraphState
@@ -54,6 +55,7 @@ def main(
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
+    _configure_output_encoding(stdout=stdout, stderr=stderr)
 
     parser = ResearchArgumentParser(
         description="Run an InsightGraph research workflow.",
@@ -107,7 +109,7 @@ def main(
             stdout.write("\n")
         else:
             stdout.write(_format_markdown_output(state.report_markdown or ""))
-    except OSError:
+    except (OSError, UnicodeError):
         stderr.write("Failed to write output.\n")
         return 2
 
