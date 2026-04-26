@@ -98,7 +98,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Analyst model | `gpt-4o-mini` |
 | `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
-LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings。缺少 key/API、LLM 返回非 JSON、schema 不合法或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
+LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings；`competitive_matrix` 可由 LLM 提供，但每一行必须引用当前 verified evidence ID。缺少 key/API、LLM 返回非 JSON、schema 不合法、矩阵缺失或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
 ### LLM Reporter 配置
 
@@ -454,7 +454,7 @@ flowchart TB
 ### 3. Analyst
 
 - **实体画像**：为公司、产品、技术、市场主题建立结构化 profile
-- **竞品矩阵**：当前 MVP 生成 evidence-backed deterministic `competitive_matrix`，Reporter 输出 `Competitive Matrix` Markdown 表格；第一版不做排名、评分或精确定价抽取
+- **竞品矩阵**：默认/offline Analyst 生成 evidence-backed deterministic `competitive_matrix`；`--preset live-llm` 或 LLM Analyst opt-in 时可由 LLM 提供矩阵行，但每行必须引用 verified evidence，缺失或无效时回退 deterministic；Reporter 输出 citable `Competitive Matrix` Markdown 表格；第一版不做排名、评分或精确定价抽取
 - **趋势归纳**：从时间线、发布节奏、开源活跃度、媒体关注度中提取趋势信号
 - **不确定性标注**：对缺失数据、冲突证据、低可信来源进行显式标注
 
@@ -494,8 +494,6 @@ flowchart TB
 | 运行时间 | 8-20 分钟，取决于搜索深度与引用校验数量 |
 
 **产出报告结构**：Executive Summary → Market Overview → Competitive Matrix → Product Deep Dives → Pricing & Positioning → Technology Trends → Risks & Open Questions → References
-
-当前 `Competitive Matrix` 为 verified evidence 支撑的 deterministic MVP；它展示产品、定位、证据标签/strengths 和引用，不代表自动排名或评分。
 
 每个关键事实均通过 `[N]` 编号关联到 References 中的具体 URL，可逐条验证。
 
@@ -539,7 +537,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 ### 当前输出
 
-- **CLI 报告**：Markdown 格式，包含 `Key Findings`、`Critic Assessment`、`References`
+- **CLI 报告**：Markdown 格式，包含 `Key Findings`、有可引用矩阵行时的 `Competitive Matrix`、`Critic Assessment`、`References`
 - **结构化输出**：`--output-json` 包含 `competitive_matrix`，便于后续 API、benchmark 和前端复用
 - **数据源**：固定 mock evidence，不进行真实联网搜索
 - **API / 前端**：尚未实现，属于后续路线图
