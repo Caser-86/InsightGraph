@@ -2,9 +2,12 @@ import hashlib
 import re
 from pathlib import Path
 
+from bs4 import BeautifulSoup
+
 from insight_graph.state import Evidence
 
-SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown"}
+SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".html", ".htm"}
+HTML_SUFFIXES = {".html", ".htm"}
 MAX_SNIPPET_CHARS = 500
 
 
@@ -19,7 +22,7 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     except (OSError, UnicodeDecodeError):
         return []
 
-    snippet = _normalize_snippet(text)
+    snippet = _normalize_snippet(_extract_text(text, path.suffix.lower()))
     if not snippet:
         return []
 
@@ -34,6 +37,15 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
             verified=True,
         )
     ]
+
+
+def _extract_text(text: str, suffix: str) -> str:
+    if suffix not in HTML_SUFFIXES:
+        return text
+    soup = BeautifulSoup(text, "html.parser")
+    for element in soup(["script", "style", "noscript"]):
+        element.decompose()
+    return soup.get_text(" ")
 
 
 def _resolve_inside_root(root: Path, query: str) -> Path | None:

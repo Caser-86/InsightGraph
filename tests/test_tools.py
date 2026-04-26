@@ -135,6 +135,61 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     assert evidence[0].verified is True
 
 
+def test_document_reader_reads_html_visible_text(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "market.html"
+    document.write_text(
+        """
+        <!doctype html>
+        <html>
+          <head>
+            <title>Ignored page title</title>
+            <style>.hidden { display: none; }</style>
+            <script>window.secret = "do not include";</script>
+          </head>
+          <body>
+            <h1>Market Brief</h1>
+            <p>Cursor adds agent mode.</p>
+            <noscript>Do not include noscript fallback.</noscript>
+            <p>GitHub Copilot updates docs.</p>
+          </body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("market.html", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == document_id_for("market.html")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "market.html"
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].snippet == (
+        "Ignored page title Market Brief Cursor adds agent mode. "
+        "GitHub Copilot updates docs."
+    )
+    assert "do not include" not in evidence[0].snippet.lower()
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_document_reader_accepts_htm_suffix(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "brief.htm"
+    document.write_text(
+        "<html><body><main><p>Local HTM research note.</p></main></body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("brief.htm", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == document_id_for("brief.htm")
+    assert evidence[0].title == "brief.htm"
+    assert evidence[0].snippet == "Local HTM research note."
+
+
 def test_document_reader_limits_snippet_length(tmp_path, monkeypatch) -> None:
     document = tmp_path / "long.md"
     document.write_text("a" * 600, encoding="utf-8")
