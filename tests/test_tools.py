@@ -325,6 +325,65 @@ def test_document_reader_chunks_long_documents(tmp_path, monkeypatch) -> None:
     assert {item.verified for item in evidence} == {True}
 
 
+def test_document_reader_ranks_chunks_with_json_query(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "ranked.md"
+    chunks = [
+        "alpha " * 100,
+        "beta " * 100,
+        "enterprise pricing " * 40,
+        "gamma " * 100,
+    ]
+    document.write_text(" ".join(chunks), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader(
+        '{"path":"ranked.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) >= 1
+    assert "enterprise pricing" in evidence[0].snippet
+    assert evidence[0].id.endswith("chunk-3") or evidence[0].id.endswith("chunk-4")
+    assert evidence[0].title.startswith("ranked.md (chunk ")
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_document_reader_json_query_falls_back_when_no_terms_match(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "fallback.md"
+    document.write_text("alpha " * 500, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader('{"path":"fallback.md","query":"unmatched"}', "s1")
+
+    assert len(evidence) == 5
+    assert evidence[0].id == document_id_for("fallback.md")
+    assert evidence[1].id == f"{document_id_for('fallback.md')}-chunk-2"
+
+
+def test_document_reader_invalid_json_input_is_treated_as_path(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "{not-json}.md"
+    document.write_text("Curly filename content.", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("{not-json}.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].title == "{not-json}.md"
+    assert evidence[0].snippet == "Curly filename content."
+
+
+def test_document_reader_json_object_without_valid_path_returns_empty() -> None:
+    assert document_reader('{"query":"pricing"}', "s1") == []
+    assert document_reader('{"path":"","query":"pricing"}', "s1") == []
+    assert document_reader('{"path":123,"query":"pricing"}', "s1") == []
+
+
 def test_document_reader_rejects_invalid_utf8(tmp_path, monkeypatch) -> None:
     document = tmp_path / "bad.md"
     document.write_bytes(b"\xff\xfe\xfa")

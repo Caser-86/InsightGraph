@@ -20,6 +20,7 @@ def test_run_validation_returns_fixed_cases():
     assert [case["name"] for case in payload["cases"]] == [
         "txt_file_success",
         "long_file_chunking_success",
+        "json_query_ranking_success",
         "markdown_file_success",
         "markdown_suffix_success",
         "html_file_success",
@@ -51,6 +52,10 @@ def test_run_validation_success_cases_include_expected_metadata():
     long_case = case_by_name(payload, "long_file_chunking_success")
     assert long_case["title"] == "long.txt"
     assert long_case["snippet_contains"] is True
+
+    ranked_case = case_by_name(payload, "json_query_ranking_success")
+    assert ranked_case["title"] == "ranked.txt (chunk 3)"
+    assert ranked_case["snippet_contains"] is True
 
     markdown_case = case_by_name(payload, "markdown_file_success")
     assert markdown_case["title"] == "market.md"
@@ -101,11 +106,11 @@ def test_run_validation_summary_counts_results():
     payload = run_validation()
 
     assert payload["summary"] == {
-        "case_count": 13,
-        "passed_count": 13,
+        "case_count": 14,
+        "passed_count": 14,
         "failed_count": 0,
         "all_passed": True,
-        "total_evidence_count": 11,
+        "total_evidence_count": 14,
     }
 
 
@@ -127,9 +132,9 @@ def test_run_validation_restores_cwd_after_case_exception():
 
     assert os.getcwd() == original_cwd
     assert payload["summary"] == {
-        "case_count": 13,
+        "case_count": 14,
         "passed_count": 0,
-        "failed_count": 13,
+        "failed_count": 14,
         "all_passed": False,
         "total_evidence_count": 0,
     }
@@ -153,7 +158,7 @@ def test_format_markdown_writes_summary_table():
     assert case_header in output
     assert success_row in output
     assert "## Summary" in output
-    assert "| 13 | 13 | 0 | true | 11 |" in output
+    assert "| 14 | 14 | 0 | true | 14 |" in output
     assert output.endswith("\n")
 
 
@@ -200,7 +205,7 @@ def test_main_writes_json_by_default():
     assert stderr.getvalue() == ""
     payload = json.loads(stdout.getvalue())
     assert payload["summary"]["all_passed"] is True
-    assert payload["summary"]["case_count"] == 13
+    assert payload["summary"]["case_count"] == 14
 
 
 def test_main_writes_markdown_when_flag_is_present():

@@ -1,6 +1,8 @@
 import hashlib
+import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -17,9 +19,19 @@ SNIPPET_OVERLAP_CHARS = 100
 MAX_DOCUMENT_EVIDENCE = 5
 
 
+@dataclass(frozen=True)
+class DocumentReaderQuery:
+    path: str
+    retrieval_query: str | None = None
+
+
 def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    parsed_query = _parse_document_reader_query(query)
+    if parsed_query is None:
+        return []
+
     root = Path.cwd().resolve()
-    path = _resolve_inside_root(root, query)
+    path = _resolve_inside_root(root, parsed_query.path)
     if path is None or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
         return []
 
@@ -28,14 +40,36 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     except (OSError, UnicodeDecodeError, PdfReadError):
         return []
 
-    snippets = _chunk_snippets(_normalize_snippet(_extract_text(text, path.suffix.lower())))
+    normalized_text = _normalize_snippet(_extract_text(text, path.suffix.lower()))
+    snippets = _select_snippets(normalized_text, parsed_query.retrieval_query)
     if not snippets:
         return []
 
     return [
         _build_evidence(root, path, subtask_id, snippet, index)
-        for index, snippet in enumerate(snippets)
+        for snippet, index in snippets
     ]
+
+
+def _parse_document_reader_query(query: str) -> DocumentReaderQuery | None:
+    try:
+        parsed = json.loads(query)
+    except json.JSONDecodeError:
+        return DocumentReaderQuery(path=query)
+    if not isinstance(parsed, dict):
+        return DocumentReaderQuery(path=query)
+
+    path = parsed.get("path")
+    if not isinstance(path, str) or not path.strip():
+        return None
+
+    retrieval_query = parsed.get("query")
+    if not isinstance(retrieval_query, str) or not retrieval_query.strip():
+        retrieval_query = None
+    return DocumentReaderQuery(
+        path=path.strip(),
+        retrieval_query=retrieval_query.strip() if retrieval_query else None,
+    )
 
 
 def _read_document_text(path: Path) -> str:
@@ -45,17 +79,49 @@ def _read_document_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _chunk_snippets(text: str) -> list[str]:
+def _select_snippets(text: str, retrieval_query: str | None) -> list[tuple[str, int]]:
+    candidates = _chunk_snippets(text)
+    if not retrieval_query:
+        return candidates[:MAX_DOCUMENT_EVIDENCE]
+    ranked = _rank_snippets(candidates, retrieval_query)
+    return ranked[:MAX_DOCUMENT_EVIDENCE] if ranked else candidates[:MAX_DOCUMENT_EVIDENCE]
+
+
+def _chunk_snippets(text: str) -> list[tuple[str, int]]:
     if not text:
         return []
     if len(text) <= MAX_SNIPPET_CHARS:
-        return [text]
+        return [(text, 0)]
     step = MAX_SNIPPET_CHARS - SNIPPET_OVERLAP_CHARS
     return [
-        text[start : start + MAX_SNIPPET_CHARS]
-        for start in range(0, len(text), step)
+        (text[start : start + MAX_SNIPPET_CHARS], index)
+        for index, start in enumerate(range(0, len(text), step))
         if text[start : start + MAX_SNIPPET_CHARS]
-    ][:MAX_DOCUMENT_EVIDENCE]
+    ]
+
+
+def _rank_snippets(
+    candidates: list[tuple[str, int]],
+    retrieval_query: str,
+) -> list[tuple[str, int]]:
+    query_tokens = set(_tokenize(retrieval_query))
+    if not query_tokens:
+        return []
+
+    scored = []
+    for snippet, index in candidates:
+        tokens = _tokenize(snippet)
+        score = sum(1 for token in tokens if token in query_tokens)
+        distinct_matches = len({token for token in tokens if token in query_tokens})
+        if score > 0:
+            scored.append((score, distinct_matches, -index, snippet, index))
+
+    scored.sort(reverse=True)
+    return [(snippet, index) for _, _, _, snippet, index in scored]
+
+
+def _tokenize(value: str) -> list[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 3]
 
 
 def _build_evidence(
