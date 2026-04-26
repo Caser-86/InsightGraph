@@ -19,9 +19,19 @@ __all__ = ["LIVE_LLM_PRESET_DEFAULTS", "main"]
 
 
 class ResearchArgumentParser(argparse.ArgumentParser):
-    def __init__(self, *args: Any, stderr: TextIO, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        stdout: TextIO,
+        stderr: TextIO,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self._stdout = stdout
         self._stderr = stderr
+
+    def print_help(self, file: TextIO | None = None) -> None:
+        super().print_help(file or self._stdout)
 
     def exit(self, status: int = 0, message: str | None = None) -> None:
         if message:
@@ -47,6 +57,7 @@ def main(
 
     parser = ResearchArgumentParser(
         description="Run an InsightGraph research workflow.",
+        stdout=stdout,
         stderr=stderr,
     )
     parser.add_argument("query", help="Research query, or '-' to read from stdin.")

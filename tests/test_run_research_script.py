@@ -300,3 +300,24 @@ def test_main_returns_two_for_unknown_option_without_traceback():
     assert stdout.getvalue() == ""
     assert "usage:" in stderr.getvalue()
     assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_routes_help_to_injected_stdout_without_running_workflow():
+    def fail_run_research(query: str) -> GraphState:
+        raise AssertionError("run_research should not be called")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = run_research_script.main(
+        ["--help"],
+        stdin=io.StringIO(),
+        stdout=stdout,
+        stderr=stderr,
+        run_research_func=fail_run_research,
+    )
+
+    assert exit_code == 0
+    assert "usage:" in stdout.getvalue()
+    assert "--output-json" in stdout.getvalue()
+    assert stderr.getvalue() == ""
