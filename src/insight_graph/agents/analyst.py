@@ -191,10 +191,12 @@ def _analyze_evidence_with_llm(
             result.content,
             state.evidence_pool,
         )
-        state.competitive_matrix = parsed_matrix or build_competitive_matrix(
-            state.user_request,
-            state.evidence_pool,
-        )
+        if parsed_matrix is None:
+            parsed_matrix = build_competitive_matrix(
+                state.user_request,
+                state.evidence_pool,
+            )
+        state.competitive_matrix = parsed_matrix
     except ValueError as exc:
         state.llm_call_log.append(
             build_llm_call_record(
@@ -275,7 +277,7 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
 def _parse_analyst_response(
     content: str | None,
     evidence_pool: list[Evidence],
-) -> tuple[list[Finding], list[CompetitiveMatrixRow]]:
+) -> tuple[list[Finding], list[CompetitiveMatrixRow] | None]:
     data = _load_analyst_json(content)
     findings = _parse_analyst_findings_from_data(data, evidence_pool)
     matrix = _parse_competitive_matrix_from_data(data, evidence_pool)
@@ -343,10 +345,10 @@ def _parse_analyst_findings_from_data(data: dict, evidence_pool: list[Evidence])
 def _parse_competitive_matrix_from_data(
     data: dict,
     evidence_pool: list[Evidence],
-) -> list[CompetitiveMatrixRow]:
+) -> list[CompetitiveMatrixRow] | None:
+    if "competitive_matrix" not in data:
+        return None
     raw_matrix = data.get("competitive_matrix")
-    if raw_matrix is None:
-        return []
     if not isinstance(raw_matrix, list):
         raise ValueError("LLM competitive_matrix must be a list")
 
@@ -358,7 +360,7 @@ def _parse_competitive_matrix_from_data(
 
         product = raw_row.get("product")
         positioning = raw_row.get("positioning")
-        strengths = raw_row.get("strengths", [])
+        strengths = raw_row.get("strengths")
         evidence_ids = raw_row.get("evidence_ids")
         if not isinstance(product, str) or not product.strip():
             raise ValueError("LLM competitive_matrix product is required")

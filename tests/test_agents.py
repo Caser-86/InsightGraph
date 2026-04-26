@@ -831,6 +831,24 @@ def test_llm_analyst_uses_deterministic_matrix_when_matrix_missing(monkeypatch) 
     ]
 
 
+def test_llm_analyst_preserves_empty_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"competitive_matrix":[]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert updated.competitive_matrix == []
+
+
 def test_llm_analyst_falls_back_for_invalid_competitive_matrix(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
@@ -844,6 +862,29 @@ def test_llm_analyst_falls_back_for_invalid_competitive_matrix(monkeypatch) -> N
             '"positioning":"Official product positioning signal",'
             '"strengths":["Official/documented source coverage"],'
             '"evidence_ids":["missing-evidence"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert [row.product for row in updated.competitive_matrix] == [
+        "Cursor",
+        "GitHub Copilot",
+    ]
+
+
+def test_llm_analyst_falls_back_when_matrix_strengths_missing(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"competitive_matrix":[{"product":"Cursor",'
+            '"positioning":"Official product positioning signal",'
+            '"evidence_ids":["cursor-pricing"]}]}'
         )
     )
 
