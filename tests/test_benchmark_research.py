@@ -260,3 +260,64 @@ def test_format_markdown_includes_safe_errors_section() -> None:
 
     assert "## Errors" in markdown
     assert "| Compare Cursor | Research workflow failed. |" in markdown
+
+
+def test_main_outputs_json_by_default(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [
+            {
+                "query": "Compare Cursör",
+                "duration_ms": 1,
+                "finding_count": 1,
+                "competitive_matrix_row_count": 1,
+                "reference_count": 1,
+                "tool_call_count": 1,
+                "llm_call_count": 0,
+                "critique_passed": True,
+                "report_has_competitive_matrix": True,
+            }
+        ],
+        "summary": {
+            "case_count": 1,
+            "total_duration_ms": 1,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 1,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+        },
+    }
+    monkeypatch.setattr(benchmark_module, "build_benchmark_payload", lambda: payload)
+
+    exit_code = benchmark_module.main([])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert output.startswith("{\n  ")
+    assert "Cursör" in output
+    assert "# InsightGraph Benchmark" not in output
+
+
+def test_main_outputs_markdown_when_requested(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 0,
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 0,
+            "total_competitive_matrix_rows": 0,
+            "total_references": 0,
+            "total_tool_calls": 0,
+            "total_llm_calls": 0,
+        },
+    }
+    monkeypatch.setattr(benchmark_module, "build_benchmark_payload", lambda: payload)
+
+    exit_code = benchmark_module.main(["--markdown"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert output.startswith("# InsightGraph Benchmark")
+    assert '"cases"' not in output
