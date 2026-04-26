@@ -495,7 +495,7 @@ flowchart TB
 
 **产出报告结构**：Executive Summary → Market Overview → Competitive Matrix → Product Deep Dives → Pricing & Positioning → Technology Trends → Risks & Open Questions → References
 
-当前 `Competitive Matrix` 为 verified evidence 支撑的 deterministic MVP；它展示产品、定位、证据标签和引用，不代表自动排名或评分。
+当前 `Competitive Matrix` 为 verified evidence 支撑的 deterministic MVP；它展示产品、定位、证据标签/strengths 和引用，不代表自动排名或评分。
 
 每个关键事实均通过 `[N]` 编号关联到 References 中的具体 URL，可逐条验证。
 
