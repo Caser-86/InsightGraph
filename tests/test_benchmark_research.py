@@ -114,12 +114,14 @@ def test_benchmark_clears_runtime_opt_in_env_for_case(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
     monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_LIMIT", "99")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_WIRE_API", "responses")
     observed_env: dict[str, str | None] = {}
 
     def fake_run_research(query: str) -> GraphState:
         observed_env["INSIGHT_GRAPH_USE_WEB_SEARCH"] = os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH")
         observed_env["INSIGHT_GRAPH_ANALYST_PROVIDER"] = os.getenv("INSIGHT_GRAPH_ANALYST_PROVIDER")
         observed_env["INSIGHT_GRAPH_SEARCH_LIMIT"] = os.getenv("INSIGHT_GRAPH_SEARCH_LIMIT")
+        observed_env["INSIGHT_GRAPH_LLM_WIRE_API"] = os.getenv("INSIGHT_GRAPH_LLM_WIRE_API")
         return make_benchmark_state(query)
 
     benchmark_module.build_benchmark_payload(
@@ -131,10 +133,12 @@ def test_benchmark_clears_runtime_opt_in_env_for_case(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_WEB_SEARCH": None,
         "INSIGHT_GRAPH_ANALYST_PROVIDER": None,
         "INSIGHT_GRAPH_SEARCH_LIMIT": None,
+        "INSIGHT_GRAPH_LLM_WIRE_API": None,
     }
     assert os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH") == "1"
     assert os.getenv("INSIGHT_GRAPH_ANALYST_PROVIDER") == "llm"
     assert os.getenv("INSIGHT_GRAPH_SEARCH_LIMIT") == "99"
+    assert os.getenv("INSIGHT_GRAPH_LLM_WIRE_API") == "responses"
 
 
 def test_benchmark_restores_env_after_case_exception(monkeypatch) -> None:
