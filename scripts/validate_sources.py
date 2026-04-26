@@ -14,6 +14,15 @@ _REFERENCE_HEADING_RE = re.compile(
 _ATX_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+.*$")
 
 
+class _ArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args: Any, stderr: TextIO, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._stderr = stderr
+
+    def _print_message(self, message: str, file: TextIO | None = None) -> None:
+        super()._print_message(message, self._stderr)
+
+
 def validate_report(markdown: str) -> dict[str, Any]:
     section = _find_references_section(markdown)
     if section is None:
@@ -76,7 +85,10 @@ def main(
     stdout = sys.stdout if stdout is None else stdout
     stderr = sys.stderr if stderr is None else stderr
 
-    parser = argparse.ArgumentParser(description="Validate Markdown report sources.")
+    parser = _ArgumentParser(
+        description="Validate Markdown report sources.",
+        stderr=stderr,
+    )
     parser.add_argument("path", help="Markdown file path, or '-' to read stdin.")
 
     try:

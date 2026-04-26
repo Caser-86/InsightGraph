@@ -257,3 +257,15 @@ def test_main_returns_two_for_output_write_error_without_traceback():
     assert exit_code == 2
     assert "Failed to write output" in stderr.getvalue()
     assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_missing_args_without_traceback():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([], stdin=io.StringIO(), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert "usage:" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()
