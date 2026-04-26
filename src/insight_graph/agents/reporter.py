@@ -391,7 +391,10 @@ def _prepare_competitive_matrix_section(
 
     start, end = matrix_range
     matrix_section = body[start:end]
-    if _matrix_section_has_allowed_data_row_citation(matrix_section, allowed_references):
+    if _matrix_section_has_only_allowed_data_row_citations(
+        matrix_section,
+        allowed_references,
+    ):
         return body
 
     without_matrix = f"{body[:start].rstrip()}\n\n{body[end:].lstrip()}".strip()
@@ -408,18 +411,32 @@ def _competitive_matrix_section_range(body: str) -> tuple[int, int] | None:
     return match.start(), section_end
 
 
-def _matrix_section_has_allowed_data_row_citation(
+def _matrix_section_has_only_allowed_data_row_citations(
     matrix_section: str,
     allowed_references: set[int],
 ) -> bool:
+    has_data_row = False
     for line in matrix_section.splitlines():
         stripped = line.strip()
-        if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-", ":"}:
+        if not _is_matrix_data_row(stripped):
             continue
+        has_data_row = True
         citations = [int(match) for match in CITATION_PATTERN.findall(stripped)]
-        if any(citation in allowed_references for citation in citations):
-            return True
-    return False
+        if not any(citation in allowed_references for citation in citations):
+            return False
+    return has_data_row
+
+
+def _is_matrix_data_row(line: str) -> bool:
+    if not line.startswith("|"):
+        return False
+
+    cells = [cell.strip() for cell in line.strip("|").split("|")]
+    normalized_cells = [cell.lower() for cell in cells]
+    if normalized_cells == ["product", "positioning", "strengths", "evidence"]:
+        return False
+
+    return not all(set(cell) <= {"-", ":", " "} for cell in cells)
 
 
 def _insert_competitive_matrix_section(body: str, matrix_lines: list[str]) -> str:

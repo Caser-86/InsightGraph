@@ -1189,6 +1189,31 @@ def test_llm_reporter_replaces_uncited_competitive_matrix(monkeypatch) -> None:
     assert updated.report_markdown.count("## Competitive Matrix") == 1
 
 
+def test_llm_reporter_replaces_mixed_uncited_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n## Competitive Matrix\\n\\n'
+            '| Product | Positioning | Strengths | Evidence |\\n'
+            '| --- | --- | --- | --- |\\n'
+            '| Cursor | Existing | Existing | [1] |\\n'
+            '| Fake | Uncited | Uncited | none |"}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert "| Fake | Uncited | Uncited | none |" not in updated.report_markdown
+    assert (
+        "| Cursor | Official product positioning signal | "
+        "Official/documented source coverage | [1] |"
+    ) in updated.report_markdown
+    assert updated.report_markdown.count("## Competitive Matrix") == 1
+
+
 def test_llm_reporter_inserts_competitive_matrix_before_later_sections(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
