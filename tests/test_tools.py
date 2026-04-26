@@ -4,6 +4,7 @@ import json
 import re
 
 import pytest
+from pypdf import PdfWriter
 
 from insight_graph.state import Evidence
 from insight_graph.tools import (
@@ -32,6 +33,38 @@ def document_id_for(relative_path: str) -> str:
     digest = hashlib.sha1(relative_path.encode("utf-8")).hexdigest()[:8]
     slug = re.sub(r"[^a-z0-9]+", "-", relative_path.lower()).strip("-")
     return f"document-{slug or 'document'}-{digest}"
+
+
+def write_minimal_pdf(path, text: str) -> None:
+    escaped_text = text.replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+    content = f"BT /F1 12 Tf 72 720 Td ({escaped_text}) Tj ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content.encode('utf-8'))} >>\nstream\n{content}\nendstream",
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n{body}\nendobj\n".encode())
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode())
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode()
+    )
+    path.write_bytes(bytes(output))
 
 
 def test_tools_package_exports_fetch_url_callable() -> None:
@@ -190,6 +223,61 @@ def test_document_reader_accepts_htm_suffix(tmp_path, monkeypatch) -> None:
     assert evidence[0].snippet == "Local HTM research note."
 
 
+def test_document_reader_reads_pdf_text(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "market.pdf"
+    write_minimal_pdf(document, "PDF market brief for Cursor and GitHub Copilot.")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("market.pdf", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == document_id_for("market.pdf")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "market.pdf"
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].snippet == "PDF market brief for Cursor and GitHub Copilot."
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_document_reader_rejects_malformed_pdf_without_parser_output(
+    tmp_path, monkeypatch, capsys, caplog
+) -> None:
+    caplog.set_level("WARNING")
+    document = tmp_path / "broken.pdf"
+    document.write_bytes(b"not a valid pdf")
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader("broken.pdf", "s1") == []
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert caplog.text == ""
+
+
+def test_document_reader_rejects_pdf_without_extractable_text(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "blank.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    with document.open("wb") as handle:
+        writer.write(handle)
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader("blank.pdf", "s1") == []
+
+
+def test_document_reader_rejects_encrypted_pdf(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "encrypted.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.encrypt("secret")
+    with document.open("wb") as handle:
+        writer.write(handle)
+    monkeypatch.chdir(tmp_path)
+
+    assert document_reader("encrypted.pdf", "s1") == []
+
+
 def test_document_reader_limits_snippet_length(tmp_path, monkeypatch) -> None:
     document = tmp_path / "long.md"
     document.write_text("a" * 600, encoding="utf-8")
@@ -258,12 +346,12 @@ def test_document_reader_hash_prevents_separator_slug_collisions(
     [
         "missing.md",
         ".",
-        "unsupported.pdf",
+        "unsupported.docx",
         "../outside.md",
     ],
 )
 def test_document_reader_rejects_invalid_paths(query, tmp_path, monkeypatch) -> None:
-    (tmp_path / "unsupported.pdf").write_text("pdf text", encoding="utf-8")
+    (tmp_path / "unsupported.docx").write_text("docx text", encoding="utf-8")
     (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 

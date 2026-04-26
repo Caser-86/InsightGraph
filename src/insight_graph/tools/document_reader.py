@@ -1,13 +1,17 @@
 import hashlib
+import logging
 import re
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from insight_graph.state import Evidence
 
-SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".html", ".htm"}
+SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".html", ".htm", ".pdf"}
 HTML_SUFFIXES = {".html", ".htm"}
+PDF_SUFFIXES = {".pdf"}
 MAX_SNIPPET_CHARS = 500
 
 
@@ -18,8 +22,8 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        text = _read_document_text(path)
+    except (OSError, UnicodeDecodeError, PdfReadError):
         return []
 
     snippet = _normalize_snippet(_extract_text(text, path.suffix.lower()))
@@ -37,6 +41,27 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
             verified=True,
         )
     ]
+
+
+def _read_document_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in PDF_SUFFIXES:
+        return _read_pdf_text(path)
+    return path.read_text(encoding="utf-8")
+
+
+def _read_pdf_text(path: Path) -> str:
+    logger = logging.getLogger("pypdf")
+    previous_level = logger.level
+    logger.setLevel(logging.CRITICAL + 1)
+    try:
+        with path.open("rb") as handle:
+            reader = PdfReader(handle)
+            if reader.is_encrypted:
+                return ""
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+    finally:
+        logger.setLevel(previous_level)
 
 
 def _extract_text(text: str, suffix: str) -> str:

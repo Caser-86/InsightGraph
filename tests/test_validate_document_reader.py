@@ -22,6 +22,7 @@ def test_run_validation_returns_fixed_cases():
         "markdown_file_success",
         "markdown_suffix_success",
         "html_file_success",
+        "pdf_file_success",
         "nested_file_success",
         "unsupported_suffix_returns_empty",
         "missing_file_returns_empty",
@@ -58,6 +59,10 @@ def test_run_validation_success_cases_include_expected_metadata():
     assert html_case["title"] == "brief.html"
     assert html_case["snippet_contains"] is True
 
+    pdf_case = case_by_name(payload, "pdf_file_success")
+    assert pdf_case["title"] == "brief.pdf"
+    assert pdf_case["snippet_contains"] is True
+
     nested_case = case_by_name(payload, "nested_file_success")
     assert nested_case["title"] == "deep.md"
     assert nested_case["snippet_contains"] is True
@@ -91,11 +96,11 @@ def test_run_validation_summary_counts_results():
     payload = run_validation()
 
     assert payload["summary"] == {
-        "case_count": 11,
-        "passed_count": 11,
+        "case_count": 12,
+        "passed_count": 12,
         "failed_count": 0,
         "all_passed": True,
-        "total_evidence_count": 5,
+        "total_evidence_count": 6,
     }
 
 
@@ -117,9 +122,9 @@ def test_run_validation_restores_cwd_after_case_exception():
 
     assert os.getcwd() == original_cwd
     assert payload["summary"] == {
-        "case_count": 11,
+        "case_count": 12,
         "passed_count": 0,
-        "failed_count": 11,
+        "failed_count": 12,
         "all_passed": False,
         "total_evidence_count": 0,
     }
@@ -143,7 +148,7 @@ def test_format_markdown_writes_summary_table():
     assert case_header in output
     assert success_row in output
     assert "## Summary" in output
-    assert "| 11 | 11 | 0 | true | 5 |" in output
+    assert "| 12 | 12 | 0 | true | 6 |" in output
     assert output.endswith("\n")
 
 
@@ -190,7 +195,7 @@ def test_main_writes_json_by_default():
     assert stderr.getvalue() == ""
     payload = json.loads(stdout.getvalue())
     assert payload["summary"]["all_passed"] is True
-    assert payload["summary"]["case_count"] == 11
+    assert payload["summary"]["case_count"] == 12
 
 
 def test_main_writes_markdown_when_flag_is_present():

@@ -86,11 +86,44 @@ def _write_fixtures(workspace: Path, outside_file: Path) -> None:
         """,
         encoding="utf-8",
     )
-    (workspace / "unsupported.pdf").write_text("not a real PDF", encoding="utf-8")
+    _write_minimal_pdf(workspace / "brief.pdf", "PDF market brief for document_reader.")
+    (workspace / "unsupported.docx").write_text("not a supported document", encoding="utf-8")
     (workspace / "empty.txt").write_text("", encoding="utf-8")
     (workspace / "invalid.txt").write_bytes(b"\xff\xfe\x00")
     (nested / "deep.md").write_text("nested document content", encoding="utf-8")
     outside_file.write_text("outside document", encoding="utf-8")
+
+
+def _write_minimal_pdf(path: Path, text: str) -> None:
+    escaped_text = text.replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+    content = f"BT /F1 12 Tf 72 720 Td ({escaped_text}) Tj ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content.encode())} >>\nstream\n{content}\nendstream",
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n{body}\nendobj\n".encode())
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode())
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode()
+    )
+    path.write_bytes(bytes(output))
 
 
 def _validation_cases(outside_file: Path) -> list[ValidationCase]:
@@ -117,8 +150,15 @@ def _validation_cases(outside_file: Path) -> list[ValidationCase]:
             "brief.html",
             "HTML market brief",
         ),
+        ValidationCase(
+            "pdf_file_success",
+            "brief.pdf",
+            1,
+            "brief.pdf",
+            "PDF market brief",
+        ),
         ValidationCase("nested_file_success", "nested/deep.md", 1, "deep.md", "nested document"),
-        ValidationCase("unsupported_suffix_returns_empty", "unsupported.pdf", 0),
+        ValidationCase("unsupported_suffix_returns_empty", "unsupported.docx", 0),
         ValidationCase("missing_file_returns_empty", "missing.md", 0),
         ValidationCase("empty_file_returns_empty", "empty.txt", 0),
         ValidationCase("invalid_utf8_returns_empty", "invalid.txt", 0),
