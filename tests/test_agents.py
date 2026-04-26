@@ -1184,6 +1184,26 @@ def test_llm_reporter_detects_competitive_matrix_heading_variants(monkeypatch) -
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
+def test_llm_reporter_detects_competitive_matrix_atx_heading_variants(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n### Competitive Matrix ##\\n\\n'
+            '| Product | Positioning | Strengths | Evidence |\\n'
+            '| --- | --- | --- | --- |\\n'
+            '| Cursor | Existing | Existing | [1] |"}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert updated.report_markdown.count("Competitive Matrix") == 1
+    assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
+
+
 def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
     messages: list[list[ChatMessage]] = []

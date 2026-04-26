@@ -20,7 +20,7 @@ RESIDUAL_REFERENCE_HEADING_PATTERN = re.compile(
 )
 KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+Key Findings\s*$")
 COMPETITIVE_MATRIX_HEADING_PATTERN = re.compile(
-    r"(?im)^ {0,3}##\s+Competitive Matrix\s*$"
+    r"(?im)^ {0,3}#{2,6}\s+Competitive Matrix\s*#*\s*$"
 )
 NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}##\s+")
 SMART_PUNCTUATION_TRANSLATION = str.maketrans(
