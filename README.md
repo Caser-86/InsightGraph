@@ -165,7 +165,7 @@ Use `--output-json` when scripts need a structured summary instead of Markdown:
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
 ```
 
-JSON output includes `user_request`, `report_markdown`, `findings`, `critique`, `tool_call_log`, `llm_call_log`, and `iterations`. It intentionally omits `evidence_pool` and `global_evidence_pool` to avoid dumping fetched snippets. If `--output-json` and `--show-llm-log` are both provided, JSON output takes precedence.
+JSON output includes `user_request`, `report_markdown`, `findings`, `competitive_matrix`, `critique`, `tool_call_log`, `llm_call_log`, and `iterations`. It intentionally omits `evidence_pool` and `global_evidence_pool` to avoid dumping fetched snippets. If `--output-json` and `--show-llm-log` are both provided, JSON output takes precedence.
 
 ---
 
@@ -454,7 +454,7 @@ flowchart TB
 ### 3. Analyst
 
 - **实体画像**：为公司、产品、技术、市场主题建立结构化 profile
-- **竞品矩阵**：自动整理定位、核心功能、定价、目标用户、集成生态、技术路线
+- **竞品矩阵**：当前 MVP 生成 evidence-backed deterministic `competitive_matrix`，Reporter 输出 `Competitive Matrix` Markdown 表格；第一版不做排名、评分或精确定价抽取
 - **趋势归纳**：从时间线、发布节奏、开源活跃度、媒体关注度中提取趋势信号
 - **不确定性标注**：对缺失数据、冲突证据、低可信来源进行显式标注
 
@@ -494,6 +494,8 @@ flowchart TB
 | 运行时间 | 8-20 分钟，取决于搜索深度与引用校验数量 |
 
 **产出报告结构**：Executive Summary → Market Overview → Competitive Matrix → Product Deep Dives → Pricing & Positioning → Technology Trends → Risks & Open Questions → References
+
+当前 `Competitive Matrix` 为 verified evidence 支撑的 deterministic MVP；它展示产品、定位、证据标签和引用，不代表自动排名或评分。
 
 每个关键事实均通过 `[N]` 编号关联到 References 中的具体 URL，可逐条验证。
 
@@ -538,6 +540,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 ### 当前输出
 
 - **CLI 报告**：Markdown 格式，包含 `Key Findings`、`Critic Assessment`、`References`
+- **结构化输出**：`--output-json` 包含 `competitive_matrix`，便于后续 API、benchmark 和前端复用
 - **数据源**：固定 mock evidence，不进行真实联网搜索
 - **API / 前端**：尚未实现，属于后续路线图
 
