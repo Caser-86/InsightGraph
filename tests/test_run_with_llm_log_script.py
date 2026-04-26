@@ -2,6 +2,7 @@ import io
 import json
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 import scripts.run_with_llm_log as llm_log_script
 from insight_graph.state import (
@@ -26,7 +27,7 @@ class BadStdin:
         raise OSError("cannot read")
 
 
-def make_state(query: str) -> GraphState:
+def make_state(query: str, *, wire_api: str = "responses") -> GraphState:
     return GraphState(
         user_request=query,
         report_markdown="# InsightGraph Research Report\n\n## References\n",
@@ -61,7 +62,7 @@ def make_state(query: str) -> GraphState:
                 stage="reporter",
                 provider="llm",
                 model="relay-model",
-                wire_api="responses",
+                wire_api=wire_api,
                 success=True,
                 duration_ms=12,
                 input_tokens=10,
@@ -82,6 +83,20 @@ def fixed_now() -> datetime:
     return FIXED_NOW
 
 
+def collect_json_keys(value: Any) -> set[str]:
+    if isinstance(value, dict):
+        keys = set(value)
+        for child in value.values():
+            keys.update(collect_json_keys(child))
+        return keys
+    if isinstance(value, list):
+        keys: set[str] = set()
+        for child in value:
+            keys.update(collect_json_keys(child))
+        return keys
+    return set()
+
+
 def test_build_log_payload_contains_only_safe_metadata():
     state = make_state("Compare Cursor")
 
@@ -100,19 +115,21 @@ def test_build_log_payload_contains_only_safe_metadata():
 
 
 def test_build_log_payload_omits_sensitive_fields():
-    state = make_state("Compare Cursor")
+    state = make_state("Compare Cursor", wire_api="chat_completions")
     payload = llm_log_script.build_log_payload(state, preset="offline")
 
+    payload_keys = collect_json_keys(payload)
     payload_text = str(payload).lower()
 
     assert "report_markdown" not in payload
+    assert payload["llm_call_log"][0]["wire_api"] == "chat_completions"
     assert "# insightgraph research report" not in payload_text
     assert "sensitive finding" not in payload_text
     assert "sensitive matrix" not in payload_text
-    assert "evidence_pool" not in payload_text
-    assert "prompt" not in payload_text
-    assert "completion" not in payload_text
-    assert "api_key" not in payload_text
+    assert "evidence_pool" not in payload_keys
+    assert "prompt" not in payload_keys
+    assert "completion" not in payload_keys
+    assert "api_key" not in payload_keys
 
 
 def test_slugify_query_limits_and_normalizes_filename_component():
