@@ -28,7 +28,11 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 当前 CLI 的 Planner 默认仍选择 `mock_search`，不会因为设置 DuckDuckGo provider 而自动联网。需要让研究流调用 `web_search` 时，显式设置 `INSIGHT_GRAPH_USE_WEB_SEARCH=1`；此时 `INSIGHT_GRAPH_SEARCH_PROVIDER` 再决定 `web_search` 使用 mock provider 还是 DuckDuckGo provider。
 
-需要只采集 GitHub 风格证据而不访问公网时，可设置 `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`。第一版 `github_search` 是 deterministic/offline 工具，返回稳定 verified GitHub evidence，不调用 GitHub API、不需要 token，也不受 rate limit 影响。后续 live GitHub provider 会单独设计。
+需要采集 GitHub 风格证据时，可设置 `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`。`github_search` 默认使用 deterministic/offline provider，返回稳定 verified GitHub evidence，不调用 GitHub API、不需要 token，也不受 rate limit 影响。需要真实 GitHub repository search 时，可额外设置 `INSIGHT_GRAPH_GITHUB_PROVIDER=live`；此时会调用 GitHub REST Search API。`INSIGHT_GRAPH_GITHUB_TOKEN` 或 `GITHUB_TOKEN` 可选，有 token 时用于提高 rate limit，无 token 时使用匿名请求。live provider 出现网络、鉴权、rate limit 或响应解析错误时返回空 evidence，不中断 workflow。
+
+```bash
+INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRAPH_GITHUB_LIMIT=3 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
 
 需要只采集新闻和产品公告风格证据而不访问公网时，可设置 `INSIGHT_GRAPH_USE_NEWS_SEARCH=1`。第一版 `news_search` 是 deterministic/offline 工具，返回稳定 verified news evidence，不调用新闻 API、不需要 token，也不受 rate limit 影响。若同时启用 `INSIGHT_GRAPH_USE_WEB_SEARCH` 或 `INSIGHT_GRAPH_USE_GITHUB_SEARCH`，Planner 会按 web search、GitHub search、news search、mock search 的顺序选择第一个启用工具。
 
@@ -39,7 +43,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `INSIGHT_GRAPH_USE_WEB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 `web_search` | 未启用 |
-| `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `github_search`；若同时启用 web search，则 web search 优先 | 未启用 |
+| `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 `github_search`；若同时启用 web search，则 web search 优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `news_search`；若同时启用 web 或 GitHub search，则前者优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `document_reader`；若同时启用搜索工具，则搜索工具优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `read_file`；搜索工具和 `document_reader` 优先 | 未启用 |
@@ -47,6 +51,9 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 | `INSIGHT_GRAPH_USE_WRITE_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用 create-only `write_file`；搜索工具、`document_reader`、`read_file` 和 `list_directory` 优先 | 未启用 |
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
+| `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider，支持默认离线 `mock` 或 opt-in GitHub API `live` | `mock` |
+| `INSIGHT_GRAPH_GITHUB_LIMIT` | live GitHub repository search 返回数量，范围 `1` 到 `10` | `3` |
+| `INSIGHT_GRAPH_GITHUB_TOKEN` | 可选 GitHub API token；未设置时回退到 `GITHUB_TOKEN`，仍可匿名请求 | - |
 
 当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用，尚未包含多轮 agentic tool loop、conversation compression 或收敛检测。
 

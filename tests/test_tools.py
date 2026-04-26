@@ -102,7 +102,9 @@ def test_tools_package_exports_readonly_file_tool_callables() -> None:
     assert callable(write_file)
 
 
-def test_github_search_returns_deterministic_verified_github_evidence() -> None:
+def test_github_search_returns_deterministic_verified_github_evidence(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_PROVIDER", raising=False)
+
     evidence = github_search("Compare Cursor, OpenCode, and GitHub Copilot", "s1")
 
     assert len(evidence) == 3
@@ -119,6 +121,98 @@ def test_github_search_returns_deterministic_verified_github_evidence() -> None:
         "https://github.com/github/docs/tree/main/content/copilot",
         "https://github.com/safishamsi/graphify",
     ]
+
+
+def test_github_search_live_provider_maps_repository_results(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        observed["url"] = url
+        observed["headers"] = headers
+        observed["timeout"] = timeout
+        return {
+            "items": [
+                {
+                    "full_name": "example/insightgraph",
+                    "html_url": "https://github.com/example/insightgraph",
+                    "description": "Research graph for competitive intelligence.",
+                    "stargazers_count": 42,
+                    "language": "Python",
+                    "updated_at": "2026-04-26T12:00:00Z",
+                }
+            ]
+        }
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_LIMIT", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    evidence = github_search("InsightGraph competitive intelligence", "s1")
+
+    assert observed["url"] == (
+        "https://api.github.com/search/repositories?"
+        "q=InsightGraph+competitive+intelligence&per_page=1"
+    )
+    assert observed["headers"] == {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "InsightGraph/0.1",
+        "Authorization": "Bearer test-token",
+    }
+    assert observed["timeout"] == 10.0
+    assert len(evidence) == 1
+    assert evidence[0].id == "github-example-insightgraph"
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "example/insightgraph"
+    assert evidence[0].source_url == "https://github.com/example/insightgraph"
+    assert evidence[0].snippet == (
+        "Research graph for competitive intelligence. Stars: 42. "
+        "Language: Python. Updated: 2026-04-26T12:00:00Z."
+    )
+    assert evidence[0].source_type == "github"
+    assert evidence[0].verified is True
+
+
+def test_github_search_live_provider_allows_anonymous_requests(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        observed["headers"] = headers
+        return {"items": []}
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    assert github_search("InsightGraph", "s1") == []
+    assert "Authorization" not in observed["headers"]
+
+
+def test_github_search_live_provider_returns_empty_on_fetch_error(monkeypatch) -> None:
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        raise RuntimeError("HTTP error while fetching GitHub API: 403")
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    assert github_search("InsightGraph", "s1") == []
+
+
+def test_github_search_live_provider_returns_empty_on_unexpected_json_shape(
+    monkeypatch,
+) -> None:
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        return []
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    assert github_search("InsightGraph", "s1") == []
 
 
 def test_news_search_returns_deterministic_verified_news_evidence() -> None:
