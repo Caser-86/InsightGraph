@@ -6,7 +6,7 @@ from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import get_reporter_provider, write_report
 from insight_graph.llm import ChatCompletionResult, ChatMessage
-from insight_graph.state import Critique, Evidence, Finding, GraphState
+from insight_graph.state import CompetitiveMatrixRow, Critique, Evidence, Finding, GraphState
 
 
 class FakeLLMClient:
@@ -73,6 +73,50 @@ def make_analyst_state() -> GraphState:
                 snippet="GitHub Copilot documentation describes coding assistant features.",
                 source_type="docs",
                 verified=True,
+            ),
+        ],
+    )
+
+
+def make_matrix_state() -> GraphState:
+    return GraphState(
+        user_request="Compare Cursor, OpenCode, and GitHub Copilot",
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor lists pricing and AI coding features.",
+                source_type="official_site",
+                verified=True,
+            ),
+            Evidence(
+                id="opencode-repo",
+                subtask_id="collect",
+                title="OpenCode Repository",
+                source_url="https://github.com/sst/opencode",
+                snippet="OpenCode repository shows developer ecosystem activity.",
+                source_type="github",
+                verified=True,
+            ),
+            Evidence(
+                id="copilot-docs",
+                subtask_id="collect",
+                title="GitHub Copilot Documentation",
+                source_url="https://docs.github.com/en/copilot",
+                snippet="GitHub Copilot documentation describes coding assistant features.",
+                source_type="docs",
+                verified=True,
+            ),
+            Evidence(
+                id="unverified-cursor-blog",
+                subtask_id="collect",
+                title="Cursor Blog",
+                source_url="https://example.com/cursor",
+                snippet="Unverified Cursor opinion.",
+                source_type="blog",
+                verified=False,
             ),
         ],
     )
@@ -638,6 +682,69 @@ def test_analyze_evidence_falls_back_without_api_key(monkeypatch) -> None:
         "Official sources establish baseline product positioning",
         "Open repositories add adoption and roadmap signals",
     ]
+
+
+def test_deterministic_analyst_builds_competitive_matrix() -> None:
+    state = make_matrix_state()
+
+    updated = analyze_evidence(state)
+
+    products = [row.product for row in updated.competitive_matrix]
+    assert products == ["Cursor", "OpenCode", "GitHub Copilot"]
+    cursor: CompetitiveMatrixRow = updated.competitive_matrix[0]
+    opencode = updated.competitive_matrix[1]
+    copilot = updated.competitive_matrix[2]
+    assert cursor.positioning == "Official product positioning signal"
+    assert opencode.positioning == "Open-source or developer ecosystem signal"
+    assert copilot.positioning == "Documented product or local research source"
+    assert cursor.evidence_ids == ["cursor-pricing"]
+    assert opencode.evidence_ids == ["opencode-repo"]
+    assert copilot.evidence_ids == ["copilot-docs"]
+    assert "unverified-cursor-blog" not in cursor.evidence_ids
+
+
+def test_deterministic_analyst_matrix_uses_general_row_without_product_match() -> None:
+    state = GraphState(
+        user_request="Analyze developer tool market",
+        evidence_pool=[
+            Evidence(
+                id="market-news",
+                subtask_id="collect",
+                title="AI developer tools funding",
+                source_url="https://example.com/news",
+                snippet="Developer tool market activity increased.",
+                source_type="news",
+                verified=True,
+            )
+        ],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert len(updated.competitive_matrix) == 1
+    assert updated.competitive_matrix[0].product == "General market evidence"
+    assert updated.competitive_matrix[0].evidence_ids == ["market-news"]
+
+
+def test_deterministic_analyst_matrix_empty_without_verified_evidence() -> None:
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot",
+        evidence_pool=[
+            Evidence(
+                id="unverified",
+                subtask_id="collect",
+                title="Cursor Blog",
+                source_url="https://example.com/cursor",
+                snippet="Unverified Cursor opinion.",
+                source_type="blog",
+                verified=False,
+            )
+        ],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert updated.competitive_matrix == []
 
 
 @pytest.mark.parametrize(

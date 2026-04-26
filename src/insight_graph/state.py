@@ -37,6 +37,13 @@ class Finding(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class CompetitiveMatrixRow(BaseModel):
+    product: str
+    positioning: str
+    strengths: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class Critique(BaseModel):
     passed: bool
     reason: str
@@ -74,6 +81,7 @@ class GraphState(BaseModel):
     tool_call_log: list[ToolCallRecord] = Field(default_factory=list)
     llm_call_log: list[LLMCallRecord] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    competitive_matrix: list[CompetitiveMatrixRow] = Field(default_factory=list)
     critique: Critique | None = None
     report_markdown: str | None = None
     iterations: int = 0

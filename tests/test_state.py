@@ -6,7 +6,14 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
-from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
+from insight_graph.state import (
+    CompetitiveMatrixRow,
+    Evidence,
+    GraphState,
+    LLMCallRecord,
+    Subtask,
+    ToolCallRecord,
+)
 
 
 def test_package_version_is_defined() -> None:
@@ -46,7 +53,22 @@ def test_graph_state_starts_with_empty_collections() -> None:
     assert state.subtasks == []
     assert state.evidence_pool == []
     assert state.findings == []
+    assert state.competitive_matrix == []
     assert state.report_markdown is None
+
+
+def test_competitive_matrix_row_stores_evidence_backed_fields() -> None:
+    row = CompetitiveMatrixRow(
+        product="Cursor",
+        positioning="Official product positioning signal",
+        strengths=["Official/documented source coverage"],
+        evidence_ids=["cursor-pricing"],
+    )
+
+    assert row.product == "Cursor"
+    assert row.positioning == "Official product positioning signal"
+    assert row.strengths == ["Official/documented source coverage"]
+    assert row.evidence_ids == ["cursor-pricing"]
 
 
 def test_tool_call_record_defaults_to_success() -> None:

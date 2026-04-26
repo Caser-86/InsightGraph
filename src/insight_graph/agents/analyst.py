@@ -8,7 +8,30 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
-from insight_graph.state import Evidence, Finding, GraphState
+from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
+
+PRODUCT_ALIASES = {
+    "Cursor": ["cursor"],
+    "OpenCode": ["opencode", "open code"],
+    "Claude Code": ["claude code"],
+    "GitHub Copilot": ["github copilot", "copilot"],
+    "Codeium": ["codeium"],
+    "Windsurf": ["windsurf"],
+}
+
+SOURCE_POSITIONING = {
+    "github": "Open-source or developer ecosystem signal",
+    "docs": "Documented product or local research source",
+    "news": "Market/news activity signal",
+    "official_site": "Official product positioning signal",
+}
+
+SOURCE_STRENGTHS = {
+    "official_site": "Official/documented source coverage",
+    "docs": "Official/documented source coverage",
+    "github": "Repository or developer ecosystem evidence",
+    "news": "News or launch activity evidence",
+}
 
 
 def get_analyst_provider(name: str | None = None) -> str:
@@ -52,7 +75,71 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
             evidence_ids=evidence_ids[2:],
         ),
     ]
+    state.competitive_matrix = build_competitive_matrix(
+        state.user_request,
+        state.evidence_pool,
+    )
     return state
+
+
+def build_competitive_matrix(
+    user_request: str,
+    evidence_pool: list[Evidence],
+) -> list[CompetitiveMatrixRow]:
+    verified_evidence = [item for item in evidence_pool if item.verified]
+    if not verified_evidence:
+        return []
+
+    rows = []
+    for product, aliases in PRODUCT_ALIASES.items():
+        product_evidence = [
+            item for item in verified_evidence if _mentions_product(user_request, item, aliases)
+        ]
+        if not product_evidence:
+            continue
+        rows.append(_build_matrix_row(product, product_evidence[:3]))
+
+    if rows:
+        return rows
+    return [_build_matrix_row("General market evidence", verified_evidence[:3])]
+
+
+def _mentions_product(user_request: str, evidence: Evidence, aliases: list[str]) -> bool:
+    request_mentions_product = any(alias in user_request.lower() for alias in aliases)
+    evidence_haystack = " ".join(
+        [evidence.title, evidence.source_url, evidence.snippet]
+    ).lower()
+    return request_mentions_product and any(alias in evidence_haystack for alias in aliases)
+
+
+def _build_matrix_row(product: str, evidence: list[Evidence]) -> CompetitiveMatrixRow:
+    source_types = [item.source_type for item in evidence]
+    positioning = _positioning_for_sources(source_types)
+    strengths = _strengths_for_sources(source_types)
+    return CompetitiveMatrixRow(
+        product=product,
+        positioning=positioning,
+        strengths=strengths,
+        evidence_ids=[item.id for item in evidence],
+    )
+
+
+def _positioning_for_sources(source_types: list[str]) -> str:
+    for source_type in ("github", "docs", "news", "official_site"):
+        if source_type in source_types:
+            return SOURCE_POSITIONING[source_type]
+    return "Evidence-backed product signal"
+
+
+def _strengths_for_sources(source_types: list[str]) -> list[str]:
+    strengths = []
+    for source_type in ("official_site", "docs", "github", "news"):
+        strength = SOURCE_STRENGTHS.get(source_type)
+        if source_type in source_types and strength and strength not in strengths:
+            strengths.append(strength)
+    if not strengths:
+        strengths.append("Verified evidence available")
+    return strengths[:3]
 
 
 def _analyze_evidence_with_llm(
