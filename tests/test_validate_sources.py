@@ -1,4 +1,7 @@
-from scripts.validate_sources import validate_report
+import io
+import json
+
+from scripts.validate_sources import main, validate_report
 
 VALID_REPORT = """# Report
 
@@ -165,3 +168,59 @@ The report cites one source [1].
     assert payload["citation_count"] == 1
     assert payload["reference_count"] == 1
     assert payload["issues"] == []
+
+
+def test_main_reads_file_and_writes_json(tmp_path):
+    report_path = tmp_path / "report.md"
+    report_path.write_text(VALID_REPORT, encoding="utf-8")
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([str(report_path)], stdin=io.StringIO(), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    payload = json.loads(stdout.getvalue())
+    assert payload["ok"] is True
+    assert payload["issues"] == []
+
+
+def test_main_reads_stdin_when_path_is_dash():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(["-"], stdin=io.StringIO(VALID_REPORT), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    assert json.loads(stdout.getvalue())["ok"] is True
+
+
+def test_main_returns_one_when_issues_exist():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(
+        ["-"],
+        stdin=io.StringIO("# Report\n\nMissing refs [1].\n"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 1
+    payload = json.loads(stdout.getvalue())
+    assert payload["ok"] is False
+    assert payload["issues"][0]["type"] == "missing_references_section"
+
+
+def test_main_returns_two_for_missing_file_without_traceback(tmp_path):
+    missing_path = tmp_path / "missing.md"
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([str(missing_path)], stdin=io.StringIO(), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert "Failed to read input" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()

@@ -1,5 +1,9 @@
+import argparse
+import json
 import re
-from typing import Any
+import sys
+from pathlib import Path
+from typing import Any, TextIO
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _REFERENCE_LINE_RE = re.compile(r"^\s*\[(\d+)\]\s+\S.*\S\s*$")
@@ -59,6 +63,45 @@ def validate_report(markdown: str) -> dict[str, Any]:
         "reference_count": len(reference_numbers),
         "issues": issues,
     }
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    stdin: TextIO | None = None,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> int:
+    stdin = sys.stdin if stdin is None else stdin
+    stdout = sys.stdout if stdout is None else stdout
+    stderr = sys.stderr if stderr is None else stderr
+
+    parser = argparse.ArgumentParser(description="Validate Markdown report sources.")
+    parser.add_argument("path", help="Markdown file path, or '-' to read stdin.")
+
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+
+    try:
+        markdown = _read_input(args.path, stdin)
+    except OSError as exc:
+        stderr.write(f"Failed to read input: {exc}\n")
+        return 2
+
+    payload = validate_report(markdown)
+    json.dump(payload, stdout, indent=2, ensure_ascii=False)
+    stdout.write("\n")
+
+    return 0 if payload["ok"] else 1
+
+
+def _read_input(path: str, stdin: TextIO) -> str:
+    if path == "-":
+        return stdin.read()
+
+    return Path(path).read_text(encoding="utf-8")
 
 
 def _find_references_section(markdown: str) -> tuple[int, int] | None:
@@ -124,3 +167,7 @@ def _parse_references(lines: list[str]) -> tuple[dict[int, str], list[dict[str, 
 
 def _unique_positive_numbers(numbers: list[str]) -> set[int]:
     return {int(number) for number in numbers if int(number) > 0}
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
