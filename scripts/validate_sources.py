@@ -74,6 +74,44 @@ def validate_report(markdown: str) -> dict[str, Any]:
     }
 
 
+def format_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Source Validation",
+        "",
+        "| OK | Citations | References | Issues |",
+        "| --- | ---: | ---: | ---: |",
+        (
+            f"| {str(payload['ok']).lower()} | {payload['citation_count']} | "
+            f"{payload['reference_count']} | {len(payload['issues'])} |"
+        ),
+    ]
+
+    if payload["issues"]:
+        lines.extend(
+            [
+                "",
+                "## Issues",
+                "",
+                "| Type | Reference | Message |",
+                "| --- | ---: | --- |",
+            ]
+        )
+        for issue in payload["issues"]:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _format_markdown_cell(issue["type"]),
+                        _format_markdown_cell(issue["reference"]),
+                        _format_markdown_cell(issue["message"]),
+                    ]
+                )
+                + " |"
+            )
+
+    return "\n".join(lines) + "\n"
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -90,6 +128,11 @@ def main(
         stderr=stderr,
     )
     parser.add_argument("path", help="Markdown file path, or '-' to read stdin.")
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Write GitHub-flavored Markdown instead of JSON.",
+    )
 
     try:
         args = parser.parse_args(argv)
@@ -104,8 +147,11 @@ def main(
 
     payload = validate_report(markdown)
     try:
-        json.dump(payload, stdout, indent=2, ensure_ascii=False)
-        stdout.write("\n")
+        if args.markdown:
+            stdout.write(format_markdown(payload))
+        else:
+            json.dump(payload, stdout, indent=2, ensure_ascii=False)
+            stdout.write("\n")
     except OSError as exc:
         stderr.write(f"Failed to write output: {exc}\n")
         return 2
@@ -118,6 +164,10 @@ def _read_input(path: str, stdin: TextIO) -> str:
         return stdin.read()
 
     return Path(path).read_text(encoding="utf-8")
+
+
+def _format_markdown_cell(value: Any) -> str:
+    return " ".join(str(value).splitlines()).replace("|", r"\|")
 
 
 def _find_references_section(markdown: str) -> tuple[int, int] | None:

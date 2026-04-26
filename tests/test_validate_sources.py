@@ -1,7 +1,7 @@
 import io
 import json
 
-from scripts.validate_sources import main, validate_report
+from scripts.validate_sources import format_markdown, main, validate_report
 
 VALID_REPORT = """# Report
 
@@ -196,6 +196,54 @@ def test_main_reads_stdin_when_path_is_dash():
     assert json.loads(stdout.getvalue())["ok"] is True
 
 
+def test_format_markdown_writes_summary_without_issues():
+    payload = validate_report(VALID_REPORT)
+
+    output = format_markdown(payload)
+
+    assert "# Source Validation" in output
+    assert "| OK | Citations | References | Issues |" in output
+    assert "| true | 2 | 2 | 0 |" in output
+    assert "## Issues" not in output
+
+
+def test_format_markdown_writes_issue_table_with_escaped_cells():
+    payload = {
+        "ok": False,
+        "citation_count": 1,
+        "reference_count": 0,
+        "issues": [
+            {
+                "type": "missing_reference",
+                "reference": 1,
+                "message": "Line one | line two\nline three",
+            }
+        ],
+    }
+
+    output = format_markdown(payload)
+
+    assert "## Issues" in output
+    assert "| missing_reference | 1 | Line one \\| line two line three |" in output
+
+
+def test_main_writes_markdown_when_flag_is_present():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(
+        ["-", "--markdown"],
+        stdin=io.StringIO(VALID_REPORT),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    assert stdout.getvalue().startswith("# Source Validation")
+    assert "| true | 2 | 2 | 0 |" in stdout.getvalue()
+
+
 def test_main_returns_one_when_issues_exist():
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -249,6 +297,25 @@ def test_main_returns_two_for_output_write_error_without_traceback():
 
     exit_code = main(
         ["-"],
+        stdin=io.StringIO(VALID_REPORT),
+        stdout=BadStdout(),
+        stderr=stderr,
+    )
+
+    assert exit_code == 2
+    assert "Failed to write output" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_markdown_output_write_error_without_traceback():
+    class BadStdout(io.StringIO):
+        def write(self, value: str) -> int:
+            raise OSError("cannot write")
+
+    stderr = io.StringIO()
+
+    exit_code = main(
+        ["-", "--markdown"],
         stdin=io.StringIO(VALID_REPORT),
         stdout=BadStdout(),
         stderr=stderr,
