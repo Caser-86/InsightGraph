@@ -1,6 +1,13 @@
+import io
+import json
 import os
 
-from scripts.validate_document_reader import run_validation
+from scripts.validate_document_reader import format_markdown, main, run_validation
+
+
+class BadStdout:
+    def write(self, value: str) -> int:
+        raise OSError("cannot write")
 
 
 def case_by_name(payload: dict, name: str) -> dict:
@@ -93,3 +100,123 @@ def test_run_validation_restores_cwd_after_success():
     run_validation()
 
     assert os.getcwd() == original_cwd
+
+
+def test_run_validation_restores_cwd_after_case_exception():
+    original_cwd = os.getcwd()
+
+    def failing_reader(query: str):
+        raise RuntimeError("raw reader failure should not leak")
+
+    payload = run_validation(reader=failing_reader)
+
+    assert os.getcwd() == original_cwd
+    assert payload["summary"] == {
+        "case_count": 10,
+        "passed_count": 0,
+        "failed_count": 10,
+        "all_passed": False,
+        "total_evidence_count": 0,
+    }
+    assert {case["error"] for case in payload["cases"]} == {
+        "Document reader validation case failed."
+    }
+    assert "raw reader failure" not in json.dumps(payload)
+
+
+def test_format_markdown_writes_summary_table():
+    payload = run_validation()
+
+    output = format_markdown(payload)
+    case_header = (
+        "| Case | Passed | Evidence | Expected | Title | Source type | Verified | "
+        "URL scheme | Snippet check | Error |"
+    )
+    success_row = "| txt_file_success | true | 1 | 1 | notes.txt | docs | true | file | true |  |"
+
+    assert output.startswith("# Document Reader Validation")
+    assert case_header in output
+    assert success_row in output
+    assert "## Summary" in output
+    assert "| 10 | 10 | 0 | true | 4 |" in output
+    assert output.endswith("\n")
+
+
+def test_format_markdown_escapes_table_cells():
+    payload = {
+        "cases": [
+            {
+                "name": "case|one",
+                "query": "query",
+                "passed": False,
+                "evidence_count": 0,
+                "expected_evidence_count": 1,
+                "title": "title|value",
+                "source_type": "docs",
+                "verified": False,
+                "source_url_scheme": "file",
+                "snippet_contains": False,
+                "error": "line one | line two\nline three",
+            }
+        ],
+        "summary": {
+            "case_count": 1,
+            "passed_count": 0,
+            "failed_count": 1,
+            "all_passed": False,
+            "total_evidence_count": 0,
+        },
+    }
+
+    output = format_markdown(payload)
+
+    assert "case\\|one" in output
+    assert "title\\|value" in output
+    assert "line one \\| line two line three" in output
+
+
+def test_main_writes_json_by_default():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([], stdout=stdout, stderr=stderr)
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    payload = json.loads(stdout.getvalue())
+    assert payload["summary"]["all_passed"] is True
+    assert payload["summary"]["case_count"] == 10
+
+
+def test_main_writes_markdown_when_flag_is_present():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(["--markdown"], stdout=stdout, stderr=stderr)
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    assert stdout.getvalue().startswith("# Document Reader Validation")
+    assert "## Summary" in stdout.getvalue()
+
+
+def test_main_returns_two_for_parse_error_without_traceback():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(["--unknown"], stdout=stdout, stderr=stderr)
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert "usage:" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_stdout_write_error_without_traceback():
+    stderr = io.StringIO()
+
+    exit_code = main([], stdout=BadStdout(), stderr=stderr)
+
+    assert exit_code == 2
+    assert "Document reader validation failed: failed to write output" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()

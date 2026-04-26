@@ -1,18 +1,37 @@
 from __future__ import annotations
 
+import argparse
+import json
 import os
+import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from insight_graph.state import Evidence
 from insight_graph.tools.document_reader import document_reader
 
 CASE_ERROR = "Document reader validation case failed."
+SCRIPT_ERROR_PREFIX = "Document reader validation failed"
+
+
+class ValidationArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args: Any, stderr: TextIO, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._stderr = stderr
+
+    def exit(self, status: int = 0, message: str | None = None) -> None:
+        if message:
+            self._stderr.write(message)
+        raise SystemExit(status)
+
+    def error(self, message: str) -> None:
+        self.print_usage(self._stderr)
+        self.exit(2, f"{self.prog}: error: {message}\n")
 
 
 @dataclass(frozen=True)
@@ -170,3 +189,107 @@ def _temporary_cwd(path: Path) -> Iterator[None]:
         yield
     finally:
         os.chdir(original_cwd)
+
+
+def format_markdown(payload: dict[str, Any]) -> str:
+    case_header = (
+        "| Case | Passed | Evidence | Expected | Title | Source type | Verified | "
+        "URL scheme | Snippet check | Error |"
+    )
+    lines = [
+        "# Document Reader Validation",
+        "",
+        case_header,
+        "| --- | --- | ---: | ---: | --- | --- | --- | --- | --- | --- |",
+    ]
+    for case in payload["cases"]:
+        lines.append(
+            "| "
+            f"{_markdown_cell(case['name'])} | "
+            f"{_markdown_bool(case['passed'])} | "
+            f"{case['evidence_count']} | "
+            f"{case['expected_evidence_count']} | "
+            f"{_markdown_cell(case['title'])} | "
+            f"{_markdown_cell(case['source_type'])} | "
+            f"{_markdown_bool(case['verified'])} | "
+            f"{_markdown_cell(case['source_url_scheme'])} | "
+            f"{_markdown_bool(case['snippet_contains'])} | "
+            f"{_markdown_cell(case['error'])} |"
+        )
+
+    summary = payload["summary"]
+    lines.extend(
+        [
+            "",
+            "## Summary",
+            "",
+            "| Cases | Passed | Failed | All passed | Total evidence |",
+            "| ---: | ---: | ---: | --- | ---: |",
+            "| "
+            f"{summary['case_count']} | "
+            f"{summary['passed_count']} | "
+            f"{summary['failed_count']} | "
+            f"{_markdown_bool(summary['all_passed'])} | "
+            f"{summary['total_evidence_count']} |",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> int:
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    parser = ValidationArgumentParser(
+        description="Validate the local document_reader tool with offline fixtures.",
+        stderr=stderr,
+    )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Write GitHub-flavored Markdown output.",
+    )
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+
+    try:
+        payload = run_validation()
+    except OSError:
+        stderr.write(f"{SCRIPT_ERROR_PREFIX}: failed to prepare validation workspace\n")
+        return 2
+
+    try:
+        if args.markdown:
+            stdout.write(format_markdown(payload))
+        else:
+            json.dump(payload, stdout, indent=2, ensure_ascii=False)
+            stdout.write("\n")
+    except OSError:
+        stderr.write(f"{SCRIPT_ERROR_PREFIX}: failed to write output\n")
+        return 2
+
+    return 0 if payload["summary"]["all_passed"] else 1
+
+
+def _markdown_cell(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).replace("\n", " ").replace("|", r"\|")
+
+
+def _markdown_bool(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value).lower()
+    return _markdown_cell(value)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
