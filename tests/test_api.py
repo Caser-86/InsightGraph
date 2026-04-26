@@ -1,9 +1,9 @@
-import os  # noqa: F401
+import os
 
 from fastapi.testclient import TestClient
 
 import insight_graph.api as api_module
-from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS  # noqa: F401
+from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Critique,
@@ -133,3 +133,91 @@ def test_research_passes_query_to_workflow(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert observed_queries == ["Compare Cursor"]
+
+
+def test_research_live_llm_preset_restores_env(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update({name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "live-llm"},
+    )
+
+    assert response.status_code == 200
+    assert observed_env == LIVE_LLM_PRESET_DEFAULTS
+    assert {name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS} == {
+        name: None for name in LIVE_LLM_PRESET_DEFAULTS
+    }
+
+
+def test_research_live_llm_preset_restores_explicit_env(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update({name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "live-llm"},
+    )
+
+    assert response.status_code == 200
+    assert observed_env["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "mock"
+    assert observed_env["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER") == "mock"
+    assert os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH") is None
+
+
+def test_research_offline_preset_does_not_apply_live_defaults(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update({name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "offline"},
+    )
+
+    assert response.status_code == 200
+    assert observed_env == {name: None for name in LIVE_LLM_PRESET_DEFAULTS}
+
+
+def test_research_restores_env_after_workflow_exception(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload")
+
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "live-llm"},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Research workflow failed."}
+    assert {name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS} == {
+        name: None for name in LIVE_LLM_PRESET_DEFAULTS
+    }
