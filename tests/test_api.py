@@ -184,6 +184,7 @@ def test_research_live_llm_preset_restores_env(monkeypatch) -> None:
 def test_research_live_llm_preset_restores_explicit_env(monkeypatch) -> None:
     clear_live_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "deterministic")
     observed_env: dict[str, str | None] = {}
 
     def fake_run_research(query: str) -> GraphState:
@@ -200,8 +201,11 @@ def test_research_live_llm_preset_restores_explicit_env(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert observed_env["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "mock"
+    assert observed_env["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "deterministic"
     assert observed_env["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert observed_env["INSIGHT_GRAPH_ANALYST_PROVIDER"] == "llm"
     assert os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER") == "mock"
+    assert os.getenv("INSIGHT_GRAPH_REPORTER_PROVIDER") == "deterministic"
     assert os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH") is None
 
 
@@ -225,11 +229,30 @@ def test_research_offline_preset_does_not_apply_live_defaults(monkeypatch) -> No
     assert observed_env == {name: None for name in LIVE_LLM_PRESET_DEFAULTS}
 
 
+def test_research_rejects_blank_query() -> None:
+    client = TestClient(api_module.app)
+
+    response = client.post("/research", json={"query": "   "})
+
+    assert response.status_code == 422
+
+
+def test_research_rejects_unknown_preset() -> None:
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "bad"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_research_restores_env_after_workflow_exception(monkeypatch) -> None:
     clear_live_env(monkeypatch)
 
     def fail_run_research(query: str) -> GraphState:
-        raise RuntimeError("secret provider payload")
+        raise RuntimeError("secret provider payload and local path")
 
     monkeypatch.setattr(api_module, "run_research", fail_run_research)
     client = TestClient(api_module.app)
@@ -241,6 +264,8 @@ def test_research_restores_env_after_workflow_exception(monkeypatch) -> None:
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Research workflow failed."}
+    assert "secret provider payload" not in response.text
+    assert "local path" not in response.text
     assert {name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS} == {
         name: None for name in LIVE_LLM_PRESET_DEFAULTS
     }
