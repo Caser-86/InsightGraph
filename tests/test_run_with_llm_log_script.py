@@ -188,6 +188,38 @@ def test_main_runs_query_writes_markdown_and_log_file(tmp_path):
     assert payload["llm_call_log"][0]["wire_api"] == "responses"
 
 
+def test_main_passes_document_reader_json_query_and_logs_metadata(tmp_path):
+    observed_queries: list[str] = []
+    query = '{"path":"report.md","query":"enterprise pricing"}'
+
+    def fake_run_research(value: str) -> GraphState:
+        observed_queries.append(value)
+        return make_state(value)
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    exit_code = llm_log_script.main(
+        [query, "--log-dir", str(tmp_path)],
+        stdin=io.StringIO(),
+        stdout=stdout,
+        stderr=stderr,
+        run_research_func=fake_run_research,
+        now_func=fixed_now,
+    )
+
+    assert exit_code == 0
+    assert observed_queries == [query]
+    assert stderr.getvalue() == ""
+    assert "LLM log written to:" in stdout.getvalue()
+    log_files = list(tmp_path.glob("*.json"))
+    assert len(log_files) == 1
+    payload = json.loads(log_files[0].read_text(encoding="utf-8"))
+    assert payload["query"] == query
+    assert payload["preset"] == "offline"
+    assert "tool_call_log" in payload
+    assert "llm_call_log" in payload
+
+
 def test_main_reads_query_from_stdin_dash(tmp_path):
     observed_queries: list[str] = []
 

@@ -612,9 +612,12 @@ INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python scripts/run_research.py '{"path":"rep
 python scripts/run_with_llm_log.py "Compare Cursor, OpenCode, and GitHub Copilot"
 python scripts/run_with_llm_log.py - < query.txt
 python scripts/run_with_llm_log.py "Compare Cursor, OpenCode, and GitHub Copilot" --log-dir tmp_llm_logs
+INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python scripts/run_with_llm_log.py '{"path":"report.md","query":"enterprise pricing"}' --log-dir tmp_llm_logs
 ```
 
 该脚本会把本次运行的安全 LLM metadata 写入 JSON 文件。日志包含 `tool_call_log`、`llm_call_log`、summary counts 和 iterations；不包含完整报告、完整 findings、evidence pool、prompt、completion、raw response、headers、request body 或 API key。
+
+与 `run_research.py` 一样，当 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 时，JSON query 会触发 `document_reader` 的 deterministic lexical ranking，并同时写入安全 metadata log；不使用 embeddings、LLM retrieval 或公网服务。
 
 当前 benchmark 用法：
 
