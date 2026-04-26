@@ -119,6 +119,8 @@ def write_file(query: str, subtask_id: str = "collect") -> list[Evidence]:
     path = _resolve_inside_root(root, path_text)
     if path is None or path.exists() or path.is_dir():
         return []
+    if _has_colon_path_component(root, path):
+        return []
     if path.suffix.lower() not in SUPPORTED_WRITE_SUFFIXES:
         return []
     if not path.parent.is_dir():
@@ -174,6 +176,13 @@ def _normalize_newlines(text: str) -> str:
 
 def _has_disallowed_control_characters(text: str) -> bool:
     return any(ord(char) < 32 and char not in {"\n", "\r", "\t"} for char in text)
+
+
+def _has_colon_path_component(root: Path, path: Path) -> bool:
+    try:
+        return any(":" in part for part in path.relative_to(root).parts)
+    except ValueError:
+        return True
 
 
 def _resolve_inside_root(root: Path, query: str) -> Path | None:

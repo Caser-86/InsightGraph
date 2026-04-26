@@ -442,6 +442,17 @@ def test_write_file_rejects_unsafe_or_invalid_targets(tmp_path, monkeypatch) -> 
     ) == []
 
 
+def test_write_file_rejects_colon_path_components(tmp_path, monkeypatch) -> None:
+    existing = tmp_path / "existing.md"
+    existing.write_text("existing", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert write_file(
+        json.dumps({"path": "existing.md:stream.md", "content": "hidden"}), "s1"
+    ) == []
+    assert existing.read_text(encoding="utf-8") == "existing"
+
+
 def test_write_file_rejects_malformed_query(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
