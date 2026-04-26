@@ -540,7 +540,25 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 - **CLI 报告**：Markdown 格式，包含 `Key Findings`、有可引用矩阵行时的 `Competitive Matrix`、`Critic Assessment`、`References`
 - **结构化输出**：`--output-json` 包含 `competitive_matrix`，便于后续 API、benchmark 和前端复用
 - **数据源**：固定 mock evidence，不进行真实联网搜索
-- **API / 前端**：尚未实现，属于后续路线图
+- **API**：当前 MVP 提供同步 `GET /health` 和 `POST /research`，响应结构与 CLI `--output-json` 对齐，包含 `competitive_matrix`
+- **前端 / WebSocket**：尚未实现，属于后续路线图
+
+### API MVP
+
+当前 API 是单进程同步 MVP，不包含 WebSocket、auth、持久化、后台任务或并行 workflow execution。`/research` 会在应用 runtime preset 环境后串行执行 workflow。
+
+```bash
+python -m pip install "uvicorn[standard]"
+uvicorn insight_graph.api:app --reload
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/research \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+```
+
+`uvicorn` 是运行示例依赖，不是当前 package runtime dependency。
 
 ---
 
