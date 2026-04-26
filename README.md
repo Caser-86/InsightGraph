@@ -444,7 +444,7 @@ flowchart TB
 ### 2. Collector
 
 - **多轮循环**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用
-- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory、write_file；当前 Planner collect subtask 按 opt-in 优先级选择一个主采集工具
+- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory；`write_file` 作为 create-only 本地文本写入工具单独 opt-in。当前 Planner collect subtask 按 opt-in 优先级选择一个主工具
 - **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
 - **上下文控制**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据
 - **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据
