@@ -1,5 +1,8 @@
+import argparse
+import json
 import os
 import re
+import sys
 import time
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
@@ -134,3 +137,104 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "total_tool_calls": sum(int(item["tool_call_count"]) for item in case_results),
         "total_llm_calls": sum(int(item["llm_call_count"]) for item in case_results),
     }
+
+
+def format_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# InsightGraph Benchmark",
+        "",
+        "| Query | Duration ms | Findings | Matrix rows | References | Tool calls "
+        "| LLM calls | Critique passed | Matrix section |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    for item in payload["cases"]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(str(item["query"])),
+                    str(item["duration_ms"]),
+                    str(item["finding_count"]),
+                    str(item["competitive_matrix_row_count"]),
+                    str(item["reference_count"]),
+                    str(item["tool_call_count"]),
+                    str(item["llm_call_count"]),
+                    _format_bool(bool(item["critique_passed"])),
+                    _format_bool(bool(item["report_has_competitive_matrix"])),
+                ]
+            )
+            + " |"
+        )
+
+    summary = payload["summary"]
+    lines.extend(
+        [
+            "",
+            "## Summary",
+            "",
+            "| Cases | Total duration ms | All critique passed | Total findings "
+            "| Total matrix rows | Total references | Total tool calls | Total LLM calls |",
+            "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+            "| "
+            + " | ".join(
+                [
+                    str(summary["case_count"]),
+                    str(summary["total_duration_ms"]),
+                    _format_bool(bool(summary["all_critique_passed"])),
+                    str(summary["total_findings"]),
+                    str(summary["total_competitive_matrix_rows"]),
+                    str(summary["total_references"]),
+                    str(summary["total_tool_calls"]),
+                    str(summary["total_llm_calls"]),
+                ]
+            )
+            + " |",
+        ]
+    )
+    error_lines = _format_error_lines(payload["cases"])
+    if error_lines:
+        lines.extend(error_lines)
+    return "\n".join(lines) + "\n"
+
+
+def _format_error_lines(case_results: list[dict[str, Any]]) -> list[str]:
+    errors = [item for item in case_results if "error" in item]
+    if not errors:
+        return []
+    lines = ["", "## Errors", "", "| Query | Error |", "| --- | --- |"]
+    for item in errors:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(str(item["query"])),
+                    _markdown_table_cell(str(item["error"])),
+                ]
+            )
+            + " |"
+        )
+    return lines
+
+
+def _markdown_table_cell(value: str) -> str:
+    return " ".join(value.replace("|", r"\|").splitlines())
+
+
+def _format_bool(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run offline InsightGraph research benchmarks.")
+    parser.add_argument("--markdown", action="store_true", help="Print Markdown instead of JSON.")
+    args = parser.parse_args(argv)
+    payload = build_benchmark_payload()
+    if args.markdown:
+        print(format_markdown(payload), end="")
+    else:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

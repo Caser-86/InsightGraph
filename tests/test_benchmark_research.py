@@ -170,3 +170,93 @@ def test_count_references_handles_current_reporter_output() -> None:
 
     assert updated.report_markdown is not None
     assert benchmark_module.count_references(updated.report_markdown) == 2
+
+
+def test_format_markdown_outputs_case_and_summary_tables() -> None:
+    payload = {
+        "cases": [
+            {
+                "query": "Compare Cursor | Copilot\nNow",
+                "duration_ms": 25,
+                "finding_count": 1,
+                "competitive_matrix_row_count": 1,
+                "reference_count": 2,
+                "tool_call_count": 1,
+                "llm_call_count": 0,
+                "critique_passed": True,
+                "report_has_competitive_matrix": True,
+            }
+        ],
+        "summary": {
+            "case_count": 1,
+            "total_duration_ms": 25,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+        },
+    }
+
+    markdown = benchmark_module.format_markdown(payload)
+
+    assert markdown.startswith("# InsightGraph Benchmark\n")
+    assert (
+        "| Query | Duration ms | Findings | Matrix rows | References | Tool calls "
+        "| LLM calls | Critique passed | Matrix section |" in markdown
+    )
+    assert "Compare Cursor \\| Copilot Now" in markdown
+    assert "## Summary" in markdown
+    assert "| 1 | 25 | true | 1 | 1 | 2 | 1 | 0 |" in markdown
+
+
+def test_build_benchmark_payload_records_safe_error() -> None:
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload and local path")
+
+    payload = benchmark_module.build_benchmark_payload(
+        ["Compare Cursor and GitHub Copilot"],
+        run_research_func=fail_run_research,
+    )
+
+    case = payload["cases"][0]
+    assert case["error"] == "Research workflow failed."
+    assert case["finding_count"] == 0
+    assert case["critique_passed"] is False
+    assert "secret provider payload" not in str(payload)
+    assert payload["summary"]["all_critique_passed"] is False
+
+
+def test_format_markdown_includes_safe_errors_section() -> None:
+    payload = {
+        "cases": [
+            {
+                "query": "Compare Cursor",
+                "duration_ms": 2,
+                "finding_count": 0,
+                "competitive_matrix_row_count": 0,
+                "reference_count": 0,
+                "tool_call_count": 0,
+                "llm_call_count": 0,
+                "critique_passed": False,
+                "report_has_competitive_matrix": False,
+                "error": "Research workflow failed.",
+            }
+        ],
+        "summary": {
+            "case_count": 1,
+            "total_duration_ms": 2,
+            "all_critique_passed": False,
+            "total_findings": 0,
+            "total_competitive_matrix_rows": 0,
+            "total_references": 0,
+            "total_tool_calls": 0,
+            "total_llm_calls": 0,
+        },
+    }
+
+    markdown = benchmark_module.format_markdown(payload)
+
+    assert "## Errors" in markdown
+    assert "| Compare Cursor | Research workflow failed. |" in markdown
