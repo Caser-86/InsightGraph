@@ -376,6 +376,7 @@ flowchart TB
         T3[github_search / news_search] --> T8[evidence_snippets]
         T5[document_reader / read_file / list_directory] --> T8
         T6[write_file] --> T9[created local text file]
+        T6 --> T8
         T2 --> T8
     end
 
@@ -396,6 +397,7 @@ flowchart TB
     T3 -.->|离线证据| T8
     T5 -.->|本地证据| T8
     T6 -.->|create-only 写入| T9
+    T6 -.->|write-result Evidence| T8
 ```
 
 ---
