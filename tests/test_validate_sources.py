@@ -124,6 +124,32 @@ The report cites one source [1].
     }
 
 
+def test_validate_report_validates_duplicate_reference_url():
+    payload = validate_report(
+        """# Report
+
+The report cites one source [1].
+
+## References
+
+[1] First source. https://example.com/first
+[1] Duplicate source. ftp://example.com/duplicate
+"""
+    )
+
+    assert issue_types(payload) == ["invalid_reference_url", "duplicate_reference"]
+    assert payload["issues"][0] == {
+        "type": "invalid_reference_url",
+        "reference": 1,
+        "message": "Reference [1] URL must start with http:// or https://.",
+    }
+    assert payload["issues"][1] == {
+        "type": "duplicate_reference",
+        "reference": 1,
+        "message": "Reference [1] appears more than once.",
+    }
+
+
 def test_validate_report_ignores_citations_inside_references_section():
     payload = validate_report(
         """# Report

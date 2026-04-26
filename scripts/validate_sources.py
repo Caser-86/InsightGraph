@@ -97,6 +97,15 @@ def _parse_references(lines: list[str]) -> tuple[dict[int, str], list[dict[str, 
             continue
 
         url = line.strip().split()[-1]
+        if not (url.startswith("http://") or url.startswith("https://")):
+            issues.append(
+                {
+                    "type": "invalid_reference_url",
+                    "reference": number,
+                    "message": f"Reference [{number}] URL must start with http:// or https://.",
+                }
+            )
+
         if number in references:
             if number not in duplicates:
                 issues.append(
@@ -110,14 +119,6 @@ def _parse_references(lines: list[str]) -> tuple[dict[int, str], list[dict[str, 
             continue
 
         references[number] = url
-        if not (url.startswith("http://") or url.startswith("https://")):
-            issues.append(
-                {
-                    "type": "invalid_reference_url",
-                    "reference": number,
-                    "message": f"Reference [{number}] URL must start with http:// or https://.",
-                }
-            )
 
     return references, issues
 
