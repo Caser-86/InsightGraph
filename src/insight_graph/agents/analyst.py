@@ -187,7 +187,14 @@ def _analyze_evidence_with_llm(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     try:
-        state.findings = _parse_analyst_findings(result.content, state.evidence_pool)
+        state.findings, parsed_matrix = _parse_analyst_response(
+            result.content,
+            state.evidence_pool,
+        )
+        state.competitive_matrix = parsed_matrix or build_competitive_matrix(
+            state.user_request,
+            state.evidence_pool,
+        )
     except ValueError as exc:
         state.llm_call_log.append(
             build_llm_call_record(
@@ -265,7 +272,17 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
     ]
 
 
-def _parse_analyst_findings(content: str | None, evidence_pool: list[Evidence]) -> list[Finding]:
+def _parse_analyst_response(
+    content: str | None,
+    evidence_pool: list[Evidence],
+) -> tuple[list[Finding], list[CompetitiveMatrixRow]]:
+    data = _load_analyst_json(content)
+    findings = _parse_analyst_findings_from_data(data, evidence_pool)
+    matrix = _parse_competitive_matrix_from_data(data, evidence_pool)
+    return findings, matrix
+
+
+def _load_analyst_json(content: str | None) -> dict:
     if not content:
         raise ValueError("LLM response content is required")
 
@@ -277,6 +294,15 @@ def _parse_analyst_findings(content: str | None, evidence_pool: list[Evidence]) 
     if not isinstance(data, dict):
         raise ValueError("LLM response must be a JSON object")
 
+    return data
+
+
+def _parse_analyst_findings(content: str | None, evidence_pool: list[Evidence]) -> list[Finding]:
+    data = _load_analyst_json(content)
+    return _parse_analyst_findings_from_data(data, evidence_pool)
+
+
+def _parse_analyst_findings_from_data(data: dict, evidence_pool: list[Evidence]) -> list[Finding]:
     raw_findings = data.get("findings")
     if not isinstance(raw_findings, list) or not raw_findings:
         raise ValueError("LLM findings must be a non-empty list")
@@ -312,3 +338,53 @@ def _parse_analyst_findings(content: str | None, evidence_pool: list[Evidence]) 
         )
 
     return findings
+
+
+def _parse_competitive_matrix_from_data(
+    data: dict,
+    evidence_pool: list[Evidence],
+) -> list[CompetitiveMatrixRow]:
+    raw_matrix = data.get("competitive_matrix")
+    if raw_matrix is None:
+        return []
+    if not isinstance(raw_matrix, list):
+        raise ValueError("LLM competitive_matrix must be a list")
+
+    verified_evidence_ids = {item.id for item in evidence_pool if item.verified}
+    matrix = []
+    for raw_row in raw_matrix:
+        if not isinstance(raw_row, dict):
+            raise ValueError("LLM competitive_matrix row must be an object")
+
+        product = raw_row.get("product")
+        positioning = raw_row.get("positioning")
+        strengths = raw_row.get("strengths", [])
+        evidence_ids = raw_row.get("evidence_ids")
+        if not isinstance(product, str) or not product.strip():
+            raise ValueError("LLM competitive_matrix product is required")
+        if not isinstance(positioning, str) or not positioning.strip():
+            raise ValueError("LLM competitive_matrix positioning is required")
+        if not isinstance(strengths, list) or not all(
+            isinstance(item, str) and item.strip() for item in strengths
+        ):
+            raise ValueError("LLM competitive_matrix strengths must be strings")
+        if len(strengths) > 5:
+            raise ValueError("LLM competitive_matrix strengths must have at most 5 items")
+        if not isinstance(evidence_ids, list) or not evidence_ids:
+            raise ValueError("LLM competitive_matrix evidence_ids are required")
+        if not all(
+            isinstance(evidence_id, str) and evidence_id.strip() for evidence_id in evidence_ids
+        ):
+            raise ValueError("LLM competitive_matrix evidence_ids must be strings")
+        if not set(evidence_ids).issubset(verified_evidence_ids):
+            raise ValueError("LLM competitive_matrix cites unverified or unknown evidence")
+
+        matrix.append(
+            CompetitiveMatrixRow(
+                product=product.strip(),
+                positioning=positioning.strip(),
+                strengths=[item.strip() for item in strengths],
+                evidence_ids=evidence_ids,
+            )
+        )
+    return matrix

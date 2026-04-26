@@ -783,6 +783,78 @@ def test_deterministic_analyst_matrix_empty_without_verified_evidence() -> None:
     assert updated.competitive_matrix == []
 
 
+def test_llm_analyst_parses_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"competitive_matrix":[{"product":"Cursor",'
+            '"positioning":"Official product positioning signal",'
+            '"strengths":["Official/documented source coverage"],'
+            '"evidence_ids":["cursor-pricing"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert updated.competitive_matrix == [
+        CompetitiveMatrixRow(
+            product="Cursor",
+            positioning="Official product positioning signal",
+            strengths=["Official/documented source coverage"],
+            evidence_ids=["cursor-pricing"],
+        )
+    ]
+
+
+def test_llm_analyst_uses_deterministic_matrix_when_matrix_missing(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert [row.product for row in updated.competitive_matrix] == [
+        "Cursor",
+        "GitHub Copilot",
+    ]
+
+
+def test_llm_analyst_falls_back_for_invalid_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"competitive_matrix":[{"product":"Cursor",'
+            '"positioning":"Official product positioning signal",'
+            '"strengths":["Official/documented source coverage"],'
+            '"evidence_ids":["missing-evidence"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert [row.product for row in updated.competitive_matrix] == [
+        "Cursor",
+        "GitHub Copilot",
+    ]
+
+
 @pytest.mark.parametrize(
     "content",
     [
