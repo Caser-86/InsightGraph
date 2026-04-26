@@ -229,6 +229,29 @@ def test_research_offline_preset_does_not_apply_live_defaults(monkeypatch) -> No
     assert observed_env == {name: None for name in LIVE_LLM_PRESET_DEFAULTS}
 
 
+def test_research_offline_preset_preserves_explicit_env(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update({name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "offline"},
+    )
+
+    assert response.status_code == 200
+    assert observed_env["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "mock"
+    assert os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER") == "mock"
+    assert observed_env["INSIGHT_GRAPH_USE_WEB_SEARCH"] is None
+
+
 def test_research_rejects_blank_query() -> None:
     client = TestClient(api_module.app)
 
@@ -269,3 +292,17 @@ def test_research_restores_env_after_workflow_exception(monkeypatch) -> None:
     assert {name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS} == {
         name: None for name in LIVE_LLM_PRESET_DEFAULTS
     }
+
+
+def test_research_safe_500_does_not_log_raw_exception(monkeypatch, caplog) -> None:
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload and local path")
+
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post("/research", json={"query": "Compare AI coding agents"})
+
+    assert response.status_code == 500
+    assert "secret provider payload" not in caplog.text
+    assert "local path" not in caplog.text
