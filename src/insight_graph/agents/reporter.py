@@ -19,6 +19,9 @@ RESIDUAL_REFERENCE_HEADING_PATTERN = re.compile(
     r"^ {0,3}#+\s*(references|sources)\b", re.IGNORECASE | re.MULTILINE
 )
 KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+Key Findings\s*$")
+COMPETITIVE_MATRIX_HEADING_PATTERN = re.compile(
+    r"(?im)^ {0,3}##\s+Competitive Matrix\s*$"
+)
 NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}##\s+")
 SMART_PUNCTUATION_TRANSLATION = str.maketrans(
     {
@@ -177,9 +180,12 @@ def _write_report_with_llm(
         )
     )
 
+    matrix_lines = _build_competitive_matrix_section(
+        state.competitive_matrix,
+        reference_numbers,
+    )
+    body = _insert_competitive_matrix_section(body, matrix_lines)
     lines = [body.rstrip(), ""]
-    if "## Competitive Matrix" not in body:
-        lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     if state.critique is not None and "## Critic Assessment" not in body:
         lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_references_section(verified_evidence, reference_numbers))
@@ -363,6 +369,28 @@ def _build_competitive_matrix_section(
         *rows,
         "",
     ]
+
+
+def _has_competitive_matrix_section(body: str) -> bool:
+    return COMPETITIVE_MATRIX_HEADING_PATTERN.search(body) is not None
+
+
+def _insert_competitive_matrix_section(body: str, matrix_lines: list[str]) -> str:
+    if not matrix_lines or _has_competitive_matrix_section(body):
+        return body
+
+    matrix_section = "\n".join(matrix_lines).rstrip()
+    key_findings = KEY_FINDINGS_HEADING_PATTERN.search(body)
+    if key_findings is None:
+        return f"{body.rstrip()}\n\n{matrix_section}"
+
+    next_section = NEXT_SECTION_HEADING_PATTERN.search(body, key_findings.end())
+    if next_section is None:
+        return f"{body.rstrip()}\n\n{matrix_section}"
+
+    before = body[: next_section.start()].rstrip()
+    after = body[next_section.start() :].lstrip()
+    return f"{before}\n\n{matrix_section}\n\n{after}"
 
 
 def _markdown_table_cell(value: str) -> str:

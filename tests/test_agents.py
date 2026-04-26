@@ -1142,6 +1142,48 @@ def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
+def test_llm_reporter_inserts_competitive_matrix_before_later_sections(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n## Critic Assessment\\n\\n'
+            'Initial critic text."}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert updated.report_markdown.index("## Key Findings") < updated.report_markdown.index(
+        "## Competitive Matrix"
+    )
+    assert updated.report_markdown.index("## Competitive Matrix") < updated.report_markdown.index(
+        "## Critic Assessment"
+    )
+
+
+def test_llm_reporter_detects_competitive_matrix_heading_variants(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n##  competitive matrix  \\n\\n'
+            '| Product | Positioning | Strengths | Evidence |\\n'
+            '| --- | --- | --- | --- |\\n'
+            '| Cursor | Existing | Existing | [1] |"}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert updated.report_markdown.lower().count("competitive matrix") == 1
+    assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
+
+
 def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
     messages: list[list[ChatMessage]] = []
