@@ -113,6 +113,8 @@ def write_file(query: str, subtask_id: str = "collect") -> list[Evidence]:
 
     path_text, content = payload
     content_to_write = _normalize_newlines(content)
+    if _has_disallowed_control_characters(content_to_write):
+        return []
     root = Path.cwd().resolve()
     path = _resolve_inside_root(root, path_text)
     if path is None or path.exists() or path.is_dir():
@@ -153,7 +155,7 @@ def _parse_write_file_query(query: str) -> tuple[str, str] | None:
         return None
     try:
         payload = json.loads(query_text)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -168,6 +170,10 @@ def _parse_write_file_query(query: str) -> tuple[str, str] | None:
 
 def _normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _has_disallowed_control_characters(text: str) -> bool:
+    return any(ord(char) < 32 and char not in {"\n", "\r", "\t"} for char in text)
 
 
 def _resolve_inside_root(root: Path, query: str) -> Path | None:

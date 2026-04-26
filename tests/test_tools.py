@@ -448,6 +448,20 @@ def test_write_file_rejects_malformed_query(tmp_path, monkeypatch) -> None:
     assert write_file(None, "s1") == []  # type: ignore[arg-type]
 
 
+def test_write_file_rejects_binary_like_content(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert write_file(json.dumps({"path": "binary.md", "content": "alpha\x00beta"}), "s1") == []
+    assert not (tmp_path / "binary.md").exists()
+
+
+def test_write_file_rejects_deeply_nested_json(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    query = "[" * 20000 + "]" * 20000
+
+    assert write_file(query, "s1") == []
+
+
 def test_write_file_hash_prevents_slug_collisions(tmp_path, monkeypatch) -> None:
     nested_dir = tmp_path / "docs" / "foo"
     nested_dir.mkdir(parents=True)
