@@ -20,9 +20,10 @@ RESIDUAL_REFERENCE_HEADING_PATTERN = re.compile(
 )
 KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+Key Findings\s*$")
 COMPETITIVE_MATRIX_HEADING_PATTERN = re.compile(
-    r"(?im)^ {0,3}#{2,6}\s+Competitive Matrix\s*#*\s*$"
+    r"(?im)^ {0,3}#{1,6}\s+Competitive Matrix\s*#*\s*$"
 )
-NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}##\s+")
+NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}#{1,6}\s+")
+NEXT_MAJOR_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}#{1,2}\s+")
 SMART_PUNCTUATION_TRANSLATION = str.maketrans(
     {
         "\u2018": "'",
@@ -146,6 +147,15 @@ def _write_report_with_llm(
         body = _parse_llm_report_body(result.content)
         body = _strip_references_section(body)
         body = _normalize_smart_punctuation(body)
+        matrix_lines = _build_competitive_matrix_section(
+            state.competitive_matrix,
+            reference_numbers,
+        )
+        body = _prepare_competitive_matrix_section(
+            body,
+            matrix_lines,
+            set(reference_numbers.values()),
+        )
         _validate_llm_report_body(body, set(reference_numbers.values()))
     except ReporterFallbackError as exc:
         state.llm_call_log.append(
@@ -180,11 +190,6 @@ def _write_report_with_llm(
         )
     )
 
-    matrix_lines = _build_competitive_matrix_section(
-        state.competitive_matrix,
-        reference_numbers,
-    )
-    body = _insert_competitive_matrix_section(body, matrix_lines)
     lines = [body.rstrip(), ""]
     if state.critique is not None and "## Critic Assessment" not in body:
         lines.extend(_build_critic_assessment_section(state))
@@ -323,7 +328,7 @@ def _key_findings_section(markdown: str) -> str:
         raise ReporterFallbackError("LLM report Key Findings section is required")
 
     section_start = match.end()
-    next_section = NEXT_SECTION_HEADING_PATTERN.search(markdown, section_start)
+    next_section = NEXT_MAJOR_SECTION_HEADING_PATTERN.search(markdown, section_start)
     section_end = next_section.start() if next_section is not None else len(markdown)
     return markdown[section_start:section_end]
 
@@ -375,6 +380,48 @@ def _has_competitive_matrix_section(body: str) -> bool:
     return COMPETITIVE_MATRIX_HEADING_PATTERN.search(body) is not None
 
 
+def _prepare_competitive_matrix_section(
+    body: str,
+    matrix_lines: list[str],
+    allowed_references: set[int],
+) -> str:
+    matrix_range = _competitive_matrix_section_range(body)
+    if matrix_range is None:
+        return _insert_competitive_matrix_section(body, matrix_lines)
+
+    start, end = matrix_range
+    matrix_section = body[start:end]
+    if _matrix_section_has_allowed_data_row_citation(matrix_section, allowed_references):
+        return body
+
+    without_matrix = f"{body[:start].rstrip()}\n\n{body[end:].lstrip()}".strip()
+    return _insert_competitive_matrix_section(without_matrix, matrix_lines)
+
+
+def _competitive_matrix_section_range(body: str) -> tuple[int, int] | None:
+    match = COMPETITIVE_MATRIX_HEADING_PATTERN.search(body)
+    if match is None:
+        return None
+
+    next_section = NEXT_SECTION_HEADING_PATTERN.search(body, match.end())
+    section_end = next_section.start() if next_section is not None else len(body)
+    return match.start(), section_end
+
+
+def _matrix_section_has_allowed_data_row_citation(
+    matrix_section: str,
+    allowed_references: set[int],
+) -> bool:
+    for line in matrix_section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or set(stripped.replace("|", "").strip()) <= {"-", ":"}:
+            continue
+        citations = [int(match) for match in CITATION_PATTERN.findall(stripped)]
+        if any(citation in allowed_references for citation in citations):
+            return True
+    return False
+
+
 def _insert_competitive_matrix_section(body: str, matrix_lines: list[str]) -> str:
     if not matrix_lines or _has_competitive_matrix_section(body):
         return body
@@ -384,7 +431,7 @@ def _insert_competitive_matrix_section(body: str, matrix_lines: list[str]) -> st
     if key_findings is None:
         return f"{body.rstrip()}\n\n{matrix_section}"
 
-    next_section = NEXT_SECTION_HEADING_PATTERN.search(body, key_findings.end())
+    next_section = NEXT_MAJOR_SECTION_HEADING_PATTERN.search(body, key_findings.end())
     if next_section is None:
         return f"{body.rstrip()}\n\n{matrix_section}"
 

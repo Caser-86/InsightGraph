@@ -753,6 +753,29 @@ def test_deterministic_analyst_matrix_does_not_match_unrelated_copilot() -> None
     ]
 
 
+def test_deterministic_analyst_matrix_does_not_treat_github_repo_copilot_mention_as_github_copilot(
+) -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="opencode-repo",
+                subtask_id="collect",
+                title="OpenCode Repository",
+                source_url="https://github.com/sst/opencode",
+                snippet="OpenCode repository mentions copilot integrations.",
+                source_type="github",
+                verified=True,
+            )
+        ],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert [row.product for row in updated.competitive_matrix] == ["OpenCode"]
+    assert updated.competitive_matrix[0].evidence_ids == ["opencode-repo"]
+
+
 def test_deterministic_analyst_matrix_uses_general_row_without_product_match() -> None:
     state = GraphState(
         user_request="Analyze developer tool market",
@@ -1142,6 +1165,30 @@ def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
+def test_llm_reporter_replaces_uncited_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n## Competitive Matrix\\n\\n'
+            '| Product | Positioning | Strengths | Evidence |\\n'
+            '| --- | --- | --- | --- |\\n'
+            '| Cursor | Uncited | Uncited | none |"}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert "| Cursor | Uncited | Uncited | none |" not in updated.report_markdown
+    assert (
+        "| Cursor | Official product positioning signal | "
+        "Official/documented source coverage | [1] |"
+    ) in updated.report_markdown
+    assert updated.report_markdown.count("## Competitive Matrix") == 1
+
+
 def test_llm_reporter_inserts_competitive_matrix_before_later_sections(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
@@ -1191,7 +1238,7 @@ def test_llm_reporter_detects_competitive_matrix_atx_heading_variants(monkeypatc
     client = UsageLLMClient(
         content=(
             '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
-            'Cursor differs from Copilot [1].\\n\\n### Competitive Matrix ##\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n# Competitive Matrix ##\\n\\n'
             '| Product | Positioning | Strengths | Evidence |\\n'
             '| --- | --- | --- | --- |\\n'
             '| Cursor | Existing | Existing | [1] |"}'

@@ -15,7 +15,7 @@ PRODUCT_ALIASES = {
     "Cursor": ["cursor"],
     "OpenCode": ["opencode", "open code"],
     "Claude Code": ["claude code"],
-    "GitHub Copilot": ["github copilot", "copilot"],
+    "GitHub Copilot": ["github copilot"],
     "Codeium": ["codeium"],
     "Windsurf": ["windsurf"],
 }
@@ -112,8 +112,6 @@ def _mentions_product(user_request: str, evidence: Evidence, aliases: list[str])
 
 
 def _matches_product_alias(haystack: str, alias: str) -> bool:
-    if alias == "copilot":
-        return _matches_alias(haystack, "github") and _matches_alias(haystack, alias)
     if alias == "open code":
         return False
     return _matches_alias(haystack, alias)

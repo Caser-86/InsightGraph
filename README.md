@@ -98,7 +98,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Analyst model | `gpt-4o-mini` |
 | `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
-LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings；`competitive_matrix` 可由 LLM 提供，但每一行必须引用当前 verified evidence ID。缺少 key/API、LLM 返回非 JSON、schema 不合法、矩阵缺失或引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
+LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings；`competitive_matrix` 可由 LLM 提供，但每一行必须引用当前 verified evidence ID。缺少矩阵时会用 deterministic 矩阵补齐并保留有效 LLM findings；缺少 key/API、LLM 返回非 JSON、schema 不合法或矩阵引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
 ### LLM Reporter 配置
 
@@ -120,7 +120,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible Reporter model | `gpt-4o-mini` |
 | `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
-LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
+LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；缺失 `Competitive Matrix` 时会确定性补齐矩阵并保留有效 LLM findings，无法映射到合法引用的矩阵会被替换为 deterministic 矩阵；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
 
 ### Live LLM Preset
 
@@ -454,7 +454,7 @@ flowchart TB
 ### 3. Analyst
 
 - **实体画像**：为公司、产品、技术、市场主题建立结构化 profile
-- **竞品矩阵**：默认/offline Analyst 生成 evidence-backed deterministic `competitive_matrix`；`--preset live-llm` 或 LLM Analyst opt-in 时可由 LLM 提供矩阵行，但每行必须引用 verified evidence，缺失或无效时回退 deterministic；Reporter 输出 citable `Competitive Matrix` Markdown 表格；第一版不做排名、评分或精确定价抽取
+- **竞品矩阵**：默认/offline Analyst 生成 evidence-backed deterministic `competitive_matrix`；`--preset live-llm` 或 LLM Analyst opt-in 时可由 LLM 提供矩阵行，但每行必须引用 verified evidence，缺失时补齐 deterministic 矩阵并保留有效 LLM findings，无效时回退 deterministic Analyst；Reporter 输出 citable `Competitive Matrix` Markdown 表格，缺失或不可引用的 LLM 矩阵会被 deterministic 矩阵补齐或替换；第一版不做排名、评分或精确定价抽取
 - **趋势归纳**：从时间线、发布节奏、开源活跃度、媒体关注度中提取趋势信号
 - **不确定性标注**：对缺失数据、冲突证据、低可信来源进行显式标注
 
