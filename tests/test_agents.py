@@ -703,6 +703,42 @@ def test_deterministic_analyst_builds_competitive_matrix() -> None:
     assert "unverified-cursor-blog" not in cursor.evidence_ids
 
 
+def test_deterministic_analyst_matrix_uses_evidence_products_with_generic_request() -> None:
+    state = make_matrix_state()
+    state.user_request = "Compare AI coding agents"
+
+    updated = analyze_evidence(state)
+
+    assert [row.product for row in updated.competitive_matrix] == [
+        "Cursor",
+        "OpenCode",
+        "GitHub Copilot",
+    ]
+
+
+def test_deterministic_analyst_matrix_does_not_match_unrelated_copilot() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="security-copilot",
+                subtask_id="collect",
+                title="Security Copilot overview",
+                source_url="https://example.com/security-copilot",
+                snippet="Security Copilot helps security teams triage incidents.",
+                source_type="official_site",
+                verified=True,
+            )
+        ],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert [row.product for row in updated.competitive_matrix] == [
+        "General market evidence"
+    ]
+
+
 def test_deterministic_analyst_matrix_uses_general_row_without_product_match() -> None:
     state = GraphState(
         user_request="Analyze developer tool market",

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 
 from insight_graph.llm import ChatCompletionClient, ChatMessage, get_llm_client, resolve_llm_config
@@ -105,11 +106,22 @@ def build_competitive_matrix(
 
 
 def _mentions_product(user_request: str, evidence: Evidence, aliases: list[str]) -> bool:
-    request_mentions_product = any(alias in user_request.lower() for alias in aliases)
-    evidence_haystack = " ".join(
-        [evidence.title, evidence.source_url, evidence.snippet]
-    ).lower()
-    return request_mentions_product and any(alias in evidence_haystack for alias in aliases)
+    del user_request
+    evidence_haystack = " ".join([evidence.title, evidence.source_url, evidence.snippet])
+    return any(_matches_product_alias(evidence_haystack, alias) for alias in aliases)
+
+
+def _matches_product_alias(haystack: str, alias: str) -> bool:
+    if alias == "copilot":
+        return _matches_alias(haystack, "github") and _matches_alias(haystack, alias)
+    if alias == "open code":
+        return False
+    return _matches_alias(haystack, alias)
+
+
+def _matches_alias(haystack: str, alias: str) -> bool:
+    pattern = r"(?<![A-Za-z0-9])" + re.escape(alias) + r"(?![A-Za-z0-9])"
+    return re.search(pattern, haystack, flags=re.IGNORECASE) is not None
 
 
 def _build_matrix_row(product: str, evidence: list[Evidence]) -> CompetitiveMatrixRow:
