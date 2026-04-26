@@ -587,11 +587,21 @@ curl -X POST http://127.0.0.1:8000/research \
 
 | 脚本 | 状态 | 用途 |
 |------|------|------|
-| `scripts/run_research.py` | 后续路线图 | 命令行执行研究任务，输出 Markdown 报告 |
+| `scripts/run_research.py` | 当前可用 | 运行 research workflow，默认输出 Markdown；支持 stdin `-`、`--preset offline\|live-llm` 和 `--output-json` 输出 CLI/API 对齐结构 |
 | `scripts/run_with_llm_log.py` | 后续路线图 | 执行任务并记录全部 LLM 调用到 `llm_logs/` |
 | `scripts/validate_sources.py` | 当前可用 | 离线校验 Markdown 报告 citation 与 References；支持文件路径或 stdin `-`，默认 JSON 输出，`--markdown` 输出表格；不联网校验 URL 可访问性 |
 | `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
 | `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown `document_reader` 行为，默认 JSON 输出，`--markdown` 输出表格；PDF/HTML、分页读取与语义检索验证属于后续路线图 |
+
+当前 run research 用法：
+
+```bash
+python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
+python scripts/run_research.py - < query.txt
+python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
+```
+
+该脚本复用当前 research workflow。默认 `--preset offline` 保持 deterministic mock evidence；`--preset live-llm` 会使用与 CLI 相同的 live runtime defaults。
 
 当前 benchmark 用法：
 
