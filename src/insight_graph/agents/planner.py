@@ -48,6 +48,8 @@ def _collection_tool_name() -> str:
         return "read_file"
     if _is_truthy_env("INSIGHT_GRAPH_USE_LIST_DIRECTORY"):
         return "list_directory"
+    if _is_truthy_env("INSIGHT_GRAPH_USE_WRITE_FILE"):
+        return "write_file"
     return "mock_search"
 
 

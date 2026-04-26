@@ -136,6 +136,7 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_DOCUMENT_READER",
         "INSIGHT_GRAPH_USE_READ_FILE",
         "INSIGHT_GRAPH_USE_LIST_DIRECTORY",
+        "INSIGHT_GRAPH_USE_WRITE_FILE",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -149,6 +150,7 @@ def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WRITE_FILE", raising=False)
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -231,6 +233,63 @@ def test_planner_uses_list_directory_when_enabled(monkeypatch) -> None:
     updated = plan_research(state)
 
     assert updated.subtasks[1].suggested_tools == ["list_directory"]
+
+
+def test_planner_uses_write_file_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WRITE_FILE", "1")
+    state = GraphState(user_request='{"path":"notes.md","content":"Notes."}')
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["write_file"]
+
+
+def test_planner_prefers_read_file_over_write_file(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WRITE_FILE", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["read_file"]
+
+
+def test_planner_prefers_list_directory_over_write_file(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WRITE_FILE", "1")
+    state = GraphState(user_request=".")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["list_directory"]
+
+
+def test_planner_prefers_document_reader_over_write_file(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WRITE_FILE", "1")
+    state = GraphState(user_request="README.md")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["document_reader"]
 
 
 def test_planner_prefers_document_reader_over_readonly_file_tools(
