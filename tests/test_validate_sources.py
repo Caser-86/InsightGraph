@@ -224,3 +224,36 @@ def test_main_returns_two_for_missing_file_without_traceback(tmp_path):
     assert stdout.getvalue() == ""
     assert "Failed to read input" in stderr.getvalue()
     assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_invalid_utf8_without_traceback(tmp_path):
+    report_path = tmp_path / "invalid.md"
+    report_path.write_bytes(b"\xff\xfe\xfa")
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main([str(report_path)], stdin=io.StringIO(), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert "Failed to read input" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_two_for_output_write_error_without_traceback():
+    class BadStdout(io.StringIO):
+        def write(self, value: str) -> int:
+            raise OSError("cannot write")
+
+    stderr = io.StringIO()
+
+    exit_code = main(
+        ["-"],
+        stdin=io.StringIO(VALID_REPORT),
+        stdout=BadStdout(),
+        stderr=stderr,
+    )
+
+    assert exit_code == 2
+    assert "Failed to write output" in stderr.getvalue()
+    assert "Traceback" not in stderr.getvalue()

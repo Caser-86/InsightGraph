@@ -86,13 +86,17 @@ def main(
 
     try:
         markdown = _read_input(args.path, stdin)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         stderr.write(f"Failed to read input: {exc}\n")
         return 2
 
     payload = validate_report(markdown)
-    json.dump(payload, stdout, indent=2, ensure_ascii=False)
-    stdout.write("\n")
+    try:
+        json.dump(payload, stdout, indent=2, ensure_ascii=False)
+        stdout.write("\n")
+    except OSError as exc:
+        stderr.write(f"Failed to write output: {exc}\n")
+        return 2
 
     return 0 if payload["ok"] else 1
 
