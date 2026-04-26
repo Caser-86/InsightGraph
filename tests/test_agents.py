@@ -431,6 +431,7 @@ def test_planner_ignores_non_truthy_web_search_flag(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_READ_FILE", "0")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", "0")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WRITE_FILE", "0")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
 
     updated = plan_research(state)
@@ -445,6 +446,7 @@ def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_DOCUMENT_READER", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_READ_FILE", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_LIST_DIRECTORY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WRITE_FILE", raising=False)
     state = GraphState(user_request="Compare Cursor and GitHub Copilot")
     state = plan_research(state)
 
