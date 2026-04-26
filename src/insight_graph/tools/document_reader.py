@@ -45,7 +45,8 @@ def _extract_text(text: str, suffix: str) -> str:
     soup = BeautifulSoup(text, "html.parser")
     for element in soup(["script", "style", "noscript"]):
         element.decompose()
-    return soup.get_text(" ")
+    body = soup.body or soup
+    return body.get_text(" ")
 
 
 def _resolve_inside_root(root: Path, query: str) -> Path | None:

@@ -166,9 +166,9 @@ def test_document_reader_reads_html_visible_text(tmp_path, monkeypatch) -> None:
     assert evidence[0].title == "market.html"
     assert evidence[0].source_url == document.resolve().as_uri()
     assert evidence[0].snippet == (
-        "Ignored page title Market Brief Cursor adds agent mode. "
-        "GitHub Copilot updates docs."
+        "Market Brief Cursor adds agent mode. GitHub Copilot updates docs."
     )
+    assert "ignored page title" not in evidence[0].snippet.lower()
     assert "do not include" not in evidence[0].snippet.lower()
     assert evidence[0].source_type == "docs"
     assert evidence[0].verified is True
