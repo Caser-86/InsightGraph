@@ -100,6 +100,26 @@ def test_main_runs_query_and_writes_markdown():
     assert stdout.getvalue() == "# InsightGraph Research Report\n\n## References\n"
 
 
+def test_main_passes_document_reader_json_query_unchanged():
+    observed_queries: list[str] = []
+    query = '{"path":"report.md","query":"enterprise pricing"}'
+
+    def fake_run_research(value: str) -> GraphState:
+        observed_queries.append(value)
+        return make_state(value)
+
+    exit_code = run_research_script.main(
+        [query],
+        stdin=io.StringIO(),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+        run_research_func=fake_run_research,
+    )
+
+    assert exit_code == 0
+    assert observed_queries == [query]
+
+
 def test_main_reads_query_from_stdin_dash():
     observed_queries: list[str] = []
 

@@ -599,9 +599,12 @@ curl -X POST http://127.0.0.1:8000/research \
 python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
 python scripts/run_research.py - < query.txt
 python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
+INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python scripts/run_research.py '{"path":"report.md","query":"enterprise pricing"}'
 ```
 
 该脚本复用当前 research workflow。默认 `--preset offline` 不应用 live defaults；当未预先设置 opt-in 工具/LLM 环境变量时，会使用 deterministic mock evidence。显式设置的 opt-in 环境变量仍会被保留并生效，与现有 CLI 语义一致；`--preset live-llm` 会使用与 CLI 相同的 live runtime defaults。
+
+当 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 时，query 可以是本地文件路径，也可以是 JSON：`{"path":"report.md","query":"enterprise pricing"}`。JSON `query` 会触发 `document_reader` 的 deterministic lexical ranking，从本地文档 chunks 中优先返回词项匹配的 evidence；不使用 embeddings、LLM 或公网服务。
 
 当前 run with LLM log 用法：
 
