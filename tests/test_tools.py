@@ -288,6 +288,43 @@ def test_document_reader_limits_snippet_length(tmp_path, monkeypatch) -> None:
     assert len(evidence[0].snippet) == 500
 
 
+def test_document_reader_keeps_exact_limit_document_as_single_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "exact.md"
+    document.write_text("a" * 500, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("exact.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == document_id_for("exact.md")
+    assert evidence[0].title == "exact.md"
+    assert len(evidence[0].snippet) == 500
+
+
+def test_document_reader_chunks_long_documents(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "long.md"
+    text = "".join(str(index % 10) for index in range(2200))
+    document.write_text(text, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader("long.md", "s1")
+
+    assert len(evidence) == 5
+    assert [len(item.snippet) for item in evidence] == [500, 500, 500, 500, 500]
+    assert evidence[0].id == document_id_for("long.md")
+    assert evidence[1].id == f"{document_id_for('long.md')}-chunk-2"
+    assert evidence[4].id == f"{document_id_for('long.md')}-chunk-5"
+    assert evidence[0].title == "long.md"
+    assert evidence[1].title == "long.md (chunk 2)"
+    assert evidence[4].title == "long.md (chunk 5)"
+    assert evidence[0].snippet[-100:] == evidence[1].snippet[:100]
+    assert {item.source_url for item in evidence} == {document.resolve().as_uri()}
+    assert {item.source_type for item in evidence} == {"docs"}
+    assert {item.verified for item in evidence} == {True}
+
+
 def test_document_reader_rejects_invalid_utf8(tmp_path, monkeypatch) -> None:
     document = tmp_path / "bad.md"
     document.write_bytes(b"\xff\xfe\xfa")

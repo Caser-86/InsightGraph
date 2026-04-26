@@ -69,6 +69,10 @@ def _write_fixtures(workspace: Path, outside_file: Path) -> None:
         "These offline notes validate document_reader TXT support.",
         encoding="utf-8",
     )
+    (workspace / "long.txt").write_text(
+        "".join(str(index % 10) for index in range(2200)),
+        encoding="utf-8",
+    )
     (workspace / "market.md").write_text(
         "# Markdown market brief\n\nMarkdown market brief content.",
         encoding="utf-8",
@@ -129,6 +133,7 @@ def _write_minimal_pdf(path: Path, text: str) -> None:
 def _validation_cases(outside_file: Path) -> list[ValidationCase]:
     return [
         ValidationCase("txt_file_success", "notes.txt", 1, "notes.txt", "offline notes"),
+        ValidationCase("long_file_chunking_success", "long.txt", 5, "long.txt", "0123456789"),
         ValidationCase(
             "markdown_file_success",
             "market.md",

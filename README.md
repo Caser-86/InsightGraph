@@ -32,7 +32,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 需要只采集新闻和产品公告风格证据而不访问公网时，可设置 `INSIGHT_GRAPH_USE_NEWS_SEARCH=1`。第一版 `news_search` 是 deterministic/offline 工具，返回稳定 verified news evidence，不调用新闻 API、不需要 token，也不受 rate limit 影响。若同时启用 `INSIGHT_GRAPH_USE_WEB_SEARCH` 或 `INSIGHT_GRAPH_USE_GITHUB_SEARCH`，Planner 会按 web search、GitHub search、news search、mock search 的顺序选择第一个启用工具。
 
-需要从本地 TXT/Markdown/HTML/PDF 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。当前 `document_reader` 读取当前工作目录内的 `.txt`、`.md`、`.markdown`、`.html`、`.htm`、`.pdf` 文件；不读取工作目录外路径、不读取 URL，也不做 PDF OCR、分页读取或语义检索。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
+需要从本地 TXT/Markdown/HTML/PDF 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。当前 `document_reader` 读取当前工作目录内的 `.txt`、`.md`、`.markdown`、`.html`、`.htm`、`.pdf` 文件；长文档会返回最多 5 条 500 字符 snippets，并在相邻 snippets 间保留 100 字符重叠；不读取工作目录外路径、不读取 URL，也不做 PDF OCR、页级分页或语义检索。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
 
 需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，当前支持 `.txt`、`.md`、`.markdown`、`.py`、`.json`、`.toml`、`.yaml`、`.yml` 且单文件不超过 64 KiB；`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码。`INSIGHT_GRAPH_USE_WRITE_FILE=1` 将用户请求作为 JSON 写入请求处理，格式为 `{"path":"notes.md","content":"Notes."}`。第一版 `write_file` 只会在 cwd 内创建新的安全文本文件，不覆盖已有文件、不自动创建父目录、不执行代码；若同时启用 read/list 工具，Planner 优先选择只读工具。
 
@@ -427,7 +427,7 @@ flowchart TB
 | `fetch_url` | 抓取 direct HTTP/HTTPS URL，并从 HTML 页面生成 verified Evidence |
 | `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
-| `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown`、`.html`、`.htm`、`.pdf` 文件；PDF OCR、分页读取与语义检索属于后续路线图 |
+| `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown`、`.html`、`.htm`、`.pdf` 文件；长文档最多返回 5 条 bounded snippets；PDF OCR、页级分页与语义检索属于后续路线图 |
 | `read_file` / `list_directory` / `write_file` | 当前支持 cwd 内只读安全文本读取、一层目录列表，以及 create-only 安全文本写入 |
 
 `code_execute` 计划用于沙箱 Python 代码执行和表格计算，当前尚未实现，将单独设计。
@@ -591,7 +591,7 @@ curl -X POST http://127.0.0.1:8000/research \
 | `scripts/run_with_llm_log.py` | 当前可用 | 运行 research workflow，stdout 输出 Markdown，并将安全 LLM metadata 写入 `llm_logs/`；不记录 prompt、completion、raw response 或 API key |
 | `scripts/validate_sources.py` | 当前可用 | 离线校验 Markdown 报告 citation 与 References；支持文件路径或 stdin `-`，默认 JSON 输出，`--markdown` 输出表格；不联网校验 URL 可访问性 |
 | `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
-| `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown/HTML/PDF `document_reader` 行为，默认 JSON 输出，`--markdown` 输出表格；PDF OCR、分页读取与语义检索验证属于后续路线图 |
+| `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown/HTML/PDF `document_reader` 行为和长文档 bounded snippets，默认 JSON 输出，`--markdown` 输出表格；PDF OCR、页级分页与语义检索验证属于后续路线图 |
 
 当前 run research 用法：
 
