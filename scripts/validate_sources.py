@@ -1,7 +1,6 @@
 import re
 from typing import Any
 
-
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _REFERENCE_LINE_RE = re.compile(r"^\s*\[(\d+)\]\s+\S.*\S\s*$")
 _REFERENCE_HEADING_RE = re.compile(

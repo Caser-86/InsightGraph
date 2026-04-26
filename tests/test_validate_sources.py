@@ -1,6 +1,5 @@
 from scripts.validate_sources import validate_report
 
-
 VALID_REPORT = """# Report
 
 Cursor pricing is documented publicly [1]. Copilot docs describe product behavior [2].
