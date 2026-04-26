@@ -167,6 +167,9 @@ def _read_input(path: str, stdin: TextIO) -> str:
 
 
 def _format_markdown_cell(value: Any) -> str:
+    if value is None:
+        return ""
+
     return " ".join(str(value).splitlines()).replace("|", r"\|")
 
 

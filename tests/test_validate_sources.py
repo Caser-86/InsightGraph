@@ -44,6 +44,15 @@ def test_validate_report_reports_missing_references_section():
     ]
 
 
+def test_validate_report_reports_missing_references_section_for_empty_input():
+    payload = validate_report("")
+
+    assert payload["ok"] is False
+    assert payload["citation_count"] == 0
+    assert payload["reference_count"] == 0
+    assert payload["issues"][0]["type"] == "missing_references_section"
+
+
 def test_validate_report_reports_missing_reference_for_citation():
     payload = validate_report(
         """# Report
@@ -170,6 +179,64 @@ The report cites one source [1].
     assert payload["issues"] == []
 
 
+def test_validate_report_accepts_sources_heading_with_closing_hashes():
+    payload = validate_report(
+        """# Report
+
+The report cites one source [1].
+
+## Sources ###
+
+[1] Source title. https://example.com/source
+"""
+    )
+
+    assert payload["ok"] is True
+    assert payload["citation_count"] == 1
+    assert payload["reference_count"] == 1
+    assert payload["issues"] == []
+
+
+def test_validate_report_accepts_mixed_case_sources_heading_with_closing_hashes():
+    payload = validate_report(
+        """# Report
+
+The report cites one source [1].
+
+## sOuRcEs ###
+
+[1] Source title. https://example.com/source
+"""
+    )
+
+    assert payload["ok"] is True
+    assert payload["citation_count"] == 1
+    assert payload["reference_count"] == 1
+    assert payload["issues"] == []
+
+
+def test_validate_report_counts_citations_after_same_or_higher_heading_as_body():
+    payload = validate_report(
+        """# Report
+
+The report cites one source [1].
+
+## References
+
+[1] Used source. https://example.com/used
+
+## Follow-up
+
+The report cites another source after references [2].
+"""
+    )
+
+    assert payload["citation_count"] == 2
+    assert payload["reference_count"] == 1
+    assert issue_types(payload) == ["missing_reference"]
+    assert payload["issues"][0]["reference"] == 2
+
+
 def test_main_reads_file_and_writes_json(tmp_path):
     report_path = tmp_path / "report.md"
     report_path.write_text(VALID_REPORT, encoding="utf-8")
@@ -194,6 +261,17 @@ def test_main_reads_stdin_when_path_is_dash():
     assert exit_code == 0
     assert stderr.getvalue() == ""
     assert json.loads(stdout.getvalue())["ok"] is True
+
+
+def test_main_reports_missing_references_section_for_empty_stdin():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = main(["-"], stdin=io.StringIO(""), stdout=stdout, stderr=stderr)
+
+    assert exit_code == 1
+    payload = json.loads(stdout.getvalue())
+    assert payload["issues"][0]["type"] == "missing_references_section"
 
 
 def test_format_markdown_writes_summary_without_issues():
@@ -225,6 +303,17 @@ def test_format_markdown_writes_issue_table_with_escaped_cells():
 
     assert "## Issues" in output
     assert "| missing_reference | 1 | Line one \\| line two line three |" in output
+
+
+def test_format_markdown_writes_blank_reference_cell_for_missing_section():
+    payload = validate_report("")
+
+    output = format_markdown(payload)
+
+    assert (
+        "| missing_references_section |  | "
+        "Report has no References or Sources section. |"
+    ) in output
 
 
 def test_main_writes_markdown_when_flag_is_present():
