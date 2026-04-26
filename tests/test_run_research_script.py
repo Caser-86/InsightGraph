@@ -18,6 +18,11 @@ class BadStdout:
         raise OSError("cannot write")
 
 
+class BadStdin:
+    def read(self) -> str:
+        raise OSError("cannot read")
+
+
 def clear_live_defaults(monkeypatch) -> None:
     for name in run_research_script.LIVE_LLM_PRESET_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
@@ -112,6 +117,27 @@ def test_main_reads_query_from_stdin_dash():
     assert "# InsightGraph Research Report" in stdout.getvalue()
 
 
+def test_main_returns_two_for_stdin_read_error_without_running_workflow():
+    def fail_run_research(query: str) -> GraphState:
+        raise AssertionError("run_research should not be called")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = run_research_script.main(
+        ["-"],
+        stdin=BadStdin(),
+        stdout=stdout,
+        stderr=stderr,
+        run_research_func=fail_run_research,
+    )
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Failed to read query.\n"
+    assert "Traceback" not in stderr.getvalue()
+
+
 def test_main_rejects_empty_query_without_running_workflow():
     def fail_run_research(query: str) -> GraphState:
         raise AssertionError("run_research should not be called")
@@ -130,6 +156,28 @@ def test_main_rejects_empty_query_without_running_workflow():
     assert exit_code == 2
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == "Research query must not be empty.\n"
+
+
+def test_main_preserves_markdown_trailing_spaces():
+    def fake_run_research(query: str) -> GraphState:
+        state = make_state(query)
+        state.report_markdown = "line  \n"
+        return state
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = run_research_script.main(
+        ["Compare"],
+        stdin=io.StringIO(),
+        stdout=stdout,
+        stderr=stderr,
+        run_research_func=fake_run_research,
+    )
+
+    assert exit_code == 0
+    assert stderr.getvalue() == ""
+    assert stdout.getvalue() == "line  \n"
 
 
 def test_main_outputs_cli_aligned_json_payload():

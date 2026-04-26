@@ -110,7 +110,7 @@ def _read_query(query_arg: str, stdin: TextIO) -> str:
 
 
 def _format_markdown_output(report_markdown: str) -> str:
-    return report_markdown.rstrip() + "\n"
+    return report_markdown.rstrip("\r\n") + "\n"
 
 
 if __name__ == "__main__":
