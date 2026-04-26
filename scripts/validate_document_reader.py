@@ -77,6 +77,15 @@ def _write_fixtures(workspace: Path, outside_file: Path) -> None:
         "# Appendix\n\nMarkdown appendix content.",
         encoding="utf-8",
     )
+    (workspace / "brief.html").write_text(
+        """
+        <html>
+          <head><style>.x { color: red; }</style></head>
+          <body><h1>HTML market brief</h1><p>HTML document_reader support.</p></body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
     (workspace / "unsupported.pdf").write_text("not a real PDF", encoding="utf-8")
     (workspace / "empty.txt").write_text("", encoding="utf-8")
     (workspace / "invalid.txt").write_bytes(b"\xff\xfe\x00")
@@ -100,6 +109,13 @@ def _validation_cases(outside_file: Path) -> list[ValidationCase]:
             1,
             "appendix.markdown",
             "Markdown appendix",
+        ),
+        ValidationCase(
+            "html_file_success",
+            "brief.html",
+            1,
+            "brief.html",
+            "HTML market brief",
         ),
         ValidationCase("nested_file_success", "nested/deep.md", 1, "deep.md", "nested document"),
         ValidationCase("unsupported_suffix_returns_empty", "unsupported.pdf", 0),
