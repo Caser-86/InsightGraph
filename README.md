@@ -591,7 +591,7 @@ curl -X POST http://127.0.0.1:8000/research \
 | `scripts/run_with_llm_log.py` | 后续路线图 | 执行任务并记录全部 LLM 调用到 `llm_logs/` |
 | `scripts/validate_sources.py` | 当前可用 | 离线校验 Markdown 报告 citation 与 References；支持文件路径或 stdin `-`，默认 JSON 输出，`--markdown` 输出表格；不联网校验 URL 可访问性 |
 | `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
-| `scripts/validate_document_reader.py` | 后续路线图 | 验证当前本地 TXT/Markdown 读取；未来扩展 PDF/HTML 与分块检索验证 |
+| `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown `document_reader` 行为，默认 JSON 输出，`--markdown` 输出表格；PDF/HTML、分页读取与语义检索验证属于后续路线图 |
 
 当前 benchmark 用法：
 
@@ -611,6 +611,15 @@ python scripts/validate_sources.py report.md --markdown
 ```
 
 该脚本只做离线结构校验，不请求 URL，也不验证网页是否可访问。
+
+当前 document reader validator 用法：
+
+```bash
+python scripts/validate_document_reader.py
+python scripts/validate_document_reader.py --markdown
+```
+
+该脚本会在临时目录内创建 TXT/Markdown fixtures，并验证 `document_reader` 的成功读取、unsupported/empty/invalid 文件、缺失文件和路径越界返回空结果；不读取用户文件、不访问公网、不调用 LLM。
 
 ---
 
