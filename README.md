@@ -583,15 +583,24 @@ curl -X POST http://127.0.0.1:8000/research \
 
 ---
 
-## 计划脚本（后续路线图）
+## 脚本
 
 | 脚本 | 用途 |
 |------|------|
 | `scripts/run_research.py` | 命令行执行研究任务，输出 Markdown 报告 |
 | `scripts/run_with_llm_log.py` | 执行任务并记录全部 LLM 调用到 `llm_logs/` |
 | `scripts/validate_sources.py` | 批量校验报告中的 URL 与 citation |
-| `scripts/benchmark_research.py` | 对固定研究任务进行回归测试与成本统计 |
+| `scripts/benchmark_research.py` | 当前可用：离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
 | `scripts/validate_document_reader.py` | 验证当前本地 TXT/Markdown 读取；未来扩展 PDF/HTML 与分块检索验证 |
+
+当前 benchmark 用法：
+
+```bash
+python scripts/benchmark_research.py
+python scripts/benchmark_research.py --markdown
+```
+
+该脚本会在进程内清理会改变默认工具/LLM 行为的 opt-in 环境变量，确保 benchmark 使用 offline deterministic workflow。
 
 ---
 
