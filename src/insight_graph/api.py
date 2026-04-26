@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from threading import Lock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,9 @@ from insight_graph.cli import (
 from insight_graph.graph import run_research
 
 app = FastAPI(title="InsightGraph API")
+
+# Presets use process env, so this synchronous MVP serializes /research execution.
+_RESEARCH_ENV_LOCK = Lock()
 
 
 class ResearchRequest(BaseModel):
@@ -56,8 +60,9 @@ def health() -> dict[str, str]:
 @app.post("/research")
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
-        with _research_preset_environment(request.preset):
-            state = run_research(request.query)
+        with _RESEARCH_ENV_LOCK:
+            with _research_preset_environment(request.preset):
+                state = run_research(request.query)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
     return _build_research_json_payload(state)

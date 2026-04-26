@@ -135,6 +135,29 @@ def test_research_passes_query_to_workflow(monkeypatch) -> None:
     assert observed_queries == ["Compare Cursor"]
 
 
+def test_research_enters_environment_lock(monkeypatch) -> None:
+    lock_events: list[str] = []
+
+    class FakeLock:
+        def __enter__(self) -> None:
+            lock_events.append("enter")
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            lock_events.append("exit")
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_RESEARCH_ENV_LOCK", FakeLock())
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post("/research", json={"query": "Compare Cursor"})
+
+    assert response.status_code == 200
+    assert lock_events == ["enter", "exit"]
+
+
 def test_research_live_llm_preset_restores_env(monkeypatch) -> None:
     clear_live_env(monkeypatch)
     observed_env: dict[str, str | None] = {}
