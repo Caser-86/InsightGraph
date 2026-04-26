@@ -2,7 +2,7 @@ from importlib import import_module
 
 from insight_graph.tools.document_reader import document_reader
 from insight_graph.tools.fetch_url import fetch_url
-from insight_graph.tools.file_tools import list_directory, read_file
+from insight_graph.tools.file_tools import list_directory, read_file, write_file
 from insight_graph.tools.github_search import github_search
 from insight_graph.tools.news_search import news_search
 from insight_graph.tools.registry import ToolRegistry
@@ -20,4 +20,5 @@ __all__ = [
     "news_search",
     "read_file",
     "web_search",
+    "write_file",
 ]

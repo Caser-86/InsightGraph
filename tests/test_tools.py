@@ -1,5 +1,6 @@
 import hashlib
 import importlib
+import json
 import re
 
 import pytest
@@ -15,6 +16,7 @@ from insight_graph.tools import (
     news_search,
     read_file,
     web_search,
+    write_file,
 )
 from insight_graph.tools.http_client import FetchedPage
 
@@ -64,6 +66,7 @@ def test_tools_package_exports_document_reader_callable() -> None:
 def test_tools_package_exports_readonly_file_tool_callables() -> None:
     assert callable(read_file)
     assert callable(list_directory)
+    assert callable(write_file)
 
 
 def test_github_search_returns_deterministic_verified_github_evidence() -> None:
@@ -364,6 +367,102 @@ def test_list_directory_rejects_invalid_paths(tmp_path, monkeypatch) -> None:
     assert list_directory("../outside", "s1") == []
 
 
+def test_write_file_creates_verified_docs_evidence(tmp_path, monkeypatch) -> None:
+    target_dir = tmp_path / "notes"
+    target_dir.mkdir()
+    target = target_dir / "Output.md"
+    monkeypatch.chdir(tmp_path)
+
+    evidence = write_file(
+        json.dumps({"path": "notes/Output.md", "content": "# Output\n\nAlpha   beta."}),
+        "s1",
+    )
+
+    assert target.read_text(encoding="utf-8") == "# Output\n\nAlpha   beta."
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("write-file", "notes/Output.md")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "Output.md"
+    assert evidence[0].source_url == target.resolve().as_uri()
+    assert evidence[0].snippet == "# Output Alpha beta."
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+
+
+def test_write_file_normalizes_newlines_to_lf(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "notes.md"
+    monkeypatch.chdir(tmp_path)
+
+    evidence = write_file(
+        json.dumps({"path": "notes.md", "content": "Line 1\r\nLine 2"}),
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert target.read_bytes() == b"Line 1\nLine 2"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "not-json",
+        json.dumps(["path", "content"]),
+        json.dumps({"content": "Missing path."}),
+        json.dumps({"path": "missing-content.md"}),
+        json.dumps({"path": 123, "content": "Bad path."}),
+        json.dumps({"path": "bad-content.md", "content": 123}),
+        json.dumps({"path": "overwrite.md", "content": "x", "overwrite": True}),
+        json.dumps({"path": "append.md", "content": "x", "append": True}),
+        json.dumps({"path": "mode.md", "content": "x", "mode": "overwrite"}),
+    ],
+)
+def test_write_file_rejects_invalid_query_shapes(query, tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert write_file(query, "s1") == []
+
+
+def test_write_file_rejects_unsafe_or_invalid_targets(tmp_path, monkeypatch) -> None:
+    existing = tmp_path / "existing.md"
+    existing.write_text("existing", encoding="utf-8")
+    (tmp_path / "folder").mkdir()
+    (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert write_file(json.dumps({"path": "existing.md", "content": "new"}), "s1") == []
+    assert existing.read_text(encoding="utf-8") == "existing"
+    assert write_file(json.dumps({"path": "folder", "content": "new"}), "s1") == []
+    assert write_file(json.dumps({"path": "missing/out.md", "content": "new"}), "s1") == []
+    assert write_file(json.dumps({"path": "../outside.md", "content": "new"}), "s1") == []
+    assert write_file(json.dumps({"path": "unsupported.pdf", "content": "new"}), "s1") == []
+    assert write_file(json.dumps({"path": "script.py", "content": "print('no')"}), "s1") == []
+    assert write_file(json.dumps({"path": "empty.md", "content": "\n\t   \n"}), "s1") == []
+    assert write_file(
+        json.dumps({"path": "large.md", "content": "a" * (64 * 1024 + 1)}), "s1"
+    ) == []
+
+
+def test_write_file_rejects_malformed_query(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert write_file(None, "s1") == []  # type: ignore[arg-type]
+
+
+def test_write_file_hash_prevents_slug_collisions(tmp_path, monkeypatch) -> None:
+    nested_dir = tmp_path / "docs" / "foo"
+    nested_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    first_evidence = write_file(json.dumps({"path": "docs/foo-bar.md", "content": "First."}), "s1")
+    second_evidence = write_file(
+        json.dumps({"path": "docs/foo/bar.md", "content": "Second."}), "s1"
+    )
+
+    assert first_evidence[0].id == tool_id("write-file", "docs/foo-bar.md")
+    assert second_evidence[0].id == tool_id("write-file", "docs/foo/bar.md")
+    assert first_evidence[0].id != second_evidence[0].id
+
+
 def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(
@@ -461,6 +560,21 @@ def test_registry_runs_list_directory_tool(tmp_path, monkeypatch) -> None:
     assert len(evidence) == 1
     assert "sample.md" in evidence[0].snippet
     assert evidence[0].source_type == "docs"
+
+
+def test_registry_runs_write_file_tool(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    evidence = ToolRegistry().run(
+        "write_file",
+        json.dumps({"path": "sample.md", "content": "Local file evidence."}),
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].id == tool_id("write-file", "sample.md")
+    assert evidence[0].source_type == "docs"
+    assert (tmp_path / "sample.md").read_text(encoding="utf-8") == "Local file evidence."
 
 
 def test_registry_unknown_tool_still_raises_key_error() -> None:

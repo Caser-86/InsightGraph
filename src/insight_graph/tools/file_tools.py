@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -14,6 +15,16 @@ SUPPORTED_READ_SUFFIXES = {
     ".yaml",
     ".yml",
 }
+SUPPORTED_WRITE_SUFFIXES = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".toml",
+    ".yaml",
+    ".yml",
+}
+WRITE_MODE_KEYS = {"overwrite", "append", "mode"}
 MAX_FILE_BYTES = 64 * 1024
 MAX_SNIPPET_CHARS = 500
 MAX_DIRECTORY_ENTRIES = 50
@@ -93,6 +104,70 @@ def list_directory(query: str, subtask_id: str = "collect") -> list[Evidence]:
             verified=True,
         )
     ]
+
+
+def write_file(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    payload = _parse_write_file_query(query)
+    if payload is None:
+        return []
+
+    path_text, content = payload
+    content_to_write = _normalize_newlines(content)
+    root = Path.cwd().resolve()
+    path = _resolve_inside_root(root, path_text)
+    if path is None or path.exists() or path.is_dir():
+        return []
+    if path.suffix.lower() not in SUPPORTED_WRITE_SUFFIXES:
+        return []
+    if not path.parent.is_dir():
+        return []
+
+    snippet = _normalize_snippet(content_to_write)
+    if not snippet:
+        return []
+
+    try:
+        if len(content_to_write.encode("utf-8")) > MAX_FILE_BYTES:
+            return []
+        with path.open("x", encoding="utf-8", newline="\n") as output_file:
+            output_file.write(content_to_write)
+    except (OSError, UnicodeEncodeError, ValueError):
+        return []
+
+    return [
+        Evidence(
+            id=_evidence_id("write-file", root, path),
+            subtask_id=subtask_id,
+            title=path.name,
+            source_url=path.as_uri(),
+            snippet=snippet,
+            source_type="docs",
+            verified=True,
+        )
+    ]
+
+
+def _parse_write_file_query(query: str) -> tuple[str, str] | None:
+    query_text = _coerce_query(query)
+    if query_text is None:
+        return None
+    try:
+        payload = json.loads(query_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if WRITE_MODE_KEYS.intersection(payload):
+        return None
+    path = payload.get("path")
+    content = payload.get("content")
+    if not isinstance(path, str) or not isinstance(content, str):
+        return None
+    return path, content
+
+
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _resolve_inside_root(root: Path, query: str) -> Path | None:
