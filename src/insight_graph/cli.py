@@ -89,6 +89,9 @@ def _build_research_json_payload(state: GraphState) -> dict[str, object]:
         "user_request": state.user_request,
         "report_markdown": state.report_markdown or "",
         "findings": [finding.model_dump(mode="json") for finding in state.findings],
+        "competitive_matrix": [
+            row.model_dump(mode="json") for row in state.competitive_matrix
+        ],
         "critique": state.critique.model_dump(mode="json")
         if state.critique is not None
         else None,

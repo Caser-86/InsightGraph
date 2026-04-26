@@ -38,7 +38,9 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
     assert result.critique.passed is True
     assert result.report_markdown is not None
     assert "# InsightGraph Research Report" in result.report_markdown
+    assert "## Competitive Matrix" in result.report_markdown
     assert "https://cursor.com/pricing" in result.report_markdown
+    assert result.competitive_matrix
     assert result.llm_call_log == []
 
 

@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 import insight_graph.cli as cli_module
 from insight_graph.cli import app
 from insight_graph.state import (
+    CompetitiveMatrixRow,
     Critique,
     Evidence,
     Finding,
@@ -376,6 +377,7 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 "evidence_ids": ["cursor-pricing"],
             }
         ],
+        "competitive_matrix": [],
         "critique": {
             "passed": True,
             "reason": "Enough evidence.",
@@ -408,6 +410,38 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
         ],
         "iterations": 1,
     }
+
+
+def test_cli_json_payload_includes_competitive_matrix(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return GraphState(
+            user_request=query,
+            competitive_matrix=[
+                CompetitiveMatrixRow(
+                    product="Cursor",
+                    positioning="Official product positioning signal",
+                    strengths=["Official/documented source coverage"],
+                    evidence_ids=["cursor-pricing"],
+                )
+            ],
+            report_markdown="# Report\n",
+        )
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["research", "Compare AI coding agents", "--output-json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["competitive_matrix"] == [
+        {
+            "product": "Cursor",
+            "positioning": "Official product positioning signal",
+            "strengths": ["Official/documented source coverage"],
+            "evidence_ids": ["cursor-pricing"],
+        }
+    ]
 
 
 def test_cli_research_output_json_includes_tool_fallback_records(monkeypatch) -> None:

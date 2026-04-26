@@ -9,7 +9,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
-from insight_graph.state import Evidence, GraphState
+from insight_graph.state import CompetitiveMatrixRow, Evidence, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
 REFERENCE_HEADING_PATTERN = re.compile(
@@ -79,6 +79,7 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
             continue
         lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
 
+    lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_references_section(verified_evidence, reference_numbers))
 
@@ -177,6 +178,8 @@ def _write_report_with_llm(
     )
 
     lines = [body.rstrip(), ""]
+    if "## Competitive Matrix" not in body:
+        lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     if state.critique is not None and "## Critic Assessment" not in body:
         lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_references_section(verified_evidence, reference_numbers))
@@ -321,6 +324,49 @@ def _key_findings_section(markdown: str) -> str:
 
 def _build_reference_numbers(verified_evidence: list[Evidence]) -> dict[str, int]:
     return {item.id: index for index, item in enumerate(verified_evidence, start=1)}
+
+
+def _build_competitive_matrix_section(
+    matrix: list[CompetitiveMatrixRow],
+    reference_numbers: dict[str, int],
+) -> list[str]:
+    rows = []
+    for row in matrix:
+        citations = [
+            f"[{reference_numbers[evidence_id]}]"
+            for evidence_id in row.evidence_ids
+            if evidence_id in reference_numbers
+        ]
+        if not citations:
+            continue
+        strengths = "; ".join(row.strengths) if row.strengths else "Verified evidence available"
+        rows.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(row.product),
+                    _markdown_table_cell(row.positioning),
+                    _markdown_table_cell(strengths),
+                    ", ".join(citations),
+                ]
+            )
+            + " |"
+        )
+
+    if not rows:
+        return []
+    return [
+        "## Competitive Matrix",
+        "",
+        "| Product | Positioning | Strengths | Evidence |",
+        "| --- | --- | --- | --- |",
+        *rows,
+        "",
+    ]
+
+
+def _markdown_table_cell(value: str) -> str:
+    return " ".join(value.replace("|", r"\|").splitlines())
 
 
 def _build_critic_assessment_section(state: GraphState) -> list[str]:

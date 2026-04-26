@@ -164,6 +164,20 @@ def make_reporter_state() -> GraphState:
                 evidence_ids=["cursor-pricing", "copilot-docs"],
             )
         ],
+        competitive_matrix=[
+            CompetitiveMatrixRow(
+                product="Cursor",
+                positioning="Official product positioning signal",
+                strengths=["Official/documented source coverage"],
+                evidence_ids=["cursor-pricing"],
+            ),
+            CompetitiveMatrixRow(
+                product="GitHub Copilot",
+                positioning="Documented product or local research source",
+                strengths=["Official/documented source coverage"],
+                evidence_ids=["copilot-docs"],
+            ),
+        ],
         critique=Critique(passed=True, reason="Findings cite verified evidence."),
     )
 
@@ -1047,6 +1061,85 @@ def test_get_reporter_provider_rejects_unknown_name(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="Unknown reporter provider: unknown"):
         get_reporter_provider()
+
+
+def test_reporter_renders_competitive_matrix() -> None:
+    state = make_reporter_state()
+
+    updated = write_report(state)
+
+    assert "## Competitive Matrix" in updated.report_markdown
+    assert "| Product | Positioning | Strengths | Evidence |" in updated.report_markdown
+    assert (
+        "| Cursor | Official product positioning signal | "
+        "Official/documented source coverage | [1] |"
+    ) in updated.report_markdown
+    assert (
+        "| GitHub Copilot | Documented product or local research source | "
+        "Official/documented source coverage | [2] |"
+    ) in updated.report_markdown
+    assert updated.report_markdown.index("## Key Findings") < updated.report_markdown.index(
+        "## Competitive Matrix"
+    )
+    assert updated.report_markdown.index("## Competitive Matrix") < updated.report_markdown.index(
+        "## Critic Assessment"
+    )
+
+
+def test_reporter_omits_competitive_matrix_without_citable_rows() -> None:
+    state = make_reporter_state()
+    state.competitive_matrix = [
+        CompetitiveMatrixRow(
+            product="Cursor",
+            positioning="Official product positioning signal",
+            strengths=["Official/documented source coverage"],
+            evidence_ids=["missing-evidence"],
+        )
+    ]
+
+    updated = write_report(state)
+
+    assert "## Competitive Matrix" not in updated.report_markdown
+
+
+def test_llm_reporter_inserts_competitive_matrix_when_missing(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1]."}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert "## Competitive Matrix" in updated.report_markdown
+    assert (
+        "| Cursor | Official product positioning signal | "
+        "Official/documented source coverage | [1] |"
+    ) in updated.report_markdown
+
+
+def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1].\\n\\n## Competitive Matrix\\n\\n'
+            '| Product | Positioning | Strengths | Evidence |\\n'
+            '| --- | --- | --- | --- |\\n'
+            '| Cursor | Existing | Existing | [1] |"}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    assert updated.report_markdown.count("## Competitive Matrix") == 1
+    assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
 def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
