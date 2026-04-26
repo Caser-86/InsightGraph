@@ -256,8 +256,14 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
             (
                 "Return strict JSON with this shape only: "
                 '{"findings": [{"title": "...", "summary": "...", '
+                '"evidence_ids": ["verified-evidence-id"]}], '
+                '"competitive_matrix": [{"product": "...", '
+                '"positioning": "...", "strengths": ["..."], '
                 '"evidence_ids": ["verified-evidence-id"]}]} '
-                "Every finding must cite one or more verified evidence IDs from the list."
+                "competitive_matrix is optional, but each matrix row must include "
+                "product, positioning, strengths, and evidence_ids that cite "
+                "verified evidence IDs from the list. Every finding must cite "
+                "one or more verified evidence IDs from the list."
             ),
         ]
     )

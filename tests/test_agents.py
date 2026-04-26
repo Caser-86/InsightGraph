@@ -811,6 +811,30 @@ def test_llm_analyst_parses_competitive_matrix(monkeypatch) -> None:
     ]
 
 
+def test_llm_analyst_prompt_requests_competitive_matrix(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    messages: list[list[ChatMessage]] = []
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}]}'
+        ),
+        messages=messages,
+    )
+
+    analyze_evidence(state, llm_client=client)
+
+    prompt = messages[0][-1].content
+    assert "competitive_matrix" in prompt
+    assert "product" in prompt
+    assert "positioning" in prompt
+    assert "strengths" in prompt
+    assert "evidence_ids" in prompt
+
+
 def test_llm_analyst_uses_deterministic_matrix_when_matrix_missing(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
@@ -871,6 +895,7 @@ def test_llm_analyst_falls_back_for_invalid_competitive_matrix(monkeypatch) -> N
         "Cursor",
         "GitHub Copilot",
     ]
+    assert updated.findings[0].title == "Official sources establish baseline product positioning"
 
 
 def test_llm_analyst_falls_back_when_matrix_strengths_missing(monkeypatch) -> None:
@@ -894,6 +919,7 @@ def test_llm_analyst_falls_back_when_matrix_strengths_missing(monkeypatch) -> No
         "Cursor",
         "GitHub Copilot",
     ]
+    assert updated.findings[0].title == "Official sources establish baseline product positioning"
 
 
 @pytest.mark.parametrize(
