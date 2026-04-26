@@ -59,7 +59,8 @@ if not candidate.is_relative_to(root):
 - 只支持以下后缀：`.txt`、`.md`、`.markdown`、`.json`、`.toml`、`.yaml`、`.yml`。
 - 不支持 `.py`，避免把该工具变成代码生成/执行链路的一部分。
 - `content` 必须是字符串。
-- `content.encode("utf-8")` 后不得超过 64 KiB。
+- 写入前将 `\r\n` 和 `\r` 归一化为 `\n`。
+- 归一化换行后的 `content.encode("utf-8")` 后不得超过 64 KiB。
 - whitespace-normalized content 为空时返回 `[]`。
 - 使用 `path.open("x", encoding="utf-8", newline="\n")` 创建文件，确保已有文件不会被覆盖。
 - 捕获 `OSError`、`UnicodeEncodeError`、`ValueError` 并返回 `[]`。
@@ -74,7 +75,7 @@ if not candidate.is_relative_to(root):
 - `subtask_id` 使用传入值。
 - `title` 使用文件名。
 - `source_url` 使用 `file://` URI。
-- `snippet` 是写入内容 whitespace-normalized 后的前 500 字符。
+- `snippet` 是换行归一化后的写入内容 whitespace-normalized 后的前 500 字符。
 - `source_type="docs"`
 - `verified=True`
 
@@ -135,8 +136,8 @@ README 更新当前工具表和 opt-in 说明：
 覆盖点：
 
 - `write_file()` 使用合法 JSON 在 cwd 内创建新 Markdown 文件并返回 1 条 verified docs evidence。
-- 文件实际写入 UTF-8 内容，使用 LF newline。
-- `write_file()` 拒绝无效 JSON、非 object JSON、缺失 `path`、缺失 `content`、非字符串字段。
+- 文件实际写入 UTF-8 内容，CRLF/CR 会归一化为 LF newline。
+- `write_file()` 拒绝无效 JSON、非 object JSON、缺失 `path`、缺失 `content`、非字符串字段，以及 `overwrite`、`append`、`mode` 等写入模式字段。
 - `write_file()` 拒绝已有文件、目录路径、缺失父目录、工作区外路径、不支持后缀、`.py` 后缀、超大内容、空 normalized content。
 - `write_file()` evidence ID 对相同 slug 不同路径不碰撞。
 - `write_file()` 对 malformed non-string query 返回 `[]`。
