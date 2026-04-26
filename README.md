@@ -34,7 +34,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 
 需要从本地 text/Markdown 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。第一版 `document_reader` 只读取当前工作目录内的 `.txt`、`.md`、`.markdown` 文件；不读取工作目录外路径、不读取 URL，也不解析 PDF/HTML。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
 
-需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，当前支持 `.txt`、`.md`、`.markdown`、`.py`、`.json`、`.toml`、`.yaml`、`.yml` 且单文件不超过 64 KiB；`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码；`write_file` 和 `code_execute` 将单独设计。
+需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，当前支持 `.txt`、`.md`、`.markdown`、`.py`、`.json`、`.toml`、`.yaml`、`.yml` 且单文件不超过 64 KiB；`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码。`INSIGHT_GRAPH_USE_WRITE_FILE=1` 将用户请求作为 JSON 写入请求处理，格式为 `{"path":"notes.md","content":"Notes."}`。第一版 `write_file` 只会在 cwd 内创建新的安全文本文件，不覆盖已有文件、不自动创建父目录、不执行代码；若同时启用 read/list 工具，Planner 优先选择只读工具。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -44,6 +44,7 @@ INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c 
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `document_reader`；若同时启用搜索工具，则搜索工具优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `read_file`；搜索工具和 `document_reader` 优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_LIST_DIRECTORY` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `list_directory`；搜索工具、`document_reader` 和 `read_file` 优先 | 未启用 |
+| `INSIGHT_GRAPH_USE_WRITE_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用 create-only `write_file`；搜索工具、`document_reader`、`read_file` 和 `list_directory` 优先 | 未启用 |
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
 
@@ -259,6 +260,7 @@ src/insight_graph/
 │ document_reader   │                       │                           │
 │ read_file         │                       │                           │
 │ list_directory    │                       │                           │
+│ write_file        │                       │                           │
 └───────────────────┴───────────────────────┴───────────────────────────┘
 ```
 
@@ -372,7 +374,7 @@ flowchart TB
     subgraph 数据采集
         T1[web_search] --> T2[fetch_url + content_extract]
         T3[github_search / news_search] --> T8[evidence_snippets]
-        T5[document_reader / read_file / list_directory] --> T8
+        T5[document_reader / read_file / list_directory / write_file] --> T8
         T2 --> T8
     end
 
@@ -422,7 +424,7 @@ flowchart TB
 | `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
 | `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown` 文件；PDF/HTML、分页读取与语义检索属于后续路线图 |
-| `read_file` / `list_directory` | 当前支持 cwd 内只读安全文本读取与一层目录列表；`write_file` 属于后续路线图 |
+| `read_file` / `list_directory` / `write_file` | 当前支持 cwd 内只读安全文本读取、一层目录列表，以及 create-only 安全文本写入 |
 
 `code_execute` 计划用于沙箱 Python 代码执行和表格计算，当前尚未实现，将单独设计。
 
@@ -440,7 +442,7 @@ flowchart TB
 ### 2. Collector
 
 - **多轮循环**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用
-- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory；当前 Planner collect subtask 按 opt-in 优先级选择一个主采集工具
+- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory、write_file；当前 Planner collect subtask 按 opt-in 优先级选择一个主采集工具
 - **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
 - **上下文控制**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据
 - **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据
