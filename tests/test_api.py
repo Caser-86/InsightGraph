@@ -1042,6 +1042,30 @@ def test_list_research_jobs_limits_newest_matching_jobs(monkeypatch) -> None:
     assert oldest not in response.text
 
 
+def test_list_research_jobs_uses_default_limit() -> None:
+    api_module._JOBS.clear()
+    for index in range(101):
+        job = api_module.ResearchJob(
+            id=f"job-{index}",
+            query=f"Job {index}",
+            preset=api_module.ResearchPreset.offline,
+            created_order=index,
+            created_at=f"2026-04-27T19:00:{index % 60:02d}Z",
+        )
+        api_module._JOBS[job.id] = job
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 100
+    assert len(payload["jobs"]) == 100
+    assert payload["jobs"][0]["query"] == "Job 100"
+    assert payload["jobs"][-1]["query"] == "Job 1"
+    assert "Job 0" not in response.text
+
+
 def test_list_research_jobs_rejects_invalid_status() -> None:
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
