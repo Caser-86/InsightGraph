@@ -114,6 +114,22 @@ def test_current_utc_timestamp_uses_z_suffix() -> None:
     assert parsed.tzinfo == UTC
 
 
+def test_research_job_status_constants_match_public_statuses() -> None:
+    assert api_module._RESEARCH_JOB_STATUSES == (
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+    )
+    assert api_module._ACTIVE_RESEARCH_JOB_STATUSES == {"queued", "running"}
+    assert api_module._TERMINAL_RESEARCH_JOB_STATUSES == {
+        "succeeded",
+        "failed",
+        "cancelled",
+    }
+
+
 def test_research_returns_cli_aligned_json(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)

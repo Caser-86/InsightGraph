@@ -26,6 +26,27 @@ _JOBS_LOCK = Lock()
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 _MAX_RESEARCH_JOBS = 100
 _MAX_ACTIVE_RESEARCH_JOBS = 100
+_RESEARCH_JOB_STATUS_QUEUED = "queued"
+_RESEARCH_JOB_STATUS_RUNNING = "running"
+_RESEARCH_JOB_STATUS_SUCCEEDED = "succeeded"
+_RESEARCH_JOB_STATUS_FAILED = "failed"
+_RESEARCH_JOB_STATUS_CANCELLED = "cancelled"
+_RESEARCH_JOB_STATUSES = (
+    _RESEARCH_JOB_STATUS_QUEUED,
+    _RESEARCH_JOB_STATUS_RUNNING,
+    _RESEARCH_JOB_STATUS_SUCCEEDED,
+    _RESEARCH_JOB_STATUS_FAILED,
+    _RESEARCH_JOB_STATUS_CANCELLED,
+)
+_ACTIVE_RESEARCH_JOB_STATUSES = {
+    _RESEARCH_JOB_STATUS_QUEUED,
+    _RESEARCH_JOB_STATUS_RUNNING,
+}
+_TERMINAL_RESEARCH_JOB_STATUSES = {
+    _RESEARCH_JOB_STATUS_SUCCEEDED,
+    _RESEARCH_JOB_STATUS_FAILED,
+    _RESEARCH_JOB_STATUS_CANCELLED,
+}
 _NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
 
@@ -37,7 +58,7 @@ class ResearchJob:
     preset: ResearchPreset
     created_order: int
     created_at: str
-    status: str = "queued"
+    status: str = _RESEARCH_JOB_STATUS_QUEUED
     started_at: str | None = None
     finished_at: str | None = None
     result: dict[str, Any] | None = None
@@ -96,21 +117,21 @@ def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
 
 def _queued_job_positions_locked() -> dict[str, int]:
     queued_jobs = sorted(
-        (job for job in _JOBS.values() if job.status == "queued"),
+        (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_QUEUED),
         key=lambda item: item.created_order,
     )
     return {job.id: index for index, job in enumerate(queued_jobs, start=1)}
 
 
 def _active_research_job_count_locked() -> int:
-    return sum(1 for job in _JOBS.values() if job.status in {"queued", "running"})
+    return sum(1 for job in _JOBS.values() if job.status in _ACTIVE_RESEARCH_JOB_STATUSES)
 
 
 def _job_queue_position_field(
     job: ResearchJob,
     queued_positions: dict[str, int],
 ) -> dict[str, int]:
-    if job.status != "queued":
+    if job.status != _RESEARCH_JOB_STATUS_QUEUED:
         return {}
     position = queued_positions.get(job.id)
     if position is None:
@@ -136,9 +157,9 @@ def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str,
         **_job_timing_fields(job),
         **_job_queue_position_field(job, queued_positions),
     }
-    if job.status == "succeeded":
+    if job.status == _RESEARCH_JOB_STATUS_SUCCEEDED:
         response["result"] = job.result
-    elif job.status == "failed":
+    elif job.status == _RESEARCH_JOB_STATUS_FAILED:
         response["error"] = job.error
     return response
 
@@ -177,7 +198,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
     return {
         "job_id": job.id,
-        "status": "queued",
+        "status": _RESEARCH_JOB_STATUS_QUEUED,
         "created_at": job.created_at,
     }
 
@@ -197,20 +218,19 @@ def list_research_jobs() -> dict[str, Any]:
 
 @app.get("/research/jobs/summary")
 def summarize_research_jobs() -> dict[str, Any]:
-    statuses = ["queued", "running", "succeeded", "failed", "cancelled"]
     with _JOBS_LOCK:
-        counts = {status: 0 for status in statuses}
+        counts = {status: 0 for status in _RESEARCH_JOB_STATUSES}
         for job in _JOBS.values():
             counts[job.status] = counts.get(job.status, 0) + 1
         counts["total"] = len(_JOBS)
 
         queued_positions = _queued_job_positions_locked()
         queued_jobs = sorted(
-            (job for job in _JOBS.values() if job.status == "queued"),
+            (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_QUEUED),
             key=lambda item: item.created_order,
         )
         running_jobs = sorted(
-            (job for job in _JOBS.values() if job.status == "running"),
+            (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_RUNNING),
             key=lambda item: item.created_order,
         )
         return {
@@ -228,12 +248,12 @@ def cancel_research_job(job_id: str) -> dict[str, str]:
         job = _JOBS.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
-        if job.status != "queued":
+        if job.status != _RESEARCH_JOB_STATUS_QUEUED:
             raise HTTPException(
                 status_code=409,
                 detail="Only queued research jobs can be cancelled.",
             )
-        job.status = "cancelled"
+        job.status = _RESEARCH_JOB_STATUS_CANCELLED
         job.finished_at = _current_utc_timestamp()
         _prune_finished_jobs_locked()
         return _job_detail(job, _queued_job_positions_locked())
@@ -251,9 +271,9 @@ def get_research_job(job_id: str) -> dict[str, Any]:
 def _run_research_job(job_id: str) -> None:
     with _JOBS_LOCK:
         job = _JOBS[job_id]
-        if job.status == "cancelled":
+        if job.status == _RESEARCH_JOB_STATUS_CANCELLED:
             return
-        job.status = "running"
+        job.status = _RESEARCH_JOB_STATUS_RUNNING
         job.started_at = _current_utc_timestamp()
 
     try:
@@ -263,14 +283,14 @@ def _run_research_job(job_id: str) -> None:
         result = _build_research_json_payload(state)
     except Exception:
         with _JOBS_LOCK:
-            job.status = "failed"
+            job.status = _RESEARCH_JOB_STATUS_FAILED
             job.finished_at = _current_utc_timestamp()
             job.error = "Research workflow failed."
             _prune_finished_jobs_locked()
         return
 
     with _JOBS_LOCK:
-        job.status = "succeeded"
+        job.status = _RESEARCH_JOB_STATUS_SUCCEEDED
         job.finished_at = _current_utc_timestamp()
         job.result = result
         _prune_finished_jobs_locked()
@@ -280,7 +300,7 @@ def _prune_finished_jobs_locked() -> None:
     finished_jobs = [
         job
         for job in _JOBS.values()
-        if job.status in {"succeeded", "failed", "cancelled"}
+        if job.status in _TERMINAL_RESEARCH_JOB_STATUSES
     ]
     overflow = len(finished_jobs) - _MAX_RESEARCH_JOBS
     if overflow <= 0:
