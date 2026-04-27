@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from insight_graph.cli import ResearchPreset
+from insight_graph.research_jobs_backend import InMemoryResearchJobsBackend
 from insight_graph.research_jobs_store import (
     ResearchJobsStoreError,
     load_research_jobs,
@@ -49,6 +50,11 @@ _MAX_ACTIVE_RESEARCH_JOBS = 100
 _NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
 _RESEARCH_JOBS_PATH: Path | None = research_jobs_path_from_env()
+_RESEARCH_JOBS_BACKEND = InMemoryResearchJobsBackend(
+    store_path=_RESEARCH_JOBS_PATH,
+    jobs=_JOBS,
+    lock=_JOBS_LOCK,
+)
 
 
 @dataclass
@@ -75,6 +81,14 @@ def reset_research_jobs_state(
 ) -> None:
     global _MAX_ACTIVE_RESEARCH_JOBS, _MAX_RESEARCH_JOBS, _NEXT_JOB_SEQUENCE, _RESEARCH_JOBS_PATH
 
+    jobs = tuple(jobs)
+    _RESEARCH_JOBS_BACKEND.reset(
+        next_job_sequence=next_job_sequence,
+        store_path=store_path,
+        retained_limit=retained_limit,
+        active_limit=active_limit,
+        jobs=jobs,
+    )
     with _JOBS_LOCK:
         _NEXT_JOB_SEQUENCE = next_job_sequence
         _RESEARCH_JOBS_PATH = store_path
@@ -95,6 +109,8 @@ def seed_research_jobs(
 ) -> None:
     global _NEXT_JOB_SEQUENCE
 
+    jobs = tuple(jobs)
+    _RESEARCH_JOBS_BACKEND.seed(jobs, next_job_sequence=next_job_sequence)
     with _JOBS_LOCK:
         if next_job_sequence is not None:
             _NEXT_JOB_SEQUENCE = next_job_sequence
@@ -104,6 +120,7 @@ def seed_research_jobs(
 def set_research_jobs_store_path(path: Path | None) -> None:
     global _RESEARCH_JOBS_PATH
 
+    _RESEARCH_JOBS_BACKEND.set_store_path(path)
     with _JOBS_LOCK:
         _RESEARCH_JOBS_PATH = path
 
@@ -111,30 +128,21 @@ def set_research_jobs_store_path(path: Path | None) -> None:
 def set_research_job_limits(*, retained_limit: int = 100, active_limit: int = 100) -> None:
     global _MAX_ACTIVE_RESEARCH_JOBS, _MAX_RESEARCH_JOBS
 
+    _RESEARCH_JOBS_BACKEND.set_limits(
+        retained_limit=retained_limit,
+        active_limit=active_limit,
+    )
     with _JOBS_LOCK:
         _MAX_RESEARCH_JOBS = retained_limit
         _MAX_ACTIVE_RESEARCH_JOBS = active_limit
 
 
 def get_research_job_record(job_id: str) -> ResearchJob | None:
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            return None
-        return replace(job)
+    return _RESEARCH_JOBS_BACKEND.get(job_id)
 
 
 def update_research_job_record(job_id: str, **changes: Any) -> ResearchJob | None:
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            return None
-        valid_fields = {field.name for field in fields(ResearchJob)}
-        for name, value in changes.items():
-            if name not in valid_fields:
-                raise ValueError(f"Unknown research job field: {name}")
-            setattr(job, name, value)
-        return replace(job)
+    return _RESEARCH_JOBS_BACKEND.update(job_id, **changes)
 
 
 def get_next_research_job_sequence() -> int:
@@ -167,6 +175,7 @@ def initialize_research_jobs(restart_timestamp: str) -> None:
         restart_timestamp=restart_timestamp,
     )
     _NEXT_JOB_SEQUENCE = loaded.next_job_sequence
+    _RESEARCH_JOBS_BACKEND.set_next_sequence(_NEXT_JOB_SEQUENCE)
     _JOBS.clear()
     for item in loaded.jobs:
         job = _research_job_from_store(item)

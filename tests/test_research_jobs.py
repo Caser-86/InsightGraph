@@ -230,6 +230,7 @@ def test_initialize_research_jobs_loads_configured_store(tmp_path) -> None:
 
     job = jobs_module.get_research_job_record("job-4")
     assert jobs_module.get_next_research_job_sequence() == 4
+    assert jobs_module._RESEARCH_JOBS_BACKEND.next_sequence() == 4
     assert job is not None
     assert job.status == "succeeded"
     assert job.result == {"report_markdown": "# Report"}
