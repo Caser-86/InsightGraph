@@ -93,21 +93,43 @@ def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
     return fields
 
 
-def _job_summary(job: ResearchJob) -> dict[str, Any]:
+def _queued_job_positions_locked() -> dict[str, int]:
+    queued_jobs = sorted(
+        (job for job in _JOBS.values() if job.status == "queued"),
+        key=lambda item: item.created_order,
+    )
+    return {job.id: index for index, job in enumerate(queued_jobs, start=1)}
+
+
+def _job_queue_position_field(
+    job: ResearchJob,
+    queued_positions: dict[str, int],
+) -> dict[str, int]:
+    if job.status != "queued":
+        return {}
+    position = queued_positions.get(job.id)
+    if position is None:
+        return {}
+    return {"queue_position": position}
+
+
+def _job_summary(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str, Any]:
     return {
         "job_id": job.id,
         "status": job.status,
         "query": job.query,
         "preset": job.preset,
         **_job_timing_fields(job),
+        **_job_queue_position_field(job, queued_positions),
     }
 
 
-def _job_detail(job: ResearchJob) -> dict[str, Any]:
+def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str, Any]:
     response: dict[str, Any] = {
         "job_id": job.id,
         "status": job.status,
         **_job_timing_fields(job),
+        **_job_queue_position_field(job, queued_positions),
     }
     if job.status == "succeeded":
         response["result"] = job.result
@@ -158,7 +180,8 @@ def list_research_jobs() -> dict[str, Any]:
             key=lambda item: item.created_order,
             reverse=True,
         )
-        summaries = [_job_summary(job) for job in jobs]
+        queued_positions = _queued_job_positions_locked()
+        summaries = [_job_summary(job, queued_positions) for job in jobs]
     return {"jobs": summaries, "count": len(summaries)}
 
 
@@ -176,7 +199,7 @@ def cancel_research_job(job_id: str) -> dict[str, str]:
         job.status = "cancelled"
         job.finished_at = _current_utc_timestamp()
         _prune_finished_jobs_locked()
-        return _job_detail(job)
+        return _job_detail(job, _queued_job_positions_locked())
 
 
 @app.get("/research/jobs/{job_id}")
@@ -185,7 +208,7 @@ def get_research_job(job_id: str) -> dict[str, Any]:
         job = _JOBS.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
-        return _job_detail(job)
+        return _job_detail(job, _queued_job_positions_locked())
 
 
 def _run_research_job(job_id: str) -> None:

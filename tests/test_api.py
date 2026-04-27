@@ -401,6 +401,53 @@ def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
         "job_id": job_id,
         "status": "queued",
         "created_at": "2026-04-27T10:00:00Z",
+        "queue_position": 1,
+    }
+
+
+def test_research_job_detail_includes_queue_position_for_queued_jobs(
+    monkeypatch,
+) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T09:00:00Z",
+            "2026-04-27T09:00:01Z",
+            "2026-04-27T09:00:02Z",
+        ),
+    )
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
+    running = client.post("/research/jobs", json={"query": "Running"}).json()[
+        "job_id"
+    ]
+    third = client.post("/research/jobs", json={"query": "Third"}).json()["job_id"]
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[running].status = "running"
+        api_module._JOBS[running].started_at = "2026-04-27T09:00:03Z"
+
+    assert client.get(f"/research/jobs/{first}").json() == {
+        "job_id": first,
+        "status": "queued",
+        "created_at": "2026-04-27T09:00:00Z",
+        "queue_position": 1,
+    }
+    assert client.get(f"/research/jobs/{running}").json() == {
+        "job_id": running,
+        "status": "running",
+        "created_at": "2026-04-27T09:00:01Z",
+        "started_at": "2026-04-27T09:00:03Z",
+    }
+    assert client.get(f"/research/jobs/{third}").json() == {
+        "job_id": third,
+        "status": "queued",
+        "created_at": "2026-04-27T09:00:02Z",
+        "queue_position": 2,
     }
 
 
@@ -439,6 +486,7 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
         "job_id": job_id,
         "status": "queued",
         "created_at": "2026-04-27T10:00:00Z",
+        "queue_position": 1,
     }
 
     fake_executor.run_next()
@@ -683,6 +731,7 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
                 "query": "Queued",
                 "preset": "offline",
                 "created_at": "2026-04-27T13:00:02Z",
+                "queue_position": 1,
             },
             {
                 "job_id": cancelled,
