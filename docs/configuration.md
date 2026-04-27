@@ -39,6 +39,12 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_GITHUB_LIMIT` | live GitHub repository search 返回数量，范围 `1` 到 `10` | `3` |
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | 可选 GitHub API token；未设置时回退到 `GITHUB_TOKEN`，仍可匿名请求 | - |
 
+## Research Jobs Persistence
+
+`INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables an opt-in JSON store for API research job metadata. When unset, jobs remain process-local memory only. When set, the API loads job metadata from the configured JSON file at startup and writes job state changes back to that file with atomic replace semantics.
+
+Queued or running jobs from a previous process are restored as failed with `Research job did not complete before server restart.` The API does not automatically resume or rerun unfinished jobs.
+
 当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用，尚未包含多轮 agentic tool loop、conversation compression 或收敛检测。
 
 ## Relevance Filtering

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from threading import Lock
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -18,6 +19,12 @@ from insight_graph.cli import (
     _build_research_json_payload,
 )
 from insight_graph.graph import run_research
+from insight_graph.research_jobs_store import (
+    ResearchJobsStoreError,
+    load_research_jobs,
+    research_jobs_path_from_env,
+    save_research_jobs,
+)
 
 app = FastAPI(title="InsightGraph API")
 
@@ -58,6 +65,7 @@ _TERMINAL_RESEARCH_JOB_STATUSES = {
 }
 _NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
+_RESEARCH_JOBS_PATH: Path | None = research_jobs_path_from_env()
 
 
 @dataclass
@@ -154,6 +162,57 @@ def health() -> dict[str, str]:
 
 def _current_utc_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
+    return ResearchJob(
+        id=item["id"],
+        query=item["query"],
+        preset=ResearchPreset(item["preset"]),
+        created_order=item["created_order"],
+        created_at=item["created_at"],
+        status=item["status"],
+        started_at=item["started_at"],
+        finished_at=item["finished_at"],
+        result=item["result"],
+        error=item["error"],
+    )
+
+
+def _load_research_jobs_from_store() -> None:
+    global _NEXT_JOB_SEQUENCE
+
+    if _RESEARCH_JOBS_PATH is None:
+        return
+    loaded = load_research_jobs(
+        path=_RESEARCH_JOBS_PATH,
+        restart_timestamp=_current_utc_timestamp(),
+    )
+    _NEXT_JOB_SEQUENCE = loaded.next_job_sequence
+    _JOBS.clear()
+    for item in loaded.jobs:
+        job = _research_job_from_store(item)
+        _JOBS[job.id] = job
+
+
+def _persist_research_jobs_locked() -> None:
+    if _RESEARCH_JOBS_PATH is None:
+        return
+    save_research_jobs(
+        path=_RESEARCH_JOBS_PATH,
+        jobs=list(_JOBS.values()),
+        next_job_sequence=_NEXT_JOB_SEQUENCE,
+    )
+
+
+def _persist_research_jobs_or_500_locked() -> None:
+    try:
+        _persist_research_jobs_locked()
+    except ResearchJobsStoreError as exc:
+        raise HTTPException(status_code=500, detail="Research job store failed.") from exc
+
+
+_load_research_jobs_from_store()
 
 
 def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
@@ -290,6 +349,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
                 status_code=429,
                 detail="Too many active research jobs.",
             )
+        previous_sequence = _NEXT_JOB_SEQUENCE
         _NEXT_JOB_SEQUENCE += 1
         job = ResearchJob(
             id=str(uuid4()),
@@ -300,6 +360,12 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         )
         _JOBS[job.id] = job
         _prune_finished_jobs_locked()
+        try:
+            _persist_research_jobs_or_500_locked()
+        except HTTPException:
+            _JOBS.pop(job.id, None)
+            _NEXT_JOB_SEQUENCE = previous_sequence
+            raise
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
     return _job_create_response(job)
 
@@ -345,6 +411,7 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
         job.status = _RESEARCH_JOB_STATUS_CANCELLED
         job.finished_at = _current_utc_timestamp()
         _prune_finished_jobs_locked()
+        _persist_research_jobs_or_500_locked()
         return _job_detail(job, _queued_job_positions_locked())
 
 
@@ -368,6 +435,7 @@ def _run_research_job(job_id: str) -> None:
             return
         job.status = _RESEARCH_JOB_STATUS_RUNNING
         job.started_at = _current_utc_timestamp()
+        _persist_research_jobs_locked()
 
     try:
         with _RESEARCH_ENV_LOCK:
@@ -380,6 +448,7 @@ def _run_research_job(job_id: str) -> None:
             job.finished_at = _current_utc_timestamp()
             job.error = "Research workflow failed."
             _prune_finished_jobs_locked()
+            _persist_research_jobs_locked()
         return
 
     with _JOBS_LOCK:
@@ -387,6 +456,7 @@ def _run_research_job(job_id: str) -> None:
         job.finished_at = _current_utc_timestamp()
         job.result = result
         _prune_finished_jobs_locked()
+        _persist_research_jobs_locked()
 
 
 def _prune_finished_jobs_locked() -> None:
