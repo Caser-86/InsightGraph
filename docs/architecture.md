@@ -289,7 +289,7 @@ flowchart LR
 
 - **Checkpoint**：目标态每节点执行后写入 PostgreSQL，支持任务中断后 `resume`；当前 MVP 使用内存状态
 - **Long-term Memory**：目标态由 pgvector 存储历史研究摘要、实体画像与证据片段；当前 MVP 未实现长期记忆
-- **任务追踪**：目标态通过 `task_id` 与 `thread_id` 关联用户请求、Graph 状态和最终报告；当前 API jobs 仅为单进程内存 job store，并只保留最近 100 个 `succeeded` / `failed` jobs，`queued` / `running` jobs 不会被裁剪
+- **任务追踪**：目标态通过 `task_id` 与 `thread_id` 关联用户请求、Graph 状态和最终报告；当前 API jobs 仅为单进程内存 job store，支持列出任务摘要和按 `job_id` 查询详情，并只保留最近 100 个 `succeeded` / `failed` jobs，`queued` / `running` jobs 不会被裁剪
 
 ## 示例输出
 

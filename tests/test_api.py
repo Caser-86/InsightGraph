@@ -430,6 +430,70 @@ def test_get_research_job_returns_404_for_unknown_job() -> None:
     assert response.json() == {"detail": "Research job not found."}
 
 
+def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
+    running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[running].status = "running"
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    succeeded = client.post("/research/jobs", json={"query": "Succeeded"}).json()[
+        "job_id"
+    ]
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload")
+
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    failed = client.post("/research/jobs", json={"query": "Failed"}).json()["job_id"]
+
+    response = client.get("/research/jobs")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "jobs": [
+            {
+                "job_id": failed,
+                "status": "failed",
+                "query": "Failed",
+                "preset": "offline",
+            },
+            {
+                "job_id": succeeded,
+                "status": "succeeded",
+                "query": "Succeeded",
+                "preset": "offline",
+            },
+            {
+                "job_id": running,
+                "status": "running",
+                "query": "Running",
+                "preset": "offline",
+            },
+            {
+                "job_id": queued,
+                "status": "queued",
+                "query": "Queued",
+                "preset": "offline",
+            },
+        ],
+        "count": 4,
+    }
+    assert "secret provider payload" not in response.text
+    assert "result" not in response.text
+    assert "error" not in response.text
+
+
 def test_create_research_job_prunes_oldest_finished_jobs(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)

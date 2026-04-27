@@ -105,6 +105,26 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     return {"job_id": job.id, "status": "queued"}
 
 
+@app.get("/research/jobs")
+def list_research_jobs() -> dict[str, Any]:
+    with _JOBS_LOCK:
+        jobs = sorted(
+            _JOBS.values(),
+            key=lambda item: item.created_order,
+            reverse=True,
+        )
+        summaries = [
+            {
+                "job_id": job.id,
+                "status": job.status,
+                "query": job.query,
+                "preset": job.preset,
+            }
+            for job in jobs
+        ]
+    return {"jobs": summaries, "count": len(summaries)}
+
+
 @app.get("/research/jobs/{job_id}")
 def get_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:

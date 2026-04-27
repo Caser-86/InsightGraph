@@ -76,7 +76,7 @@ python scripts/validate_github_search.py --markdown
 
 ## API MVP
 
-当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/{job_id}` 轮询状态。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。内存 store 只保留最近 100 个 `succeeded` / `failed` jobs；`queued` / `running` jobs 不会被裁剪。
+当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs` 列出当前任务摘要，`GET /research/jobs/{job_id}` 轮询状态。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。内存 store 只保留最近 100 个 `succeeded` / `failed` jobs；`queued` / `running` jobs 不会被裁剪。
 
 ```bash
 python -m pip install "uvicorn[standard]"
@@ -94,10 +94,12 @@ curl -X POST http://127.0.0.1:8000/research/jobs \
   -H "Content-Type: application/json" \
   -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
 
+curl http://127.0.0.1:8000/research/jobs
+
 curl http://127.0.0.1:8000/research/jobs/<job_id>
 ```
 
-Job 状态包括 `queued`、`running`、`succeeded` 和 `failed`。`succeeded` 响应包含 `result`，结构与同步 `/research` 一致；`failed` 只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。
+Job 状态包括 `queued`、`running`、`succeeded` 和 `failed`。列表只返回摘要，不包含 `result` 或错误细节；`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。
 
 `uvicorn` 是运行示例依赖，不是当前 package runtime dependency。
 
