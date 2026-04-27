@@ -3,9 +3,9 @@
 ## Near-term priorities
 
 1. Strengthen research job repository tests
-- Add boundary tests for `update_research_job_record()` when job IDs are missing.
-- Add tests for invalid update fields or decide whether updates remain trusted maintenance-only calls.
-- Add lightweight lock/concurrency tests around state reset, seed, inspect, and update helpers.
+- Done: boundary tests for `update_research_job_record()` when job IDs are missing.
+- Done: invalid update field tests for `update_research_job_record()`.
+- Done: lightweight lock/concurrency test around explicit job updates.
 
 2. Clarify repository/storage contract
 - Define which `research_jobs.py` behaviors are stable repository contract versus in-memory implementation detail.
