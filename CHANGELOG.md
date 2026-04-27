@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.4 - 2026-04-28
+
+- Added optional `SQLiteResearchJobsBackend` for research job storage.
+- Added SQLite schema, sequence metadata, state helpers, JSON store import, and transactional job lifecycle updates.
+- Added memory/SQLite backend contract tests while keeping public API behavior unchanged.
+
 ## v0.1.3 - 2026-04-28
 
 - Added research job backend boundary documentation.
