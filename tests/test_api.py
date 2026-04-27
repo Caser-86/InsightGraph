@@ -1,10 +1,10 @@
 import os
 from datetime import UTC, datetime
 
-import pytest
 from fastapi.testclient import TestClient
 
 import insight_graph.api as api_module
+import insight_graph.research_jobs as jobs_module
 from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS
 from insight_graph.state import (
     CompetitiveMatrixRow,
@@ -131,38 +131,6 @@ def test_current_utc_timestamp_uses_z_suffix() -> None:
     assert timestamp.endswith("Z")
     parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     assert parsed.tzinfo == UTC
-
-
-def test_research_job_status_constants_match_public_statuses() -> None:
-    assert api_module._RESEARCH_JOB_STATUSES == (
-        "queued",
-        "running",
-        "succeeded",
-        "failed",
-        "cancelled",
-    )
-    assert api_module._ACTIVE_RESEARCH_JOB_STATUSES == {"queued", "running"}
-    assert api_module._TERMINAL_RESEARCH_JOB_STATUSES == {
-        "succeeded",
-        "failed",
-        "cancelled",
-    }
-
-
-def test_job_create_response_builder_returns_public_shape() -> None:
-    job = api_module.ResearchJob(
-        id="job-1",
-        query="Compare Cursor",
-        preset=api_module.ResearchPreset.offline,
-        created_order=1,
-        created_at="2026-04-27T10:00:00Z",
-    )
-
-    assert api_module._job_create_response(job) == {
-        "job_id": "job-1",
-        "status": "queued",
-        "created_at": "2026-04-27T10:00:00Z",
-    }
 
 
 def test_research_job_routes_document_response_models_in_openapi() -> None:
@@ -613,7 +581,7 @@ def test_research_safe_500_does_not_log_raw_exception(monkeypatch, caplog) -> No
 def test_create_research_job_returns_queued_job(monkeypatch) -> None:
     fake_executor = FakeExecutor()
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "Compare Cursor"})
@@ -629,9 +597,9 @@ def test_create_research_job_rejects_when_active_job_limit_reached(
     monkeypatch,
 ) -> None:
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_MAX_ACTIVE_RESEARCH_JOBS", 2)
+    monkeypatch.setattr(jobs_module, "_MAX_ACTIVE_RESEARCH_JOBS", 2)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"})
@@ -640,12 +608,12 @@ def test_create_research_job_rejects_when_active_job_limit_reached(
 
     assert first.status_code == 202
     assert second.status_code == 202
-    next_sequence = api_module._NEXT_JOB_SEQUENCE
+    next_sequence = jobs_module._NEXT_JOB_SEQUENCE
     assert response.status_code == 429
     assert response.json() == {"detail": "Too many active research jobs."}
-    assert api_module._NEXT_JOB_SEQUENCE == next_sequence
+    assert jobs_module._NEXT_JOB_SEQUENCE == next_sequence
     assert len(fake_executor.submissions) == 2
-    assert len(api_module._JOBS) == 2
+    assert len(jobs_module._JOBS) == 2
 
 
 def test_create_research_job_active_limit_ignores_terminal_jobs(monkeypatch) -> None:
@@ -655,10 +623,10 @@ def test_create_research_job_active_limit_ignores_terminal_jobs(monkeypatch) -> 
     def fail_run_research(query: str) -> GraphState:
         raise RuntimeError("provider failed")
 
-    monkeypatch.setattr(api_module, "_MAX_ACTIVE_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_MAX_ACTIVE_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", succeed_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     succeeded = client.post("/research/jobs", json={"query": "Succeeded"})
@@ -693,7 +661,7 @@ def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "Compare Cursor"})
@@ -713,7 +681,7 @@ def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
         "_current_utc_timestamp",
         lambda: "2026-04-27T10:00:00Z",
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "Compare Cursor"})
@@ -748,7 +716,7 @@ def test_research_job_detail_includes_queue_position_for_queued_jobs(
             "2026-04-27T09:00:02Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
@@ -756,9 +724,9 @@ def test_research_job_detail_includes_queue_position_for_queued_jobs(
         "job_id"
     ]
     third = client.post("/research/jobs", json={"query": "Third"}).json()["job_id"]
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[running].status = "running"
-        api_module._JOBS[running].started_at = "2026-04-27T09:00:03Z"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[running].status = "running"
+        jobs_module._JOBS[running].started_at = "2026-04-27T09:00:03Z"
 
     assert client.get(f"/research/jobs/{first}").json() == {
         "job_id": first,
@@ -786,9 +754,9 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
     job_id = ""
 
     def fake_run_research(query: str) -> GraphState:
-        with api_module._JOBS_LOCK:
-            assert api_module._JOBS[job_id].started_at == "2026-04-27T10:00:01Z"
-            assert api_module._JOBS[job_id].finished_at is None
+        with jobs_module._JOBS_LOCK:
+            assert jobs_module._JOBS[job_id].started_at == "2026-04-27T10:00:01Z"
+            assert jobs_module._JOBS[job_id].finished_at is None
         observed_queries.append(query)
         return make_api_state(query)
 
@@ -803,7 +771,7 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
             "2026-04-27T10:00:02Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     create_response = client.post("/research/jobs", json={"query": "  Compare Cursor  "})
@@ -850,7 +818,7 @@ def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
             "2026-04-27T11:00:02Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     create_response = client.post("/research/jobs", json={"query": "Compare Cursor"})
@@ -872,7 +840,7 @@ def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
 
 
 def test_get_research_job_returns_404_for_unknown_job() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs/missing")
@@ -896,7 +864,7 @@ def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
         "_current_utc_timestamp",
         timestamp_sequence("2026-04-27T12:00:00Z", "2026-04-27T12:00:01Z"),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     job_id = client.post("/research/jobs", json={"query": "Cancel me"}).json()[
@@ -926,7 +894,7 @@ def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
 
 
 def test_cancel_research_job_returns_404_for_unknown_job() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs/missing/cancel")
@@ -941,31 +909,31 @@ def test_cancel_research_job_rejects_running_or_finished_jobs(monkeypatch) -> No
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     job_id = client.post("/research/jobs", json={"query": "Finished"}).json()[
         "job_id"
     ]
 
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[job_id].status = "running"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[job_id].status = "running"
     running_response = client.post(f"/research/jobs/{job_id}/cancel")
     assert running_response.status_code == 409
     assert running_response.json() == {
         "detail": "Only queued research jobs can be cancelled."
     }
 
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[job_id].status = "succeeded"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[job_id].status = "succeeded"
     succeeded_response = client.post(f"/research/jobs/{job_id}/cancel")
     assert succeeded_response.status_code == 409
     assert succeeded_response.json() == {
         "detail": "Only queued research jobs can be cancelled."
     }
 
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[job_id].status = "failed"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[job_id].status = "failed"
     failed_response = client.post(f"/research/jobs/{job_id}/cancel")
     assert failed_response.status_code == 409
     assert failed_response.json() == {
@@ -997,7 +965,7 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
             "2026-04-27T13:00:10Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     cancelled = client.post("/research/jobs", json={"query": "Cancelled"}).json()[
@@ -1008,9 +976,9 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
 
     queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[running].status = "running"
-        api_module._JOBS[running].started_at = "2026-04-27T13:00:04Z"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[running].status = "running"
+        jobs_module._JOBS[running].started_at = "2026-04-27T13:00:04Z"
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     succeeded = client.post("/research/jobs", json={"query": "Succeeded"}).json()[
@@ -1098,14 +1066,14 @@ def test_list_research_jobs_filters_by_status(monkeypatch) -> None:
             "2026-04-27T18:00:05Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[running].status = "running"
-        api_module._JOBS[running].started_at = "2026-04-27T18:00:03Z"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[running].status = "running"
+        jobs_module._JOBS[running].started_at = "2026-04-27T18:00:03Z"
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     succeeded = client.post("/research/jobs", json={"query": "Succeeded"}).json()[
@@ -1144,7 +1112,7 @@ def test_list_research_jobs_limits_newest_matching_jobs(monkeypatch) -> None:
             "2026-04-27T19:00:02Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     oldest = client.post("/research/jobs", json={"query": "Oldest"}).json()["job_id"]
@@ -1179,16 +1147,16 @@ def test_list_research_jobs_limits_newest_matching_jobs(monkeypatch) -> None:
 
 
 def test_list_research_jobs_uses_default_limit() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     for index in range(101):
-        job = api_module.ResearchJob(
+        job = jobs_module.ResearchJob(
             id=f"job-{index}",
             query=f"Job {index}",
             preset=api_module.ResearchPreset.offline,
             created_order=index,
             created_at=f"2026-04-27T19:00:{index % 60:02d}Z",
         )
-        api_module._JOBS[job.id] = job
+        jobs_module._JOBS[job.id] = job
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs")
@@ -1203,7 +1171,7 @@ def test_list_research_jobs_uses_default_limit() -> None:
 
 
 def test_list_research_jobs_rejects_invalid_status() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs", params={"status": "unknown"})
@@ -1212,7 +1180,7 @@ def test_list_research_jobs_rejects_invalid_status() -> None:
 
 
 def test_list_research_jobs_rejects_invalid_limits() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     too_small = client.get("/research/jobs", params={"limit": 0})
@@ -1222,103 +1190,17 @@ def test_list_research_jobs_rejects_invalid_limits() -> None:
     assert too_large.status_code == 422
 
 
-def test_initialize_research_jobs_noops_without_store_path(monkeypatch) -> None:
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", None)
-    api_module._NEXT_JOB_SEQUENCE = 8
-    api_module._JOBS.clear()
-    api_module._JOBS["existing"] = api_module.ResearchJob(
-        id="existing",
-        query="Existing",
-        preset=api_module.ResearchPreset.offline,
-        created_order=8,
-        created_at="2026-04-27T20:00:00Z",
-    )
-
-    api_module.initialize_research_jobs()
-
-    assert api_module._NEXT_JOB_SEQUENCE == 8
-    assert set(api_module._JOBS) == {"existing"}
-
-
-def test_initialize_research_jobs_loads_configured_store(monkeypatch, tmp_path) -> None:
-    store_path = tmp_path / "jobs.json"
-    store_path.write_text(
-        """
-{
-  "jobs": [
-    {
-      "created_at": "2026-04-27T20:00:00Z",
-      "created_order": 4,
-      "error": null,
-      "finished_at": "2026-04-27T20:00:02Z",
-      "id": "job-4",
-      "preset": "offline",
-      "query": "Persisted",
-      "result": {"report_markdown": "# Report"},
-      "started_at": "2026-04-27T20:00:01Z",
-      "status": "succeeded"
-    }
-  ],
-  "next_job_sequence": 4
-}
-""".strip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    api_module._JOBS.clear()
-    api_module._NEXT_JOB_SEQUENCE = 0
-
-    api_module.initialize_research_jobs()
-
-    assert api_module._NEXT_JOB_SEQUENCE == 4
-    assert api_module._JOBS["job-4"].status == "succeeded"
-
-
-def test_initialize_research_jobs_fails_closed_for_bad_store(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    store_path = tmp_path / "jobs.json"
-    store_path.write_text("{bad-json", encoding="utf-8")
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-
-    with pytest.raises(api_module.ResearchJobsStoreError):
-        api_module.initialize_research_jobs()
-
-
-def test_research_jobs_state_snapshot_restores_jobs_and_sequence() -> None:
-    original = api_module.ResearchJob(
-        id="job-1",
-        query="Original",
-        preset=api_module.ResearchPreset.offline,
-        created_order=1,
-        created_at="2026-04-27T20:00:00Z",
-    )
-    api_module._NEXT_JOB_SEQUENCE = 1
-    api_module._JOBS.clear()
-    api_module._JOBS[original.id] = original
-    snapshot = api_module._research_jobs_state_snapshot_locked()
-
-    api_module._NEXT_JOB_SEQUENCE = 2
-    api_module._JOBS.clear()
-
-    api_module._restore_research_jobs_state_locked(snapshot)
-
-    assert api_module._NEXT_JOB_SEQUENCE == 1
-    assert api_module._JOBS == {"job-1": original}
-
-
 def test_create_research_job_writes_configured_store(monkeypatch, tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(
         api_module,
         "_current_utc_timestamp",
         lambda: "2026-04-27T20:00:00Z",
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "Persist me"})
@@ -1329,97 +1211,19 @@ def test_create_research_job_writes_configured_store(monkeypatch, tmp_path) -> N
     assert '"query": "Persist me"' in payload
 
 
-def test_load_research_jobs_from_store_restores_jobs(monkeypatch, tmp_path) -> None:
-    store_path = tmp_path / "jobs.json"
-    store_path.write_text(
-        """
-{
-  "jobs": [
-    {
-      "created_at": "2026-04-27T20:00:00Z",
-      "created_order": 4,
-      "error": null,
-      "finished_at": "2026-04-27T20:00:02Z",
-      "id": "job-4",
-      "preset": "offline",
-      "query": "Persisted",
-      "result": {"report_markdown": "# Report"},
-      "started_at": "2026-04-27T20:00:01Z",
-      "status": "succeeded"
-    }
-  ],
-  "next_job_sequence": 4
-}
-""".strip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    api_module._JOBS.clear()
-    api_module._NEXT_JOB_SEQUENCE = 0
-
-    api_module.initialize_research_jobs()
-
-    assert api_module._NEXT_JOB_SEQUENCE == 4
-    assert api_module._JOBS["job-4"].status == "succeeded"
-    assert api_module._JOBS["job-4"].result == {"report_markdown": "# Report"}
-
-
-def test_load_research_jobs_from_store_marks_unfinished_jobs_failed(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    store_path = tmp_path / "jobs.json"
-    store_path.write_text(
-        """
-{
-  "jobs": [
-    {
-      "created_at": "2026-04-27T20:00:00Z",
-      "created_order": 1,
-      "error": null,
-      "finished_at": null,
-      "id": "job-1",
-      "preset": "offline",
-      "query": "Queued",
-      "result": null,
-      "started_at": null,
-      "status": "queued"
-    }
-  ],
-  "next_job_sequence": 1
-}
-""".strip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(
-        api_module,
-        "_current_utc_timestamp",
-        lambda: "2026-04-27T21:00:00Z",
-    )
-    api_module._JOBS.clear()
-
-    api_module.initialize_research_jobs()
-
-    job = api_module._JOBS["job-1"]
-    assert job.status == "failed"
-    assert job.finished_at == "2026-04-27T21:00:00Z"
-    assert job.error == "Research job did not complete before server restart."
-
-
 def test_create_research_job_returns_safe_500_when_store_write_fails(
     monkeypatch,
     tmp_path,
 ) -> None:
     def fail_persist() -> None:
-        raise api_module.ResearchJobsStoreError("secret path")
+        raise jobs_module.ResearchJobsStoreError("secret path")
 
     store_path = tmp_path / "jobs.json"
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
-    api_module._JOBS.clear()
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "Persist me"})
@@ -1428,7 +1232,7 @@ def test_create_research_job_returns_safe_500_when_store_write_fails(
     assert response.json() == {"detail": "Research job store failed."}
     assert "secret path" not in response.text
     assert fake_executor.submissions == []
-    assert api_module._JOBS == {}
+    assert jobs_module._JOBS == {}
 
 
 def test_create_research_job_restores_pruned_jobs_when_store_write_fails(
@@ -1436,10 +1240,10 @@ def test_create_research_job_restores_pruned_jobs_when_store_write_fails(
     tmp_path,
 ) -> None:
     def fail_persist() -> None:
-        raise api_module.ResearchJobsStoreError("secret path")
+        raise jobs_module.ResearchJobsStoreError("secret path")
 
     store_path = tmp_path / "jobs.json"
-    existing = api_module.ResearchJob(
+    existing = jobs_module.ResearchJob(
         id="existing-job",
         query="Existing",
         preset=api_module.ResearchPreset.offline,
@@ -1449,20 +1253,20 @@ def test_create_research_job_restores_pruned_jobs_when_store_write_fails(
         finished_at="2026-04-27T20:00:01Z",
     )
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
-    api_module._NEXT_JOB_SEQUENCE = 1
-    api_module._JOBS.clear()
-    api_module._JOBS[existing.id] = existing
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
+    jobs_module._NEXT_JOB_SEQUENCE = 1
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[existing.id] = existing
     client = TestClient(api_module.app)
 
     response = client.post("/research/jobs", json={"query": "New"})
 
     assert response.status_code == 500
-    assert api_module._NEXT_JOB_SEQUENCE == 1
-    assert api_module._JOBS == {"existing-job": existing}
+    assert jobs_module._NEXT_JOB_SEQUENCE == 1
+    assert jobs_module._JOBS == {"existing-job": existing}
     assert fake_executor.submissions == []
 
 
@@ -1471,28 +1275,28 @@ def test_cancel_research_job_rolls_back_when_store_write_fails(
     tmp_path,
 ) -> None:
     def fail_persist() -> None:
-        raise api_module.ResearchJobsStoreError("secret path")
+        raise jobs_module.ResearchJobsStoreError("secret path")
 
     store_path = tmp_path / "jobs.json"
-    job = api_module.ResearchJob(
+    job = jobs_module.ResearchJob(
         id="job-1",
         query="Cancel",
         preset=api_module.ResearchPreset.offline,
         created_order=1,
         created_at="2026-04-27T20:00:00Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
-    api_module._JOBS.clear()
-    api_module._JOBS[job.id] = job
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[job.id] = job
     client = TestClient(api_module.app)
 
     response = client.post(f"/research/jobs/{job.id}/cancel")
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Research job store failed."}
-    assert api_module._JOBS[job.id].status == "queued"
-    assert api_module._JOBS[job.id].finished_at is None
+    assert jobs_module._JOBS[job.id].status == "queued"
+    assert jobs_module._JOBS[job.id].finished_at is None
 
 
 def test_cancel_research_job_restores_pruned_jobs_when_store_write_fails(
@@ -1500,10 +1304,10 @@ def test_cancel_research_job_restores_pruned_jobs_when_store_write_fails(
     tmp_path,
 ) -> None:
     def fail_persist() -> None:
-        raise api_module.ResearchJobsStoreError("secret path")
+        raise jobs_module.ResearchJobsStoreError("secret path")
 
     store_path = tmp_path / "jobs.json"
-    old_finished = api_module.ResearchJob(
+    old_finished = jobs_module.ResearchJob(
         id="old-finished",
         query="Old",
         preset=api_module.ResearchPreset.offline,
@@ -1512,25 +1316,25 @@ def test_cancel_research_job_restores_pruned_jobs_when_store_write_fails(
         status="succeeded",
         finished_at="2026-04-27T19:00:01Z",
     )
-    queued = api_module.ResearchJob(
+    queued = jobs_module.ResearchJob(
         id="queued-job",
         query="Cancel",
         preset=api_module.ResearchPreset.offline,
         created_order=2,
         created_at="2026-04-27T20:00:00Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
-    api_module._JOBS.clear()
-    api_module._JOBS[old_finished.id] = old_finished
-    api_module._JOBS[queued.id] = queued
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[old_finished.id] = old_finished
+    jobs_module._JOBS[queued.id] = queued
     client = TestClient(api_module.app)
 
     response = client.post(f"/research/jobs/{queued.id}/cancel")
 
     assert response.status_code == 500
-    assert api_module._JOBS == {
+    assert jobs_module._JOBS == {
         "old-finished": old_finished,
         "queued-job": queued,
     }
@@ -1543,29 +1347,29 @@ def test_run_research_job_marks_failed_when_running_store_write_fails(
     tmp_path,
 ) -> None:
     def fail_persist() -> None:
-        raise api_module.ResearchJobsStoreError("secret path")
+        raise jobs_module.ResearchJobsStoreError("secret path")
 
     def fail_if_called(query: str) -> GraphState:
         raise AssertionError("run_research should not be called")
 
     store_path = tmp_path / "jobs.json"
-    job = api_module.ResearchJob(
+    job = jobs_module.ResearchJob(
         id="job-1",
         query="Run",
         preset=api_module.ResearchPreset.offline,
         created_order=1,
         created_at="2026-04-27T20:00:00Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
     monkeypatch.setattr(api_module, "run_research", fail_if_called)
     monkeypatch.setattr(
         api_module,
         "_current_utc_timestamp",
         timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
     )
-    api_module._JOBS.clear()
-    api_module._JOBS[job.id] = job
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[job.id] = job
 
     api_module._run_research_job(job.id)
 
@@ -1585,29 +1389,29 @@ def test_run_research_job_keeps_failed_state_when_terminal_store_write_fails(
         nonlocal persist_calls
         persist_calls += 1
         if persist_calls == 2:
-            raise api_module.ResearchJobsStoreError("secret path")
+            raise jobs_module.ResearchJobsStoreError("secret path")
 
     def fail_run_research(query: str) -> GraphState:
         raise RuntimeError("secret provider payload")
 
     store_path = tmp_path / "jobs.json"
-    job = api_module.ResearchJob(
+    job = jobs_module.ResearchJob(
         id="job-terminal-failure",
         query="Fail terminal persist",
         preset=api_module.ResearchPreset.offline,
         created_order=1,
         created_at="2026-04-27T20:00:00Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_second_persist)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_second_persist)
     monkeypatch.setattr(api_module, "run_research", fail_run_research)
     monkeypatch.setattr(
         api_module,
         "_current_utc_timestamp",
         timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
     )
-    api_module._JOBS.clear()
-    api_module._JOBS[job.id] = job
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[job.id] = job
 
     api_module._run_research_job(job.id)
 
@@ -1628,29 +1432,29 @@ def test_run_research_job_keeps_success_state_when_terminal_store_write_fails(
         nonlocal persist_calls
         persist_calls += 1
         if persist_calls == 2:
-            raise api_module.ResearchJobsStoreError("secret path")
+            raise jobs_module.ResearchJobsStoreError("secret path")
 
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
     store_path = tmp_path / "jobs.json"
-    job = api_module.ResearchJob(
+    job = jobs_module.ResearchJob(
         id="job-terminal-success",
         query="Succeed terminal persist",
         preset=api_module.ResearchPreset.offline,
         created_order=1,
         created_at="2026-04-27T20:00:00Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_second_persist)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_second_persist)
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
     monkeypatch.setattr(
         api_module,
         "_current_utc_timestamp",
         timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
     )
-    api_module._JOBS.clear()
-    api_module._JOBS[job.id] = job
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[job.id] = job
 
     api_module._run_research_job(job.id)
 
@@ -1673,7 +1477,7 @@ def test_run_research_job_skips_cancelled_job_without_store_write(
         raise AssertionError("run_research should not be called")
 
     store_path = tmp_path / "jobs.json"
-    job = api_module.ResearchJob(
+    job = jobs_module.ResearchJob(
         id="job-cancelled-before-worker",
         query="Cancelled",
         preset=api_module.ResearchPreset.offline,
@@ -1682,11 +1486,11 @@ def test_run_research_job_skips_cancelled_job_without_store_write(
         status="cancelled",
         finished_at="2026-04-27T20:00:01Z",
     )
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
     monkeypatch.setattr(api_module, "run_research", fail_if_called)
-    api_module._JOBS.clear()
-    api_module._JOBS[job.id] = job
+    jobs_module._JOBS.clear()
+    jobs_module._JOBS[job.id] = job
 
     api_module._run_research_job(job.id)
 
@@ -1701,10 +1505,10 @@ def test_run_research_job_updates_configured_store(monkeypatch, tmp_path) -> Non
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     job_id = client.post("/research/jobs", json={"query": "Persist result"}).json()[
@@ -1720,9 +1524,9 @@ def test_run_research_job_updates_configured_store(monkeypatch, tmp_path) -> Non
 def test_cancel_research_job_updates_configured_store(monkeypatch, tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     job_id = client.post("/research/jobs", json={"query": "Cancel"}).json()["job_id"]
@@ -1742,11 +1546,11 @@ def test_pruned_research_jobs_are_removed_from_configured_store(
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
-    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
@@ -1781,7 +1585,7 @@ def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -
             "2026-04-27T16:00:10Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     cancelled = client.post("/research/jobs", json={"query": "Cancelled"}).json()[
@@ -1790,9 +1594,9 @@ def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -
     assert client.post(f"/research/jobs/{cancelled}/cancel").status_code == 200
     queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[running].status = "running"
-        api_module._JOBS[running].started_at = "2026-04-27T16:00:04Z"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[running].status = "running"
+        jobs_module._JOBS[running].started_at = "2026-04-27T16:00:04Z"
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     client.post("/research/jobs", json={"query": "Succeeded"})
@@ -1844,7 +1648,7 @@ def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -
 
 
 def test_get_research_jobs_summary_returns_empty_counts() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs/summary")
@@ -1867,7 +1671,7 @@ def test_get_research_jobs_summary_returns_empty_counts() -> None:
 
 
 def test_get_research_jobs_summary_route_is_not_job_detail() -> None:
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs/summary")
@@ -1880,10 +1684,10 @@ def test_create_research_job_prunes_oldest_finished_jobs(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 2)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 2)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
@@ -1901,16 +1705,16 @@ def test_create_research_job_does_not_prune_queued_or_running_jobs(monkeypatch) 
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
-    with api_module._JOBS_LOCK:
-        api_module._JOBS[running].status = "running"
+    with jobs_module._JOBS_LOCK:
+        jobs_module._JOBS[running].status = "running"
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     finished = client.post("/research/jobs", json={"query": "Finished"}).json()["job_id"]
@@ -1926,7 +1730,7 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
     def fail_run_research(query: str) -> GraphState:
         raise RuntimeError("provider failed")
 
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fail_run_research)
     monkeypatch.setattr(
@@ -1941,7 +1745,7 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
             "2026-04-27T14:00:05Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
@@ -1960,7 +1764,7 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
 
 def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
     fake_executor = FakeExecutor()
-    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(jobs_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(
         api_module,
@@ -1972,7 +1776,7 @@ def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
             "2026-04-27T15:00:03Z",
         ),
     )
-    api_module._JOBS.clear()
+    jobs_module._JOBS.clear()
     client = TestClient(api_module.app)
 
     first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
