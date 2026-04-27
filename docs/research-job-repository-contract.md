@@ -14,6 +14,7 @@
 - Detail responses expose `result` only for `succeeded` jobs.
 - Detail responses expose safe `error` only for `failed` jobs.
 - List and summary responses do not expose result payloads or provider exception details.
+- Manual retry creates a new queued job from a failed or cancelled source job; the source job is not mutated.
 - `get_research_job_record()` returns a copy; mutating the copy must not change repository state.
 - State mutation through maintenance helpers must use explicit update APIs such as `update_research_job_record()`.
 - Unknown fields in `update_research_job_record()` are rejected.

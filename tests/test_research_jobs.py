@@ -44,6 +44,113 @@ def test_research_jobs_backend_contract_create_list_cancel(research_jobs_backend
     assert "queue_position" not in cancelled
 
 
+def test_research_jobs_backend_contract_retry_failed_job(research_jobs_backend) -> None:
+    source = jobs_module.ResearchJob(
+        id="failed-job",
+        query="Contract retry",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-28T10:00:01Z",
+        error="Research workflow failed.",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    retried = jobs_module.retry_research_job(
+        "failed-job",
+        created_at="2026-04-28T10:00:02Z",
+    )
+
+    assert retried["status"] == "queued"
+    retry_record = jobs_module.get_research_job_record(retried["job_id"])
+    assert retry_record is not None
+    assert retry_record.query == "Contract retry"
+
+
+def test_retry_research_job_clones_failed_job_as_new_queued_job() -> None:
+    source = jobs_module.ResearchJob(
+        id="failed-job",
+        query="Retry me",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-28T10:00:01Z",
+        error="Research workflow failed.",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    retried = jobs_module.retry_research_job(
+        "failed-job",
+        created_at="2026-04-28T10:00:02Z",
+    )
+
+    assert retried["status"] == "queued"
+    assert retried["job_id"] != "failed-job"
+    retry_record = jobs_module.get_research_job_record(retried["job_id"])
+    assert retry_record is not None
+    assert retry_record.query == source.query
+    assert retry_record.preset == source.preset
+    assert retry_record.created_order == 2
+    assert jobs_module.get_research_job_record("failed-job") == source
+
+
+def test_retry_research_job_clones_cancelled_job_as_new_queued_job() -> None:
+    source = jobs_module.ResearchJob(
+        id="cancelled-job",
+        query="Retry cancelled",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="cancelled",
+        finished_at="2026-04-28T10:00:01Z",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    retried = jobs_module.retry_research_job(
+        "cancelled-job",
+        created_at="2026-04-28T10:00:02Z",
+    )
+
+    assert retried["status"] == "queued"
+    assert retried["job_id"] != "cancelled-job"
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "succeeded"])
+def test_retry_research_job_rejects_non_retryable_statuses(status: str) -> None:
+    source = jobs_module.ResearchJob(
+        id="job-1",
+        query="Not retryable",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status=status,
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    with pytest.raises(jobs_module.HTTPException) as exc_info:
+        jobs_module.retry_research_job(
+            "job-1",
+            created_at="2026-04-28T10:00:02Z",
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "Only failed or cancelled research jobs can be retried."
+
+
+def test_retry_research_job_returns_404_for_missing_job() -> None:
+    jobs_module.reset_research_jobs_state()
+
+    with pytest.raises(jobs_module.HTTPException) as exc_info:
+        jobs_module.retry_research_job(
+            "missing",
+            created_at="2026-04-28T10:00:02Z",
+        )
+
+    assert exc_info.value.status_code == 404
+
+
 def test_configure_research_jobs_backend_from_env_defaults_to_memory(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", raising=False)
 

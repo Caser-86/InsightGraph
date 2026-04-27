@@ -37,6 +37,9 @@ from insight_graph.research_jobs import (
     list_research_jobs as list_research_job_records,
 )
 from insight_graph.research_jobs import (
+    retry_research_job as retry_research_job_record,
+)
+from insight_graph.research_jobs import (
     summarize_research_jobs as summarize_research_jobs_state,
 )
 
@@ -145,6 +148,14 @@ _RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE = {
     "content": {
         "application/json": {
             "example": {"detail": "Only queued research jobs can be cancelled."}
+        }
+    },
+}
+_RESEARCH_JOB_RETRY_CONFLICT_RESPONSE = {
+    "description": "Only failed or cancelled research jobs can be retried.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Only failed or cancelled research jobs can be retried."}
         }
     },
 }
@@ -349,6 +360,31 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
         job_id=job_id,
         finished_at=_current_utc_timestamp(),
     )
+
+
+@router.post(
+    "/research/jobs/{job_id}/retry",
+    status_code=202,
+    response_model=ResearchJobCreateResponse,
+    response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Retry failed or cancelled research job",
+    description="Create a new queued job from a failed or cancelled research job.",
+    responses={
+        202: {"content": {"application/json": {"example": _RESEARCH_JOB_CREATE_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_RETRY_CONFLICT_RESPONSE,
+        429: _TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def retry_research_job(job_id: str) -> dict[str, str]:
+    response = retry_research_job_record(
+        job_id=job_id,
+        created_at=_current_utc_timestamp(),
+    )
+    _JOB_EXECUTOR.submit(_run_research_job, response["job_id"])
+    return response
 
 
 @router.get(

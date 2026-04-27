@@ -9,6 +9,7 @@ The research jobs API is the non-blocking path for long-running research request
 - `GET /research/jobs/summary` returns status counts and active queued/running jobs.
 - `GET /research/jobs/{job_id}` returns job detail.
 - `POST /research/jobs/{job_id}/cancel` cancels a queued job.
+- `POST /research/jobs/{job_id}/retry` creates a new queued job from a failed or cancelled job.
 
 ## Create job
 
@@ -134,6 +135,48 @@ Only queued jobs are cancellable. Running or terminal jobs return `409`:
 
 ```json
 {"detail":"Only queued research jobs can be cancelled."}
+```
+
+## Retry
+
+```bash
+curl -X POST http://127.0.0.1:8000/research/jobs/job-123/retry
+```
+
+Only `failed` and `cancelled` jobs are retryable. Retry creates a new queued job with the same query and preset; the source job is unchanged.
+
+Successful retry returns `202` with a normal create response:
+
+```json
+{
+  "job_id": "job-789",
+  "status": "queued",
+  "created_at": "2026-04-27T10:05:00Z"
+}
+```
+
+Unknown source jobs return `404`:
+
+```json
+{"detail":"Research job not found."}
+```
+
+Non-retryable jobs return `409`:
+
+```json
+{"detail":"Only failed or cancelled research jobs can be retried."}
+```
+
+If `queued + running` reaches the active cap, retry returns `429`:
+
+```json
+{"detail":"Too many active research jobs."}
+```
+
+If configured storage fails while creating the retry job, retry returns `500`:
+
+```json
+{"detail":"Research job store failed."}
 ```
 
 ## Retention and persistence

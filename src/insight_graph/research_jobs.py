@@ -46,6 +46,10 @@ TERMINAL_RESEARCH_JOB_STATUSES = {
     RESEARCH_JOB_STATUS_FAILED,
     RESEARCH_JOB_STATUS_CANCELLED,
 }
+RETRYABLE_RESEARCH_JOB_STATUSES = {
+    RESEARCH_JOB_STATUS_FAILED,
+    RESEARCH_JOB_STATUS_CANCELLED,
+}
 _JOBS_LOCK = RLock()
 _MAX_RESEARCH_JOBS = 100
 _MAX_ACTIVE_RESEARCH_JOBS = 100
@@ -462,6 +466,23 @@ def create_research_job(
             _restore_research_jobs_state_locked(snapshot)
             raise
         return _job_create_response(job)
+
+
+def retry_research_job(job_id: str, created_at: str) -> dict[str, str]:
+    with _JOBS_LOCK:
+        source = _get_research_job_locked(job_id)
+        if source is None:
+            raise HTTPException(status_code=404, detail="Research job not found.")
+        if source.status not in RETRYABLE_RESEARCH_JOB_STATUSES:
+            raise HTTPException(
+                status_code=409,
+                detail="Only failed or cancelled research jobs can be retried.",
+            )
+    return create_research_job(
+        query=source.query,
+        preset=source.preset,
+        created_at=created_at,
+    )
 
 
 def list_research_jobs(

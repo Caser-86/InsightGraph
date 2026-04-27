@@ -669,6 +669,79 @@ def test_create_research_job_returns_queued_job(monkeypatch) -> None:
     assert len(fake_executor.submissions) == 1
 
 
+def test_retry_research_job_endpoint_creates_and_schedules_new_job(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    source = jobs_module.ResearchJob(
+        id="failed-job",
+        query="Retry via API",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-28T10:00:01Z",
+        error="Research workflow failed.",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    response = TestClient(api_module.app).post("/research/jobs/failed-job/retry")
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["job_id"] != "failed-job"
+    assert fake_executor.submissions == [(api_module._run_research_job, (payload["job_id"],))]
+
+
+def test_retry_research_job_endpoint_rejects_running_job() -> None:
+    source = jobs_module.ResearchJob(
+        id="running-job",
+        query="Running",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="running",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=1, jobs=[source])
+
+    response = TestClient(api_module.app).post("/research/jobs/running-job/retry")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Only failed or cancelled research jobs can be retried."
+    }
+
+
+def test_retry_research_job_endpoint_respects_active_cap() -> None:
+    source = jobs_module.ResearchJob(
+        id="failed-job",
+        query="Retry over cap",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-28T10:00:01Z",
+        error="Research workflow failed.",
+    )
+    active = jobs_module.ResearchJob(
+        id="active-job",
+        query="Active",
+        preset=api_module.ResearchPreset.offline,
+        created_order=2,
+        created_at="2026-04-28T10:00:02Z",
+    )
+    jobs_module.reset_research_jobs_state(
+        next_job_sequence=2,
+        active_limit=1,
+        jobs=[source, active],
+    )
+
+    response = TestClient(api_module.app).post("/research/jobs/failed-job/retry")
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "Too many active research jobs."}
+
+
 def test_create_research_job_rejects_when_active_job_limit_reached(
     monkeypatch,
 ) -> None:
