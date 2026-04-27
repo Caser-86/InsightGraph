@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 import insight_graph.research_jobs as jobs_module
@@ -112,6 +114,39 @@ def test_update_research_job_record_returns_none_for_missing_job() -> None:
     reset_jobs_state()
 
     assert jobs_module.update_research_job_record("missing", status="running") is None
+
+
+def test_research_job_helpers_preserve_state_under_concurrent_updates() -> None:
+    jobs = [
+        jobs_module.ResearchJob(
+            id=f"job-{index}",
+            query=f"Job {index}",
+            preset=ResearchPreset.offline,
+            created_order=index,
+            created_at="2026-04-27T20:00:00Z",
+        )
+        for index in range(20)
+    ]
+    jobs_module.reset_research_jobs_state(jobs=jobs)
+
+    def mark_running(index: int) -> None:
+        updated = jobs_module.update_research_job_record(
+            f"job-{index}",
+            status="running",
+            started_at=f"2026-04-27T20:00:{index:02d}Z",
+        )
+        assert updated is not None
+        assert updated.status == "running"
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(mark_running, range(20)))
+
+    records = [jobs_module.get_research_job_record(f"job-{index}") for index in range(20)]
+    assert all(record is not None for record in records)
+    assert {record.status for record in records if record is not None} == {"running"}
+    assert {
+        record.started_at for record in records if record is not None
+    } == {f"2026-04-27T20:00:{index:02d}Z" for index in range(20)}
 
 
 def test_research_job_status_constants_match_public_statuses() -> None:
