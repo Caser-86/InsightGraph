@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 from uuid import uuid4
@@ -34,7 +35,10 @@ class ResearchJob:
     query: str
     preset: ResearchPreset
     created_order: int
+    created_at: str
     status: str = "queued"
+    started_at: str | None = None
+    finished_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
 
@@ -76,6 +80,42 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _current_utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
+    fields = {"created_at": job.created_at}
+    if job.started_at is not None:
+        fields["started_at"] = job.started_at
+    if job.finished_at is not None:
+        fields["finished_at"] = job.finished_at
+    return fields
+
+
+def _job_summary(job: ResearchJob) -> dict[str, Any]:
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "query": job.query,
+        "preset": job.preset,
+        **_job_timing_fields(job),
+    }
+
+
+def _job_detail(job: ResearchJob) -> dict[str, Any]:
+    response: dict[str, Any] = {
+        "job_id": job.id,
+        "status": job.status,
+        **_job_timing_fields(job),
+    }
+    if job.status == "succeeded":
+        response["result"] = job.result
+    elif job.status == "failed":
+        response["error"] = job.error
+    return response
+
+
 @app.post("/research")
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
@@ -98,11 +138,16 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
             query=request.query,
             preset=request.preset,
             created_order=_NEXT_JOB_SEQUENCE,
+            created_at=_current_utc_timestamp(),
         )
         _JOBS[job.id] = job
         _prune_finished_jobs_locked()
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
-    return {"job_id": job.id, "status": "queued"}
+    return {
+        "job_id": job.id,
+        "status": "queued",
+        "created_at": job.created_at,
+    }
 
 
 @app.get("/research/jobs")
@@ -113,15 +158,7 @@ def list_research_jobs() -> dict[str, Any]:
             key=lambda item: item.created_order,
             reverse=True,
         )
-        summaries = [
-            {
-                "job_id": job.id,
-                "status": job.status,
-                "query": job.query,
-                "preset": job.preset,
-            }
-            for job in jobs
-        ]
+        summaries = [_job_summary(job) for job in jobs]
     return {"jobs": summaries, "count": len(summaries)}
 
 
@@ -137,8 +174,9 @@ def cancel_research_job(job_id: str) -> dict[str, str]:
                 detail="Only queued research jobs can be cancelled.",
             )
         job.status = "cancelled"
+        job.finished_at = _current_utc_timestamp()
         _prune_finished_jobs_locked()
-        return {"job_id": job.id, "status": job.status}
+        return _job_detail(job)
 
 
 @app.get("/research/jobs/{job_id}")
@@ -147,12 +185,7 @@ def get_research_job(job_id: str) -> dict[str, Any]:
         job = _JOBS.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
-        response: dict[str, Any] = {"job_id": job.id, "status": job.status}
-        if job.status == "succeeded":
-            response["result"] = job.result
-        elif job.status == "failed":
-            response["error"] = job.error
-        return response
+        return _job_detail(job)
 
 
 def _run_research_job(job_id: str) -> None:
@@ -161,6 +194,7 @@ def _run_research_job(job_id: str) -> None:
         if job.status == "cancelled":
             return
         job.status = "running"
+        job.started_at = _current_utc_timestamp()
 
     try:
         with _RESEARCH_ENV_LOCK:
@@ -170,12 +204,14 @@ def _run_research_job(job_id: str) -> None:
     except Exception:
         with _JOBS_LOCK:
             job.status = "failed"
+            job.finished_at = _current_utc_timestamp()
             job.error = "Research workflow failed."
             _prune_finished_jobs_locked()
         return
 
     with _JOBS_LOCK:
         job.status = "succeeded"
+        job.finished_at = _current_utc_timestamp()
         job.result = result
         _prune_finished_jobs_locked()
 

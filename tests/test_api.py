@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
@@ -91,6 +92,11 @@ def make_api_state(query: str) -> GraphState:
     )
 
 
+def timestamp_sequence(*values: str):
+    iterator = iter(values)
+    return lambda: next(iterator)
+
+
 def test_health_returns_ok() -> None:
     client = TestClient(api_module.app)
 
@@ -98,6 +104,14 @@ def test_health_returns_ok() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_current_utc_timestamp_uses_z_suffix() -> None:
+    timestamp = api_module._current_utc_timestamp()
+
+    assert timestamp.endswith("Z")
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    assert parsed.tzinfo == UTC
 
 
 def test_research_returns_cli_aligned_json(monkeypatch) -> None:
@@ -362,16 +376,57 @@ def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
     assert job_response.json()["status"] == "succeeded"
 
 
+def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        lambda: "2026-04-27T10:00:00Z",
+    )
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs", json={"query": "Compare Cursor"})
+
+    assert response.status_code == 202
+    payload = response.json()
+    job_id = payload["job_id"]
+    assert payload == {
+        "job_id": job_id,
+        "status": "queued",
+        "created_at": "2026-04-27T10:00:00Z",
+    }
+    assert client.get(f"/research/jobs/{job_id}").json() == {
+        "job_id": job_id,
+        "status": "queued",
+        "created_at": "2026-04-27T10:00:00Z",
+    }
+
+
 def test_get_research_job_returns_success_result(monkeypatch) -> None:
     fake_executor = FakeExecutor()
     observed_queries: list[str] = []
+    job_id = ""
 
     def fake_run_research(query: str) -> GraphState:
+        with api_module._JOBS_LOCK:
+            assert api_module._JOBS[job_id].started_at == "2026-04-27T10:00:01Z"
+            assert api_module._JOBS[job_id].finished_at is None
         observed_queries.append(query)
         return make_api_state(query)
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T10:00:00Z",
+            "2026-04-27T10:00:01Z",
+            "2026-04-27T10:00:02Z",
+        ),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -380,7 +435,11 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
 
     queued_response = client.get(f"/research/jobs/{job_id}")
     assert queued_response.status_code == 200
-    assert queued_response.json() == {"job_id": job_id, "status": "queued"}
+    assert queued_response.json() == {
+        "job_id": job_id,
+        "status": "queued",
+        "created_at": "2026-04-27T10:00:00Z",
+    }
 
     fake_executor.run_next()
 
@@ -389,6 +448,9 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
     payload = response.json()
     assert payload["job_id"] == job_id
     assert payload["status"] == "succeeded"
+    assert payload["created_at"] == "2026-04-27T10:00:00Z"
+    assert payload["started_at"] == "2026-04-27T10:00:01Z"
+    assert payload["finished_at"] == "2026-04-27T10:00:02Z"
     assert payload["result"]["user_request"] == "Compare Cursor"
     assert payload["result"]["competitive_matrix"][0]["product"] == "Cursor"
     assert observed_queries == ["Compare Cursor"]
@@ -402,6 +464,15 @@ def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T11:00:00Z",
+            "2026-04-27T11:00:01Z",
+            "2026-04-27T11:00:02Z",
+        ),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -415,6 +486,9 @@ def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
     assert response.json() == {
         "job_id": job_id,
         "status": "failed",
+        "created_at": "2026-04-27T11:00:00Z",
+        "started_at": "2026-04-27T11:00:01Z",
+        "finished_at": "2026-04-27T11:00:02Z",
         "error": "Research workflow failed.",
     }
     assert "secret provider payload" not in response.text
@@ -440,6 +514,11 @@ def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence("2026-04-27T12:00:00Z", "2026-04-27T12:00:01Z"),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -450,10 +529,17 @@ def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
     response = client.post(f"/research/jobs/{job_id}/cancel")
 
     assert response.status_code == 200
-    assert response.json() == {"job_id": job_id, "status": "cancelled"}
+    assert response.json() == {
+        "job_id": job_id,
+        "status": "cancelled",
+        "created_at": "2026-04-27T12:00:00Z",
+        "finished_at": "2026-04-27T12:00:01Z",
+    }
     assert client.get(f"/research/jobs/{job_id}").json() == {
         "job_id": job_id,
         "status": "cancelled",
+        "created_at": "2026-04-27T12:00:00Z",
+        "finished_at": "2026-04-27T12:00:01Z",
     }
 
     fake_executor.run_next()
@@ -518,6 +604,22 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T13:00:00Z",
+            "2026-04-27T13:00:01Z",
+            "2026-04-27T13:00:02Z",
+            "2026-04-27T13:00:03Z",
+            "2026-04-27T13:00:05Z",
+            "2026-04-27T13:00:06Z",
+            "2026-04-27T13:00:07Z",
+            "2026-04-27T13:00:08Z",
+            "2026-04-27T13:00:09Z",
+            "2026-04-27T13:00:10Z",
+        ),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -531,6 +633,7 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
     with api_module._JOBS_LOCK:
         api_module._JOBS[running].status = "running"
+        api_module._JOBS[running].started_at = "2026-04-27T13:00:04Z"
 
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     succeeded = client.post("/research/jobs", json={"query": "Succeeded"}).json()[
@@ -553,30 +656,41 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
                 "status": "failed",
                 "query": "Failed",
                 "preset": "offline",
+                "created_at": "2026-04-27T13:00:08Z",
+                "started_at": "2026-04-27T13:00:09Z",
+                "finished_at": "2026-04-27T13:00:10Z",
             },
             {
                 "job_id": succeeded,
                 "status": "succeeded",
                 "query": "Succeeded",
                 "preset": "offline",
+                "created_at": "2026-04-27T13:00:05Z",
+                "started_at": "2026-04-27T13:00:06Z",
+                "finished_at": "2026-04-27T13:00:07Z",
             },
             {
                 "job_id": running,
                 "status": "running",
                 "query": "Running",
                 "preset": "offline",
+                "created_at": "2026-04-27T13:00:03Z",
+                "started_at": "2026-04-27T13:00:04Z",
             },
             {
                 "job_id": queued,
                 "status": "queued",
                 "query": "Queued",
                 "preset": "offline",
+                "created_at": "2026-04-27T13:00:02Z",
             },
             {
                 "job_id": cancelled,
                 "status": "cancelled",
                 "query": "Cancelled",
                 "preset": "offline",
+                "created_at": "2026-04-27T13:00:00Z",
+                "finished_at": "2026-04-27T13:00:01Z",
             },
         ],
         "count": 5,
@@ -639,6 +753,18 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
     monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
     monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T14:00:00Z",
+            "2026-04-27T14:00:01Z",
+            "2026-04-27T14:00:02Z",
+            "2026-04-27T14:00:03Z",
+            "2026-04-27T14:00:04Z",
+            "2026-04-27T14:00:05Z",
+        ),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -649,6 +775,9 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
     assert client.get(f"/research/jobs/{second}").json() == {
         "job_id": second,
         "status": "failed",
+        "created_at": "2026-04-27T14:00:03Z",
+        "started_at": "2026-04-27T14:00:04Z",
+        "finished_at": "2026-04-27T14:00:05Z",
         "error": "Research workflow failed.",
     }
 
@@ -657,6 +786,16 @@ def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
     fake_executor = FakeExecutor()
     monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T15:00:00Z",
+            "2026-04-27T15:00:01Z",
+            "2026-04-27T15:00:02Z",
+            "2026-04-27T15:00:03Z",
+        ),
+    )
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
 
@@ -669,4 +808,6 @@ def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
     assert client.get(f"/research/jobs/{second}").json() == {
         "job_id": second,
         "status": "cancelled",
+        "created_at": "2026-04-27T15:00:02Z",
+        "finished_at": "2026-04-27T15:00:03Z",
     }
