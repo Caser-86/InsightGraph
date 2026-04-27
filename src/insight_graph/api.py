@@ -25,6 +25,7 @@ _RESEARCH_ENV_LOCK = Lock()
 _JOBS_LOCK = Lock()
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 _MAX_RESEARCH_JOBS = 100
+_MAX_ACTIVE_RESEARCH_JOBS = 100
 _NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
 
@@ -101,6 +102,10 @@ def _queued_job_positions_locked() -> dict[str, int]:
     return {job.id: index for index, job in enumerate(queued_jobs, start=1)}
 
 
+def _active_research_job_count_locked() -> int:
+    return sum(1 for job in _JOBS.values() if job.status in {"queued", "running"})
+
+
 def _job_queue_position_field(
     job: ResearchJob,
     queued_positions: dict[str, int],
@@ -154,6 +159,11 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     global _NEXT_JOB_SEQUENCE
 
     with _JOBS_LOCK:
+        if _active_research_job_count_locked() >= _MAX_ACTIVE_RESEARCH_JOBS:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many active research jobs.",
+            )
         _NEXT_JOB_SEQUENCE += 1
         job = ResearchJob(
             id=str(uuid4()),
@@ -205,6 +215,8 @@ def summarize_research_jobs() -> dict[str, Any]:
         )
         return {
             "counts": counts,
+            "active_count": _active_research_job_count_locked(),
+            "active_limit": _MAX_ACTIVE_RESEARCH_JOBS,
             "queued_jobs": [_job_summary(job, queued_positions) for job in queued_jobs],
             "running_jobs": [_job_summary(job, queued_positions) for job in running_jobs],
         }

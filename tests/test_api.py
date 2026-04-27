@@ -356,6 +356,66 @@ def test_create_research_job_returns_queued_job(monkeypatch) -> None:
     assert len(fake_executor.submissions) == 1
 
 
+def test_create_research_job_rejects_when_active_job_limit_reached(
+    monkeypatch,
+) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_MAX_ACTIVE_RESEARCH_JOBS", 2)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    first = client.post("/research/jobs", json={"query": "First"})
+    second = client.post("/research/jobs", json={"query": "Second"})
+    response = client.post("/research/jobs", json={"query": "Third"})
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    next_sequence = api_module._NEXT_JOB_SEQUENCE
+    assert response.status_code == 429
+    assert response.json() == {"detail": "Too many active research jobs."}
+    assert api_module._NEXT_JOB_SEQUENCE == next_sequence
+    assert len(fake_executor.submissions) == 2
+    assert len(api_module._JOBS) == 2
+
+
+def test_create_research_job_active_limit_ignores_terminal_jobs(monkeypatch) -> None:
+    def succeed_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(api_module, "_MAX_ACTIVE_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", succeed_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    succeeded = client.post("/research/jobs", json={"query": "Succeeded"})
+    second = client.post("/research/jobs", json={"query": "Second"})
+
+    assert succeeded.status_code == 202
+    assert second.status_code == 202
+
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    failed = client.post("/research/jobs", json={"query": "Failed"})
+    after_failed = client.post("/research/jobs", json={"query": "After failed"})
+
+    assert failed.status_code == 202
+    assert after_failed.status_code == 202
+
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    cancelled = client.post("/research/jobs", json={"query": "Cancelled"})
+    cancelled_job_id = cancelled.json()["job_id"]
+    assert client.post(f"/research/jobs/{cancelled_job_id}/cancel").status_code == 200
+    after_cancel = client.post("/research/jobs", json={"query": "After cancel"})
+
+    assert cancelled.status_code == 202
+    assert after_cancel.status_code == 202
+
+
 def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
     monkeypatch,
 ) -> None:
@@ -807,6 +867,8 @@ def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -
             "failed": 1,
             "cancelled": 1,
         },
+        "active_count": 2,
+        "active_limit": 100,
         "queued_jobs": [
             {
                 "job_id": queued,
@@ -849,6 +911,8 @@ def test_get_research_jobs_summary_returns_empty_counts() -> None:
             "failed": 0,
             "cancelled": 0,
         },
+        "active_count": 0,
+        "active_limit": 100,
         "queued_jobs": [],
         "running_jobs": [],
     }
