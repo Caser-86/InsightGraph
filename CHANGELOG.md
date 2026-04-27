@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.5 - 2026-04-28
+
+- Added explicit runtime env selection for research job storage.
+- Added `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` and `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH`.
+- Documented SQLite runtime storage configuration and guarded JSON-to-SQLite startup import.
+
 ## v0.1.4 - 2026-04-28
 
 - Added optional `SQLiteResearchJobsBackend` for research job storage.
