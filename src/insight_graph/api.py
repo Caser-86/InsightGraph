@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
@@ -76,6 +77,47 @@ class ResearchRequest(BaseModel):
         if not stripped:
             raise ValueError("query must not be blank")
         return stripped
+
+
+class ResearchJobCreateResponse(BaseModel):
+    job_id: str
+    status: str
+    created_at: str
+
+
+class ResearchJobSummary(BaseModel):
+    job_id: str
+    status: str
+    query: str
+    preset: ResearchPreset
+    created_at: str
+    started_at: str | SkipJsonSchema[None] = None
+    finished_at: str | SkipJsonSchema[None] = None
+    queue_position: int | SkipJsonSchema[None] = None
+
+
+class ResearchJobDetailResponse(BaseModel):
+    job_id: str
+    status: str
+    created_at: str
+    started_at: str | SkipJsonSchema[None] = None
+    finished_at: str | SkipJsonSchema[None] = None
+    queue_position: int | SkipJsonSchema[None] = None
+    result: dict[str, Any] | SkipJsonSchema[None] = None
+    error: str | SkipJsonSchema[None] = None
+
+
+class ResearchJobsListResponse(BaseModel):
+    jobs: list[ResearchJobSummary]
+    count: int
+
+
+class ResearchJobsSummaryResponse(BaseModel):
+    counts: dict[str, int]
+    active_count: int
+    active_limit: int
+    queued_jobs: list[ResearchJobSummary]
+    running_jobs: list[ResearchJobSummary]
 
 
 @contextmanager
@@ -218,7 +260,12 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     return _build_research_json_payload(state)
 
 
-@app.post("/research/jobs", status_code=202)
+@app.post(
+    "/research/jobs",
+    status_code=202,
+    response_model=ResearchJobCreateResponse,
+    response_model_exclude_none=True,
+)
 def create_research_job(request: ResearchRequest) -> dict[str, str]:
     global _NEXT_JOB_SEQUENCE
 
@@ -242,20 +289,32 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     return _job_create_response(job)
 
 
-@app.get("/research/jobs")
+@app.get(
+    "/research/jobs",
+    response_model=ResearchJobsListResponse,
+    response_model_exclude_none=True,
+)
 def list_research_jobs() -> dict[str, Any]:
     with _JOBS_LOCK:
         return _jobs_list_response_locked()
 
 
-@app.get("/research/jobs/summary")
+@app.get(
+    "/research/jobs/summary",
+    response_model=ResearchJobsSummaryResponse,
+    response_model_exclude_none=True,
+)
 def summarize_research_jobs() -> dict[str, Any]:
     with _JOBS_LOCK:
         return _jobs_summary_response_locked()
 
 
-@app.post("/research/jobs/{job_id}/cancel")
-def cancel_research_job(job_id: str) -> dict[str, str]:
+@app.post(
+    "/research/jobs/{job_id}/cancel",
+    response_model=ResearchJobDetailResponse,
+    response_model_exclude_none=True,
+)
+def cancel_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
         if job is None:
@@ -271,7 +330,11 @@ def cancel_research_job(job_id: str) -> dict[str, str]:
         return _job_detail(job, _queued_job_positions_locked())
 
 
-@app.get("/research/jobs/{job_id}")
+@app.get(
+    "/research/jobs/{job_id}",
+    response_model=ResearchJobDetailResponse,
+    response_model_exclude_none=True,
+)
 def get_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)

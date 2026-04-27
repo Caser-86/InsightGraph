@@ -146,6 +146,71 @@ def test_job_create_response_builder_returns_public_shape() -> None:
     }
 
 
+def test_research_job_routes_document_response_models_in_openapi() -> None:
+    api_module.app.openapi_schema = None
+
+    schema = api_module.app.openapi()
+
+    assert schema["paths"]["/research/jobs"]["post"]["responses"]["202"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/ResearchJobCreateResponse"}
+    assert schema["paths"]["/research/jobs"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/ResearchJobsListResponse"}
+    assert schema["paths"]["/research/jobs/summary"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ResearchJobsSummaryResponse"
+    }
+    assert schema["paths"]["/research/jobs/{job_id}"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ResearchJobDetailResponse"
+    }
+    assert schema["paths"]["/research/jobs/{job_id}/cancel"]["post"]["responses"][
+        "200"
+    ]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ResearchJobDetailResponse"
+    }
+
+    components = schema["components"]["schemas"]
+    assert components["ResearchJobCreateResponse"]["required"] == [
+        "job_id",
+        "status",
+        "created_at",
+    ]
+    assert components["ResearchJobSummary"]["required"] == [
+        "job_id",
+        "status",
+        "query",
+        "preset",
+        "created_at",
+    ]
+    assert components["ResearchJobsListResponse"]["properties"]["jobs"] == {
+        "items": {"$ref": "#/components/schemas/ResearchJobSummary"},
+        "title": "Jobs",
+        "type": "array",
+    }
+    assert components["ResearchJobsSummaryResponse"]["properties"]["queued_jobs"] == {
+        "items": {"$ref": "#/components/schemas/ResearchJobSummary"},
+        "title": "Queued Jobs",
+        "type": "array",
+    }
+    for schema_name, optional_fields in {
+        "ResearchJobSummary": ["started_at", "finished_at", "queue_position"],
+        "ResearchJobDetailResponse": [
+            "started_at",
+            "finished_at",
+            "queue_position",
+            "result",
+            "error",
+        ],
+    }.items():
+        properties = components[schema_name]["properties"]
+        for field_name in optional_fields:
+            assert {"type": "null"} not in properties[field_name].get("anyOf", [])
+
+
 def test_research_returns_cli_aligned_json(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
