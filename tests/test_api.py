@@ -172,6 +172,42 @@ def test_research_job_routes_document_response_models_in_openapi() -> None:
     ]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ResearchJobDetailResponse"
     }
+    list_parameters = schema["paths"]["/research/jobs"]["get"]["parameters"]
+    assert list_parameters == [
+        {
+            "name": "status",
+            "in": "query",
+            "required": False,
+            "schema": {
+                "anyOf": [
+                    {
+                        "enum": [
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "failed",
+                            "cancelled",
+                        ],
+                        "type": "string",
+                    },
+                    {"type": "null"},
+                ],
+                "title": "Status",
+            },
+        },
+        {
+            "name": "limit",
+            "in": "query",
+            "required": False,
+            "schema": {
+                "default": 100,
+                "maximum": 100,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer",
+            },
+        },
+    ]
 
     components = schema["components"]["schemas"]
     assert components["ResearchJobCreateResponse"]["required"] == [
@@ -904,6 +940,126 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
     assert "secret provider payload" not in response.text
     assert "result" not in response.text
     assert "error" not in response.text
+
+
+def test_list_research_jobs_filters_by_status(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T18:00:00Z",
+            "2026-04-27T18:00:01Z",
+            "2026-04-27T18:00:02Z",
+            "2026-04-27T18:00:03Z",
+            "2026-04-27T18:00:04Z",
+            "2026-04-27T18:00:05Z",
+        ),
+    )
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
+    running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[running].status = "running"
+        api_module._JOBS[running].started_at = "2026-04-27T18:00:03Z"
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    succeeded = client.post("/research/jobs", json={"query": "Succeeded"}).json()[
+        "job_id"
+    ]
+
+    response = client.get("/research/jobs", params={"status": "queued"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "jobs": [
+            {
+                "job_id": queued,
+                "status": "queued",
+                "query": "Queued",
+                "preset": "offline",
+                "created_at": "2026-04-27T18:00:00Z",
+                "queue_position": 1,
+            }
+        ],
+        "count": 1,
+    }
+    assert running not in response.text
+    assert succeeded not in response.text
+
+
+def test_list_research_jobs_limits_newest_matching_jobs(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T19:00:00Z",
+            "2026-04-27T19:00:01Z",
+            "2026-04-27T19:00:02Z",
+        ),
+    )
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    oldest = client.post("/research/jobs", json={"query": "Oldest"}).json()["job_id"]
+    middle = client.post("/research/jobs", json={"query": "Middle"}).json()["job_id"]
+    newest = client.post("/research/jobs", json={"query": "Newest"}).json()["job_id"]
+
+    response = client.get("/research/jobs", params={"status": "queued", "limit": 2})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "jobs": [
+            {
+                "job_id": newest,
+                "status": "queued",
+                "query": "Newest",
+                "preset": "offline",
+                "created_at": "2026-04-27T19:00:02Z",
+                "queue_position": 3,
+            },
+            {
+                "job_id": middle,
+                "status": "queued",
+                "query": "Middle",
+                "preset": "offline",
+                "created_at": "2026-04-27T19:00:01Z",
+                "queue_position": 2,
+            },
+        ],
+        "count": 2,
+    }
+    assert oldest not in response.text
+
+
+def test_list_research_jobs_rejects_invalid_status() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs", params={"status": "unknown"})
+
+    assert response.status_code == 422
+
+
+def test_list_research_jobs_rejects_invalid_limits() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    too_small = client.get("/research/jobs", params={"limit": 0})
+    too_large = client.get("/research/jobs", params={"limit": 101})
+
+    assert too_small.status_code == 422
+    assert too_large.status_code == 422
 
 
 def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -> None:

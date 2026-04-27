@@ -5,10 +5,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
-from typing import Any
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
@@ -39,6 +39,14 @@ _RESEARCH_JOB_STATUSES = (
     _RESEARCH_JOB_STATUS_FAILED,
     _RESEARCH_JOB_STATUS_CANCELLED,
 )
+ResearchJobStatusQuery = Literal[
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+]
+ResearchJobsLimitQuery = Annotated[int, Query(ge=1, le=100)]
 _ACTIVE_RESEARCH_JOB_STATUSES = {
     _RESEARCH_JOB_STATUS_QUEUED,
     _RESEARCH_JOB_STATUS_RUNNING,
@@ -214,12 +222,19 @@ def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str,
     return response
 
 
-def _jobs_list_response_locked() -> dict[str, Any]:
+def _jobs_list_response_locked(
+    status: ResearchJobStatusQuery | None,
+    limit: int,
+) -> dict[str, Any]:
     jobs = sorted(
         _JOBS.values(),
         key=lambda item: item.created_order,
         reverse=True,
     )
+    if status is not None:
+        jobs = [job for job in jobs if job.status == status]
+    jobs = jobs[:limit]
+
     queued_positions = _queued_job_positions_locked()
     summaries = [_job_summary(job, queued_positions) for job in jobs]
     return {"jobs": summaries, "count": len(summaries)}
@@ -294,9 +309,12 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     response_model=ResearchJobsListResponse,
     response_model_exclude_none=True,
 )
-def list_research_jobs() -> dict[str, Any]:
+def list_research_jobs(
+    status: ResearchJobStatusQuery | None = None,
+    limit: ResearchJobsLimitQuery = 100,
+) -> dict[str, Any]:
     with _JOBS_LOCK:
-        return _jobs_list_response_locked()
+        return _jobs_list_response_locked(status=status, limit=limit)
 
 
 @app.get(
