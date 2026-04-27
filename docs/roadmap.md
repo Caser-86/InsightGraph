@@ -18,9 +18,9 @@
 - Done: examples for list filtering, limit handling, summary, and cancel conflict responses.
 
 4. Improve release workflow
-- Ensure CI runs `python -m pytest` and `python -m ruff check .`.
-- Decide whether tags/releases are manual or automated after `master` merges.
-- Keep `CHANGELOG.md` updated for each released tag.
+- Done: CI runs `python -m pytest` and `python -m ruff check .` on pushes to `master` and pull requests.
+- Manual: tags/releases remain manual after `master` merges.
+- Manual: keep `CHANGELOG.md` updated for each released tag.
 
 ## Deferred work
 
