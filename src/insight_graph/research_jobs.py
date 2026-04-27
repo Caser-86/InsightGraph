@@ -1,5 +1,5 @@
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
@@ -63,6 +63,80 @@ class ResearchJob:
     finished_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+def reset_research_jobs_state(
+    *,
+    next_job_sequence: int = 0,
+    store_path: Path | None = None,
+    retained_limit: int = 100,
+    active_limit: int = 100,
+    jobs: Iterable[ResearchJob] = (),
+) -> None:
+    global _MAX_ACTIVE_RESEARCH_JOBS, _MAX_RESEARCH_JOBS, _NEXT_JOB_SEQUENCE, _RESEARCH_JOBS_PATH
+
+    with _JOBS_LOCK:
+        _NEXT_JOB_SEQUENCE = next_job_sequence
+        _RESEARCH_JOBS_PATH = store_path
+        _MAX_RESEARCH_JOBS = retained_limit
+        _MAX_ACTIVE_RESEARCH_JOBS = active_limit
+        _JOBS.clear()
+        _JOBS.update((job.id, replace(job)) for job in jobs)
+
+
+def seed_research_job(job: ResearchJob, *, next_job_sequence: int | None = None) -> None:
+    seed_research_jobs([job], next_job_sequence=next_job_sequence)
+
+
+def seed_research_jobs(
+    jobs: Iterable[ResearchJob],
+    *,
+    next_job_sequence: int | None = None,
+) -> None:
+    global _NEXT_JOB_SEQUENCE
+
+    with _JOBS_LOCK:
+        if next_job_sequence is not None:
+            _NEXT_JOB_SEQUENCE = next_job_sequence
+        _JOBS.update((job.id, replace(job)) for job in jobs)
+
+
+def set_research_jobs_store_path(path: Path | None) -> None:
+    global _RESEARCH_JOBS_PATH
+
+    with _JOBS_LOCK:
+        _RESEARCH_JOBS_PATH = path
+
+
+def set_research_job_limits(*, retained_limit: int = 100, active_limit: int = 100) -> None:
+    global _MAX_ACTIVE_RESEARCH_JOBS, _MAX_RESEARCH_JOBS
+
+    with _JOBS_LOCK:
+        _MAX_RESEARCH_JOBS = retained_limit
+        _MAX_ACTIVE_RESEARCH_JOBS = active_limit
+
+
+def get_research_job_record(job_id: str) -> ResearchJob | None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return None
+        return replace(job)
+
+
+def update_research_job_record(job_id: str, **changes: Any) -> ResearchJob | None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return None
+        for name, value in changes.items():
+            setattr(job, name, value)
+        return replace(job)
+
+
+def get_next_research_job_sequence() -> int:
+    with _JOBS_LOCK:
+        return _NEXT_JOB_SEQUENCE
 
 
 def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
