@@ -24,6 +24,8 @@
 - `research_jobs_backend.py` owns low-level in-memory state access through `InMemoryResearchJobsBackend`.
 - Backend-owned helpers include active-job counting, terminal-job pruning, snapshot/restore, job copy reads, explicit updates, seeding, clearing, and sequence tracking.
 - The backend boundary is an internal seam, not a public storage plugin API.
+- SQLite storage is optional and must preserve the same public repository contract as the in-memory backend.
+- SQLite does not add retry/resume, worker leasing, distributed locks, or public API changes.
 - API handlers and tests should prefer the public service helpers instead of mutating module globals directly.
 - Implementation links: [#2](https://github.com/Caser-86/InsightGraph/issues/2), [#3](https://github.com/Caser-86/InsightGraph/issues/3), [`c8d3853`](https://github.com/Caser-86/InsightGraph/commit/c8d385386b6b9f5ca0d7a8cf65d52d7a11a76f08), [`9985245`](https://github.com/Caser-86/InsightGraph/commit/99852450a22c65aa8dee7f419a61a3b1f0275866).
 

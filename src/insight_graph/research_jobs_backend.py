@@ -74,6 +74,10 @@ class InMemoryResearchJobsBackend:
                 return None
             return replace(job)
 
+    def all_jobs(self) -> list[Any]:
+        with self._lock:
+            return [replace(job) for job in self._jobs.values()]
+
     def update(self, job_id: str, **changes: Any) -> Any | None:
         with self._lock:
             job = self._jobs.get(job_id)

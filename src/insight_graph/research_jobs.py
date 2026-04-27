@@ -150,6 +150,32 @@ def get_next_research_job_sequence() -> int:
         return _NEXT_JOB_SEQUENCE
 
 
+def configure_research_jobs_in_memory_backend() -> None:
+    global _RESEARCH_JOBS_BACKEND
+
+    _RESEARCH_JOBS_BACKEND = InMemoryResearchJobsBackend(
+        store_path=_RESEARCH_JOBS_PATH,
+        jobs=_JOBS,
+        lock=_JOBS_LOCK,
+    )
+    reset_research_jobs_state()
+
+
+def configure_research_jobs_sqlite_backend(path: Path) -> None:
+    global _NEXT_JOB_SEQUENCE, _RESEARCH_JOBS_BACKEND
+
+    from insight_graph.research_jobs_sqlite_backend import SQLiteResearchJobsBackend
+
+    backend = SQLiteResearchJobsBackend(path)
+    backend.initialize()
+    _RESEARCH_JOBS_BACKEND = backend
+    _NEXT_JOB_SEQUENCE = backend.next_sequence()
+
+
+def _using_sqlite_research_jobs_backend() -> bool:
+    return _RESEARCH_JOBS_BACKEND.__class__.__name__ == "SQLiteResearchJobsBackend"
+
+
 def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
     return ResearchJob(
         id=item["id"],
@@ -169,6 +195,13 @@ def initialize_research_jobs(restart_timestamp: str) -> None:
     global _NEXT_JOB_SEQUENCE
 
     if _RESEARCH_JOBS_PATH is None:
+        return
+    if _using_sqlite_research_jobs_backend():
+        _RESEARCH_JOBS_BACKEND.import_json_store(
+            _RESEARCH_JOBS_PATH,
+            restart_timestamp=restart_timestamp,
+        )
+        _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
         return
     loaded = load_research_jobs(
         path=_RESEARCH_JOBS_PATH,
@@ -231,10 +264,18 @@ def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
 
 def _queued_job_positions_locked() -> dict[str, int]:
     queued_jobs = sorted(
-        (job for job in _JOBS.values() if job.status == RESEARCH_JOB_STATUS_QUEUED),
+        (job for job in _all_research_jobs_locked() if job.status == RESEARCH_JOB_STATUS_QUEUED),
         key=lambda item: item.created_order,
     )
     return {job.id: index for index, job in enumerate(queued_jobs, start=1)}
+
+
+def _all_research_jobs_locked() -> list[ResearchJob]:
+    return _RESEARCH_JOBS_BACKEND.all_jobs()
+
+
+def _get_research_job_locked(job_id: str) -> ResearchJob | None:
+    return _RESEARCH_JOBS_BACKEND.get(job_id)
 
 
 def _active_research_job_count_locked() -> int:
@@ -291,7 +332,7 @@ def _jobs_list_response_locked(
     limit: int,
 ) -> dict[str, Any]:
     jobs = sorted(
-        _JOBS.values(),
+        _all_research_jobs_locked(),
         key=lambda item: item.created_order,
         reverse=True,
     )
@@ -305,18 +346,19 @@ def _jobs_list_response_locked(
 
 
 def _jobs_summary_response_locked() -> dict[str, Any]:
+    all_jobs = _all_research_jobs_locked()
     counts = {status: 0 for status in RESEARCH_JOB_STATUSES}
-    for job in _JOBS.values():
+    for job in all_jobs:
         counts[job.status] = counts.get(job.status, 0) + 1
-    counts["total"] = len(_JOBS)
+    counts["total"] = len(all_jobs)
 
     queued_positions = _queued_job_positions_locked()
     queued_jobs = sorted(
-        (job for job in _JOBS.values() if job.status == RESEARCH_JOB_STATUS_QUEUED),
+        (job for job in all_jobs if job.status == RESEARCH_JOB_STATUS_QUEUED),
         key=lambda item: item.created_order,
     )
     running_jobs = sorted(
-        (job for job in _JOBS.values() if job.status == RESEARCH_JOB_STATUS_RUNNING),
+        (job for job in all_jobs if job.status == RESEARCH_JOB_STATUS_RUNNING),
         key=lambda item: item.created_order,
     )
     return {
@@ -347,6 +389,21 @@ def create_research_job(
     global _NEXT_JOB_SEQUENCE
 
     with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            try:
+                job = _RESEARCH_JOBS_BACKEND.create_job(
+                    job_id=str(uuid4()),
+                    query=query,
+                    preset=preset,
+                    created_at=created_at,
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many active research jobs.",
+                ) from exc
+            _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
+            return _job_create_response(job)
         if _active_research_job_count_locked() >= _MAX_ACTIVE_RESEARCH_JOBS:
             raise HTTPException(
                 status_code=429,
@@ -387,6 +444,20 @@ def summarize_research_jobs() -> dict[str, Any]:
 
 def cancel_research_job(job_id: str, finished_at: str) -> dict[str, Any]:
     with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            try:
+                job = _RESEARCH_JOBS_BACKEND.cancel_queued(
+                    job_id,
+                    finished_at=finished_at,
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Only queued research jobs can be cancelled.",
+                ) from exc
+            if job is None:
+                raise HTTPException(status_code=404, detail="Research job not found.")
+            return _job_detail(job, _queued_job_positions_locked())
         job = _JOBS.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
@@ -413,7 +484,7 @@ def cancel_research_job(job_id: str, finished_at: str) -> dict[str, Any]:
 
 def get_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
+        job = _get_research_job_locked(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
         return _job_detail(job, _queued_job_positions_locked())
@@ -425,6 +496,14 @@ def mark_research_job_running(
     store_failure_finished_at: Callable[[], str],
 ) -> ResearchJob | None:
     with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            try:
+                return _RESEARCH_JOBS_BACKEND.mark_running(
+                    job_id,
+                    started_at=started_at(),
+                )
+            except ValueError:
+                return None
         job = _JOBS[job_id]
         if job.status == RESEARCH_JOB_STATUS_CANCELLED:
             return None
@@ -448,6 +527,15 @@ def mark_research_job_failed(
     error: str,
 ) -> None:
     with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            _RESEARCH_JOBS_BACKEND.mark_terminal(
+                job.id,
+                status=RESEARCH_JOB_STATUS_FAILED,
+                finished_at=finished_at,
+                result=None,
+                error=error,
+            )
+            return
         job.status = RESEARCH_JOB_STATUS_FAILED
         job.finished_at = finished_at
         job.error = error
@@ -461,6 +549,15 @@ def mark_research_job_succeeded(
     result: dict[str, Any],
 ) -> None:
     with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            _RESEARCH_JOBS_BACKEND.mark_terminal(
+                job.id,
+                status=RESEARCH_JOB_STATUS_SUCCEEDED,
+                finished_at=finished_at,
+                result=result,
+                error=None,
+            )
+            return
         job.status = RESEARCH_JOB_STATUS_SUCCEEDED
         job.finished_at = finished_at
         job.result = result

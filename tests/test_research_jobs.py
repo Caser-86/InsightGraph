@@ -11,6 +11,38 @@ def reset_jobs_state() -> None:
     jobs_module.reset_research_jobs_state()
 
 
+@pytest.fixture(params=["memory", "sqlite"])
+def research_jobs_backend(request, tmp_path):
+    if request.param == "sqlite":
+        jobs_module.configure_research_jobs_sqlite_backend(tmp_path / "jobs.sqlite3")
+    else:
+        jobs_module.configure_research_jobs_in_memory_backend()
+    try:
+        yield request.param
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_research_jobs_backend_contract_create_list_cancel(research_jobs_backend) -> None:
+    created = jobs_module.create_research_job(
+        query="Contract",
+        preset=ResearchPreset.offline,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    assert created["status"] == "queued"
+
+    listed = jobs_module.list_research_jobs(status=None, limit=10)
+    assert listed["count"] == 1
+    assert listed["jobs"][0]["queue_position"] == 1
+
+    cancelled = jobs_module.cancel_research_job(
+        created["job_id"],
+        finished_at="2026-04-28T10:00:01Z",
+    )
+    assert cancelled["status"] == "cancelled"
+    assert "queue_position" not in cancelled
+
+
 def test_research_job_repository_helpers_reset_seed_and_inspect_state(tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
     job = jobs_module.ResearchJob(
@@ -36,6 +68,136 @@ def test_research_job_repository_helpers_reset_seed_and_inspect_state(tmp_path) 
 
     assert jobs_module.get_next_research_job_sequence() == 0
     assert jobs_module.get_research_job_record("seeded-job") is None
+
+
+def test_configure_research_jobs_sqlite_backend_preserves_public_behavior(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+
+    jobs_module.configure_research_jobs_sqlite_backend(db_path)
+    try:
+        created = jobs_module.create_research_job(
+            query="SQLite",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        listed = jobs_module.list_research_jobs(status=None, limit=10)
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert created["status"] == "queued"
+    assert listed["count"] == 1
+    assert listed["jobs"][0]["query"] == "SQLite"
+
+
+def test_configure_research_jobs_sqlite_backend_supports_worker_lifecycle(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+
+    jobs_module.configure_research_jobs_sqlite_backend(db_path)
+    try:
+        created = jobs_module.create_research_job(
+            query="SQLite lifecycle",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        running = jobs_module.mark_research_job_running(
+            created["job_id"],
+            started_at=lambda: "2026-04-28T10:00:01Z",
+            store_failure_finished_at=lambda: "2026-04-28T10:00:02Z",
+        )
+        assert running is not None
+
+        jobs_module.mark_research_job_succeeded(
+            running,
+            finished_at="2026-04-28T10:00:03Z",
+            result={"report_markdown": "# Report"},
+        )
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert detail["status"] == "succeeded"
+    assert detail["result"] == {"report_markdown": "# Report"}
+
+
+def test_sqlite_backend_supports_service_helper_contract(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    store_path = tmp_path / "jobs.json"
+    job = jobs_module.ResearchJob(
+        id="seeded-job",
+        query="Seeded",
+        preset=ResearchPreset.offline,
+        created_order=7,
+        created_at="2026-04-28T10:00:00Z",
+    )
+
+    jobs_module.configure_research_jobs_sqlite_backend(db_path)
+    try:
+        jobs_module.reset_research_jobs_state(
+            next_job_sequence=7,
+            store_path=store_path,
+            retained_limit=3,
+            active_limit=2,
+            jobs=[job],
+        )
+        assert jobs_module.get_research_job_record("seeded-job") == job
+        assert jobs_module.get_next_research_job_sequence() == 7
+
+        jobs_module.seed_research_job(
+            jobs_module.ResearchJob(
+                id="extra-job",
+                query="Extra",
+                preset=ResearchPreset.offline,
+                created_order=8,
+                created_at="2026-04-28T10:00:01Z",
+            ),
+            next_job_sequence=8,
+        )
+        jobs_module.set_research_job_limits(retained_limit=4, active_limit=3)
+        assert jobs_module.get_research_job_record("extra-job") is not None
+        assert jobs_module._RESEARCH_JOBS_BACKEND.retained_limit() == 4
+        assert jobs_module._RESEARCH_JOBS_BACKEND.active_limit() == 3
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_sqlite_backend_initialize_imports_configured_json_store(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    store_path = tmp_path / "jobs.json"
+    store_path.write_text(
+        """
+        {
+          "next_job_sequence": 4,
+          "jobs": [
+            {
+              "id": "job-4",
+              "query": "Stored",
+              "preset": "offline",
+              "created_order": 4,
+              "created_at": "2026-04-28T10:00:00Z",
+              "status": "succeeded",
+              "started_at": "2026-04-28T10:00:01Z",
+              "finished_at": "2026-04-28T10:00:02Z",
+              "result": {"report_markdown": "# Stored"},
+              "error": null
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    jobs_module.configure_research_jobs_sqlite_backend(db_path)
+    try:
+        jobs_module.set_research_jobs_store_path(store_path)
+        jobs_module.initialize_research_jobs(restart_timestamp="2026-04-28T11:00:00Z")
+        detail = jobs_module.get_research_job("job-4")
+        next_sequence = jobs_module.get_next_research_job_sequence()
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert next_sequence == 4
+    assert detail["status"] == "succeeded"
+    assert detail["result"] == {"report_markdown": "# Stored"}
 
 
 def test_research_job_repository_helpers_seed_jobs_and_configure_store_path(tmp_path) -> None:
