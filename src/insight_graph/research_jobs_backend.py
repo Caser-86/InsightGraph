@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Iterable
 from dataclasses import fields, replace
 from pathlib import Path
