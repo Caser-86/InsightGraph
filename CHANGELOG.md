@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.6 - 2026-04-28
+
+- Added manual retry for failed or cancelled research jobs.
+- Added `POST /research/jobs/{job_id}/retry` to create a new queued retry job without mutating the source job.
+- Documented retry status codes and added memory/SQLite retry contract coverage.
+
 ## v0.1.5 - 2026-04-28
 
 - Added explicit runtime env selection for research job storage.
