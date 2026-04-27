@@ -547,12 +547,12 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 - **CLI 报告**：Markdown 格式，包含 `Key Findings`、有可引用矩阵行时的 `Competitive Matrix`、`Critic Assessment`、`References`
 - **结构化输出**：`--output-json` 包含 `competitive_matrix`，便于当前 API、benchmark 和后续前端复用
 - **数据源**：固定 mock evidence，不进行真实联网搜索
-- **API**：当前 MVP 提供同步 `GET /health` 和 `POST /research`，响应结构与 CLI `--output-json` 对齐，包含 `competitive_matrix`
+- **API**：当前 MVP 提供 `GET /health`、同步 `POST /research` 和单进程内存异步 jobs，响应结构与 CLI `--output-json` 对齐，包含 `competitive_matrix`
 - **前端 / WebSocket**：尚未实现，属于后续路线图
 
 ### API MVP
 
-当前 API 是单进程同步 MVP，不包含 WebSocket、auth、持久化、后台任务或并行 workflow execution。`/research` 会在应用 runtime preset 环境后串行执行 workflow。
+当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/{job_id}` 轮询状态。jobs 使用进程内存保存，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。
 
 ```bash
 python -m pip install "uvicorn[standard]"
@@ -564,6 +564,16 @@ curl -X POST http://127.0.0.1:8000/research \
   -H "Content-Type: application/json" \
   -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
 ```
+
+```bash
+curl -X POST http://127.0.0.1:8000/research/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+
+curl http://127.0.0.1:8000/research/jobs/<job_id>
+```
+
+Job 状态包括 `queued`、`running`、`succeeded` 和 `failed`。`succeeded` 响应包含 `result`，结构与同步 `/research` 一致；`failed` 只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。
 
 `uvicorn` 是运行示例依赖，不是当前 package runtime dependency。
 

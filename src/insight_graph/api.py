@@ -1,8 +1,11 @@
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
@@ -18,6 +21,19 @@ app = FastAPI(title="InsightGraph API")
 
 # Presets use process env, so this synchronous MVP serializes /research execution.
 _RESEARCH_ENV_LOCK = Lock()
+_JOBS_LOCK = Lock()
+_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+_JOBS: dict[str, "ResearchJob"] = {}
+
+
+@dataclass
+class ResearchJob:
+    id: str
+    query: str
+    preset: ResearchPreset
+    status: str = "queued"
+    result: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class ResearchRequest(BaseModel):
@@ -66,3 +82,47 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
     return _build_research_json_payload(state)
+
+
+@app.post("/research/jobs", status_code=202)
+def create_research_job(request: ResearchRequest) -> dict[str, str]:
+    job = ResearchJob(id=str(uuid4()), query=request.query, preset=request.preset)
+    with _JOBS_LOCK:
+        _JOBS[job.id] = job
+    _JOB_EXECUTOR.submit(_run_research_job, job.id)
+    return {"job_id": job.id, "status": "queued"}
+
+
+@app.get("/research/jobs/{job_id}")
+def get_research_job(job_id: str) -> dict[str, Any]:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Research job not found.")
+        response: dict[str, Any] = {"job_id": job.id, "status": job.status}
+        if job.status == "succeeded":
+            response["result"] = job.result
+        elif job.status == "failed":
+            response["error"] = job.error
+        return response
+
+
+def _run_research_job(job_id: str) -> None:
+    with _JOBS_LOCK:
+        job = _JOBS[job_id]
+        job.status = "running"
+
+    try:
+        with _RESEARCH_ENV_LOCK:
+            with _research_preset_environment(job.preset):
+                state = run_research(job.query)
+        result = _build_research_json_payload(state)
+    except Exception:
+        with _JOBS_LOCK:
+            job.status = "failed"
+            job.error = "Research workflow failed."
+        return
+
+    with _JOBS_LOCK:
+        job.status = "succeeded"
+        job.result = result

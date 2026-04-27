@@ -14,6 +14,25 @@ from insight_graph.state import (
 )
 
 
+class FakeExecutor:
+    def __init__(self) -> None:
+        self.submissions: list[tuple[object, tuple[object, ...]]] = []
+
+    def submit(self, func, *args):
+        self.submissions.append((func, args))
+        return None
+
+    def run_next(self) -> None:
+        func, args = self.submissions.pop(0)
+        func(*args)
+
+
+class ImmediateExecutor:
+    def submit(self, func, *args):
+        func(*args)
+        return None
+
+
 def clear_live_env(monkeypatch) -> None:
     for name in [
         "INSIGHT_GRAPH_ANALYST_PROVIDER",
@@ -306,3 +325,106 @@ def test_research_safe_500_does_not_log_raw_exception(monkeypatch, caplog) -> No
     assert response.status_code == 500
     assert "secret provider payload" not in caplog.text
     assert "local path" not in caplog.text
+
+
+def test_create_research_job_returns_queued_job(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs", json={"query": "Compare Cursor"})
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert isinstance(payload["job_id"], str)
+    assert len(fake_executor.submissions) == 1
+
+
+def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
+    monkeypatch,
+) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs", json={"query": "Compare Cursor"})
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    job_response = client.get(f"/research/jobs/{payload['job_id']}")
+    assert job_response.json()["status"] == "succeeded"
+
+
+def test_get_research_job_returns_success_result(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    observed_queries: list[str] = []
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_queries.append(query)
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    create_response = client.post("/research/jobs", json={"query": "  Compare Cursor  "})
+    job_id = create_response.json()["job_id"]
+
+    queued_response = client.get(f"/research/jobs/{job_id}")
+    assert queued_response.status_code == 200
+    assert queued_response.json() == {"job_id": job_id, "status": "queued"}
+
+    fake_executor.run_next()
+
+    response = client.get(f"/research/jobs/{job_id}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == job_id
+    assert payload["status"] == "succeeded"
+    assert payload["result"]["user_request"] == "Compare Cursor"
+    assert payload["result"]["competitive_matrix"][0]["product"] == "Cursor"
+    assert observed_queries == ["Compare Cursor"]
+
+
+def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload")
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    create_response = client.post("/research/jobs", json={"query": "Compare Cursor"})
+    job_id = create_response.json()["job_id"]
+    fake_executor.run_next()
+
+    response = client.get(f"/research/jobs/{job_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": job_id,
+        "status": "failed",
+        "error": "Research workflow failed.",
+    }
+    assert "secret provider payload" not in response.text
+
+
+def test_get_research_job_returns_404_for_unknown_job() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/missing")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research job not found."}
