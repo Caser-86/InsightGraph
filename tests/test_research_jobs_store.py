@@ -7,7 +7,9 @@ from insight_graph.research_jobs_store import (
     RESTART_FAILURE_ERROR,
     ResearchJobsStoreError,
     load_research_jobs,
+    research_jobs_backend_from_env,
     research_jobs_path_from_env,
+    research_jobs_sqlite_path_from_env,
     save_research_jobs,
     serialize_research_job,
 )
@@ -62,6 +64,39 @@ def test_research_jobs_path_from_env_returns_none_when_unset(monkeypatch) -> Non
     monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_PATH", raising=False)
 
     assert research_jobs_path_from_env() is None
+
+
+def test_research_jobs_backend_from_env_defaults_to_memory(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", raising=False)
+
+    assert research_jobs_backend_from_env() == "memory"
+
+
+def test_research_jobs_backend_from_env_accepts_sqlite(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+
+    assert research_jobs_backend_from_env() == "sqlite"
+
+
+def test_research_jobs_backend_from_env_rejects_unknown_backend(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "postgres")
+
+    with pytest.raises(ResearchJobsStoreError, match="Unknown research jobs backend"):
+        research_jobs_backend_from_env()
+
+
+def test_research_jobs_sqlite_path_from_env_requires_value(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", raising=False)
+
+    with pytest.raises(ResearchJobsStoreError, match="SQLite research jobs path is required"):
+        research_jobs_sqlite_path_from_env()
+
+
+def test_research_jobs_sqlite_path_from_env_returns_path(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "jobs.sqlite3"
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(path))
+
+    assert research_jobs_sqlite_path_from_env() == path
 
 
 def test_save_and_load_research_jobs_round_trips_terminal_jobs(tmp_path) -> None:

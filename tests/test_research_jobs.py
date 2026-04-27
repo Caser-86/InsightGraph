@@ -1,3 +1,4 @@
+import importlib
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -41,6 +42,88 @@ def test_research_jobs_backend_contract_create_list_cancel(research_jobs_backend
     )
     assert cancelled["status"] == "cancelled"
     assert "queue_position" not in cancelled
+
+
+def test_configure_research_jobs_backend_from_env_defaults_to_memory(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", raising=False)
+
+    jobs_module.configure_research_jobs_backend_from_env()
+
+    try:
+        assert (
+            jobs_module._RESEARCH_JOBS_BACKEND.__class__.__name__
+            == "InMemoryResearchJobsBackend"
+        )
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_configure_research_jobs_backend_from_env_selects_sqlite(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+
+    jobs_module.configure_research_jobs_backend_from_env()
+    try:
+        created = jobs_module.create_research_job(
+            query="Env SQLite",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert sqlite_path.exists()
+    assert detail["status"] == "queued"
+
+
+def test_research_jobs_module_import_uses_sqlite_backend_env(monkeypatch, tmp_path) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+
+    importlib.reload(jobs_module)
+    try:
+        assert jobs_module._RESEARCH_JOBS_BACKEND.__class__.__name__ == "SQLiteResearchJobsBackend"
+    finally:
+        monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", raising=False)
+        monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", raising=False)
+        importlib.reload(jobs_module)
+
+
+def test_configure_research_jobs_backend_from_env_refreshes_json_path(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    store_path = tmp_path / "jobs.json"
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_PATH", str(store_path))
+
+    jobs_module.configure_research_jobs_backend_from_env()
+    try:
+        jobs_module.initialize_research_jobs(restart_timestamp="2026-04-28T11:00:00Z")
+        jobs_module.create_research_job(
+            query="JSON path refresh",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert store_path.exists()
+
+
+def test_configure_research_jobs_backend_from_env_fails_without_sqlite_path(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", raising=False)
+
+    with pytest.raises(ResearchJobsStoreError, match="SQLite research jobs path is required"):
+        jobs_module.configure_research_jobs_backend_from_env()
 
 
 def test_research_job_repository_helpers_reset_seed_and_inspect_state(tmp_path) -> None:
@@ -139,7 +222,11 @@ def test_sqlite_backend_supports_service_helper_contract(tmp_path) -> None:
             active_limit=2,
             jobs=[job],
         )
-        assert jobs_module.get_research_job_record("seeded-job") == job
+        seeded = jobs_module.get_research_job_record("seeded-job")
+        assert seeded is not None
+        assert seeded.id == job.id
+        assert seeded.query == job.query
+        assert seeded.created_order == job.created_order
         assert jobs_module.get_next_research_job_sequence() == 7
 
         jobs_module.seed_research_job(

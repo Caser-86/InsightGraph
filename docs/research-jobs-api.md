@@ -143,3 +143,11 @@ Only queued jobs are cancellable. Running or terminal jobs return `409`:
 - `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables opt-in JSON metadata persistence.
 - On restart, unfinished persisted jobs become `failed` with `Research job did not complete before server restart.`
 - Jobs are not automatically resumed or retried after restart.
+
+## Runtime storage configuration
+
+- Default: in-memory research job storage.
+- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=memory`: explicit in-memory storage.
+- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`: use SQLite storage.
+- `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`: required when backend is `sqlite`.
+- `INSIGHT_GRAPH_RESEARCH_JOBS_PATH=/path/jobs.json`: existing JSON metadata path. With SQLite selected, this is only used as an optional import source during startup initialization.

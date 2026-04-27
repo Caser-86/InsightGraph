@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 RESEARCH_JOBS_PATH_ENV = "INSIGHT_GRAPH_RESEARCH_JOBS_PATH"
+RESEARCH_JOBS_BACKEND_ENV = "INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND"
+RESEARCH_JOBS_SQLITE_PATH_ENV = "INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH"
 RESTART_FAILURE_ERROR = "Research job did not complete before server restart."
 _REQUIRED_JOB_FIELDS = {
     "id",
@@ -37,6 +39,22 @@ def research_jobs_path_from_env() -> Path | None:
     value = os.environ.get(RESEARCH_JOBS_PATH_ENV)
     if value is None or not value.strip():
         return None
+    return Path(value)
+
+
+def research_jobs_backend_from_env() -> str:
+    value = os.environ.get(RESEARCH_JOBS_BACKEND_ENV, "memory").strip().lower()
+    if value in {"", "memory"}:
+        return "memory"
+    if value == "sqlite":
+        return "sqlite"
+    raise ResearchJobsStoreError(f"Unknown research jobs backend: {value}")
+
+
+def research_jobs_sqlite_path_from_env() -> Path:
+    value = os.environ.get(RESEARCH_JOBS_SQLITE_PATH_ENV)
+    if value is None or not value.strip():
+        raise ResearchJobsStoreError("SQLite research jobs path is required.")
     return Path(value)
 
 

@@ -18,6 +18,7 @@ from insight_graph.cli import (
 from insight_graph.graph import run_research
 from insight_graph.research_jobs import (
     ResearchJobStatus,
+    configure_research_jobs_backend_from_env,
     initialize_research_jobs,
     mark_research_job_failed,
     mark_research_job_running,
@@ -241,7 +242,12 @@ def _current_utc_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
+def _initialize_research_jobs_from_env() -> None:
+    configure_research_jobs_backend_from_env()
+    initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
+
+
+_initialize_research_jobs_from_env()
 
 
 @router.post("/research")

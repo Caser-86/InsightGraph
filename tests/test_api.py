@@ -52,6 +52,76 @@ def clear_live_env(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def test_api_research_jobs_startup_uses_sqlite_backend_env(monkeypatch, tmp_path) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+    monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_PATH", raising=False)
+
+    api_module._initialize_research_jobs_from_env()
+    try:
+        created = jobs_module.create_research_job(
+            query="API env SQLite",
+            preset=api_module.ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert sqlite_path.exists()
+    assert detail["status"] == "queued"
+
+
+def test_api_research_jobs_startup_does_not_reimport_json_over_existing_sqlite(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    json_path = tmp_path / "jobs.json"
+    json_path.write_text(
+        """
+        {
+          "next_job_sequence": 1,
+          "jobs": [
+            {
+              "id": "json-job",
+              "query": "JSON",
+              "preset": "offline",
+              "created_order": 1,
+              "created_at": "2026-04-28T10:00:00Z",
+              "status": "succeeded",
+              "started_at": "2026-04-28T10:00:01Z",
+              "finished_at": "2026-04-28T10:00:02Z",
+              "result": {"report_markdown": "# JSON"},
+              "error": null
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_PATH", str(json_path))
+
+    api_module._initialize_research_jobs_from_env()
+    created = jobs_module.create_research_job(
+        query="SQLite survivor",
+        preset=api_module.ResearchPreset.offline,
+        created_at="2026-04-28T10:00:03Z",
+    )
+
+    api_module._initialize_research_jobs_from_env()
+    try:
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert detail["status"] == "queued"
+    assert detail["job_id"] == created["job_id"]
+
+
 def make_api_state(query: str) -> GraphState:
     return GraphState(
         user_request=query,

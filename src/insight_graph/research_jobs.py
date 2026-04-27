@@ -12,7 +12,9 @@ from insight_graph.research_jobs_backend import InMemoryResearchJobsBackend
 from insight_graph.research_jobs_store import (
     ResearchJobsStoreError,
     load_research_jobs,
+    research_jobs_backend_from_env,
     research_jobs_path_from_env,
+    research_jobs_sqlite_path_from_env,
     save_research_jobs,
 )
 
@@ -150,6 +152,29 @@ def get_next_research_job_sequence() -> int:
         return _NEXT_JOB_SEQUENCE
 
 
+def _make_research_jobs_backend_from_env() -> Any:
+    backend = research_jobs_backend_from_env()
+    if backend == "sqlite":
+        from insight_graph.research_jobs_sqlite_backend import SQLiteResearchJobsBackend
+
+        sqlite_backend = SQLiteResearchJobsBackend(research_jobs_sqlite_path_from_env())
+        sqlite_backend.initialize()
+        return sqlite_backend
+    return InMemoryResearchJobsBackend(
+        store_path=_RESEARCH_JOBS_PATH,
+        jobs=_JOBS,
+        lock=_JOBS_LOCK,
+    )
+
+
+def configure_research_jobs_backend_from_env() -> None:
+    global _NEXT_JOB_SEQUENCE, _RESEARCH_JOBS_BACKEND, _RESEARCH_JOBS_PATH
+
+    _RESEARCH_JOBS_PATH = research_jobs_path_from_env()
+    _RESEARCH_JOBS_BACKEND = _make_research_jobs_backend_from_env()
+    _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
+
+
 def configure_research_jobs_in_memory_backend() -> None:
     global _RESEARCH_JOBS_BACKEND
 
@@ -176,6 +201,9 @@ def _using_sqlite_research_jobs_backend() -> bool:
     return _RESEARCH_JOBS_BACKEND.__class__.__name__ == "SQLiteResearchJobsBackend"
 
 
+configure_research_jobs_backend_from_env()
+
+
 def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
     return ResearchJob(
         id=item["id"],
@@ -194,14 +222,21 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
 def initialize_research_jobs(restart_timestamp: str) -> None:
     global _NEXT_JOB_SEQUENCE
 
-    if _RESEARCH_JOBS_PATH is None:
-        return
     if _using_sqlite_research_jobs_backend():
+        if _RESEARCH_JOBS_PATH is None:
+            _RESEARCH_JOBS_BACKEND.set_next_sequence(_RESEARCH_JOBS_BACKEND.next_sequence())
+            _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
+            return
+        if _RESEARCH_JOBS_BACKEND.all_jobs():
+            _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
+            return
         _RESEARCH_JOBS_BACKEND.import_json_store(
             _RESEARCH_JOBS_PATH,
             restart_timestamp=restart_timestamp,
         )
         _NEXT_JOB_SEQUENCE = _RESEARCH_JOBS_BACKEND.next_sequence()
+        return
+    if _RESEARCH_JOBS_PATH is None:
         return
     loaded = load_research_jobs(
         path=_RESEARCH_JOBS_PATH,
