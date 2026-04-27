@@ -410,6 +410,7 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
                 status_code=409,
                 detail="Only queued research jobs can be cancelled.",
             )
+        previous_jobs = dict(_JOBS)
         previous_status = job.status
         previous_finished_at = job.finished_at
         job.status = _RESEARCH_JOB_STATUS_CANCELLED
@@ -420,6 +421,8 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
         except HTTPException:
             job.status = previous_status
             job.finished_at = previous_finished_at
+            _JOBS.clear()
+            _JOBS.update(previous_jobs)
             raise
         return _job_detail(job, _queued_job_positions_locked())
 

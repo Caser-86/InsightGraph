@@ -152,6 +152,17 @@ def test_load_research_jobs_rejects_malformed_json(tmp_path) -> None:
         load_research_jobs(path=path, restart_timestamp="2026-04-27T11:00:00Z")
 
 
+def test_load_research_jobs_rejects_boolean_sequence(tmp_path) -> None:
+    path = tmp_path / "jobs.json"
+    path.write_text(
+        json.dumps({"next_job_sequence": True, "jobs": []}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchJobsStoreError):
+        load_research_jobs(path=path, restart_timestamp="2026-04-27T11:00:00Z")
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -159,6 +170,7 @@ def test_load_research_jobs_rejects_malformed_json(tmp_path) -> None:
         ("query", 123),
         ("preset", 123),
         ("created_order", "1"),
+        ("created_order", True),
         ("created_at", 123),
         ("status", "paused"),
         ("started_at", 123),

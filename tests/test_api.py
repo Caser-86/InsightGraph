@@ -1273,6 +1273,49 @@ def test_cancel_research_job_rolls_back_when_store_write_fails(
     assert api_module._JOBS[job.id].finished_at is None
 
 
+def test_cancel_research_job_restores_pruned_jobs_when_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def fail_persist() -> None:
+        raise api_module.ResearchJobsStoreError("secret path")
+
+    store_path = tmp_path / "jobs.json"
+    old_finished = api_module.ResearchJob(
+        id="old-finished",
+        query="Old",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T19:00:00Z",
+        status="succeeded",
+        finished_at="2026-04-27T19:00:01Z",
+    )
+    queued = api_module.ResearchJob(
+        id="queued-job",
+        query="Cancel",
+        preset=api_module.ResearchPreset.offline,
+        created_order=2,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    api_module._JOBS.clear()
+    api_module._JOBS[old_finished.id] = old_finished
+    api_module._JOBS[queued.id] = queued
+    client = TestClient(api_module.app)
+
+    response = client.post(f"/research/jobs/{queued.id}/cancel")
+
+    assert response.status_code == 500
+    assert api_module._JOBS == {
+        "old-finished": old_finished,
+        "queued-job": queued,
+    }
+    assert queued.status == "queued"
+    assert queued.finished_at is None
+
+
 def test_run_research_job_marks_failed_when_running_store_write_fails(
     monkeypatch,
     tmp_path,

@@ -79,7 +79,7 @@ def load_research_jobs(path: Path, restart_timestamp: str) -> LoadedResearchJobs
         raise ResearchJobsStoreError("Research jobs store payload must be an object.")
     next_job_sequence = payload.get("next_job_sequence")
     jobs = payload.get("jobs")
-    if not isinstance(next_job_sequence, int) or not isinstance(jobs, list):
+    if not _is_int(next_job_sequence) or not isinstance(jobs, list):
         raise ResearchJobsStoreError("Research jobs store schema is invalid.")
 
     loaded_jobs = [_load_job(item, restart_timestamp) for item in jobs]
@@ -108,7 +108,7 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         raise ResearchJobsStoreError("Research jobs store job query is invalid.")
     if job["preset"] not in _RESEARCH_PRESETS:
         raise ResearchJobsStoreError("Research jobs store job preset is invalid.")
-    if not isinstance(job["created_order"], int):
+    if not _is_int(job["created_order"]):
         raise ResearchJobsStoreError("Research jobs store job created_order is invalid.")
     if not isinstance(job["created_at"], str):
         raise ResearchJobsStoreError("Research jobs store job created_at is invalid.")
@@ -122,6 +122,10 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         raise ResearchJobsStoreError("Research jobs store job result is invalid.")
     if job["error"] is not None and not isinstance(job["error"], str):
         raise ResearchJobsStoreError("Research jobs store job error is invalid.")
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
