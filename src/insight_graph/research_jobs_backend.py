@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Any
+
+ACTIVE_RESEARCH_JOB_STATUSES = {"queued", "running"}
+TERMINAL_RESEARCH_JOB_STATUSES = {"succeeded", "failed", "cancelled"}
+
+
+@dataclass(frozen=True)
+class ResearchJobsBackendSnapshot:
+    next_job_sequence: int
+    jobs: dict[str, Any]
 
 
 class InMemoryResearchJobsBackend:
@@ -13,9 +22,9 @@ class InMemoryResearchJobsBackend:
         *,
         store_path: Path | None,
         jobs: dict[str, Any] | None = None,
-        lock: Lock | None = None,
+        lock: Any | None = None,
     ) -> None:
-        self._lock = lock if lock is not None else Lock()
+        self._lock = lock if lock is not None else RLock()
         self._max_research_jobs = 100
         self._max_active_research_jobs = 100
         self._next_job_sequence = 0
@@ -88,3 +97,36 @@ class InMemoryResearchJobsBackend:
     def active_limit(self) -> int:
         with self._lock:
             return self._max_active_research_jobs
+
+    def active_count(self) -> int:
+        with self._lock:
+            return sum(
+                1 for job in self._jobs.values() if job.status in ACTIVE_RESEARCH_JOB_STATUSES
+            )
+
+    def prune_finished(self) -> None:
+        with self._lock:
+            finished_jobs = [
+                job
+                for job in self._jobs.values()
+                if job.status in TERMINAL_RESEARCH_JOB_STATUSES
+            ]
+            overflow = len(finished_jobs) - self._max_research_jobs
+            if overflow <= 0:
+                return
+
+            for job in sorted(finished_jobs, key=lambda item: item.created_order)[:overflow]:
+                del self._jobs[job.id]
+
+    def snapshot(self) -> ResearchJobsBackendSnapshot:
+        with self._lock:
+            return ResearchJobsBackendSnapshot(
+                next_job_sequence=self._next_job_sequence,
+                jobs=dict(self._jobs),
+            )
+
+    def restore(self, snapshot: ResearchJobsBackendSnapshot) -> None:
+        with self._lock:
+            self._next_job_sequence = snapshot.next_job_sequence
+            self._jobs.clear()
+            self._jobs.update(snapshot.jobs)

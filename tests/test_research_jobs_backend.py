@@ -60,3 +60,93 @@ def test_in_memory_research_jobs_backend_tracks_sequence_and_limits() -> None:
     assert backend.next_sequence() == 4
     assert backend.retained_limit() == 3
     assert backend.active_limit() == 2
+
+
+def test_in_memory_research_jobs_backend_counts_active_jobs() -> None:
+    backend = InMemoryResearchJobsBackend(store_path=None)
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="queued",
+                query="Queued",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            ),
+            ResearchJob(
+                id="running",
+                query="Running",
+                preset=ResearchPreset.offline,
+                created_order=2,
+                created_at="2026-04-28T10:00:01Z",
+                status="running",
+            ),
+            ResearchJob(
+                id="done",
+                query="Done",
+                preset=ResearchPreset.offline,
+                created_order=3,
+                created_at="2026-04-28T10:00:02Z",
+                status="succeeded",
+            ),
+        ]
+    )
+
+    assert backend.active_count() == 2
+
+
+def test_in_memory_research_jobs_backend_prunes_oldest_terminal_jobs_only() -> None:
+    backend = InMemoryResearchJobsBackend(store_path=None)
+    backend.reset(
+        retained_limit=1,
+        jobs=[
+            ResearchJob(
+                id="old-finished",
+                query="Old",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+                status="succeeded",
+            ),
+            ResearchJob(
+                id="queued",
+                query="Queued",
+                preset=ResearchPreset.offline,
+                created_order=2,
+                created_at="2026-04-28T10:00:01Z",
+            ),
+            ResearchJob(
+                id="new-finished",
+                query="New",
+                preset=ResearchPreset.offline,
+                created_order=3,
+                created_at="2026-04-28T10:00:02Z",
+                status="failed",
+            ),
+        ],
+    )
+
+    backend.prune_finished()
+
+    assert backend.get("old-finished") is None
+    assert backend.get("queued") is not None
+    assert backend.get("new-finished") is not None
+
+
+def test_in_memory_research_jobs_backend_snapshot_restores_jobs_and_sequence() -> None:
+    backend = InMemoryResearchJobsBackend(store_path=None)
+    original = ResearchJob(
+        id="job-1",
+        query="Original",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    backend.reset(next_job_sequence=1, jobs=[original])
+    snapshot = backend.snapshot()
+
+    backend.reset(next_job_sequence=2)
+    backend.restore(snapshot)
+
+    assert backend.next_sequence() == 1
+    assert backend.get("job-1") == original

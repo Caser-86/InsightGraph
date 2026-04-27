@@ -300,3 +300,29 @@ def test_research_jobs_state_snapshot_restores_jobs_and_sequence() -> None:
 
     assert jobs_module.get_next_research_job_sequence() == 1
     assert jobs_module.get_research_job_record("job-1") == original
+
+
+def test_create_research_job_keeps_backend_sequence_synced_for_rollback(monkeypatch) -> None:
+    def fail_persist() -> None:
+        raise ResearchJobsStoreError("store failed")
+
+    reset_jobs_state()
+    created = jobs_module.create_research_job(
+        query="First",
+        preset=ResearchPreset.offline,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    assert created["status"] == "queued"
+    assert jobs_module.get_next_research_job_sequence() == 1
+    assert jobs_module._RESEARCH_JOBS_BACKEND.next_sequence() == 1
+
+    monkeypatch.setattr(jobs_module, "_persist_research_jobs_locked", fail_persist)
+    with pytest.raises(jobs_module.HTTPException):
+        jobs_module.create_research_job(
+            query="Second",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:01Z",
+        )
+
+    assert jobs_module.get_next_research_job_sequence() == 1
+    assert jobs_module._RESEARCH_JOBS_BACKEND.next_sequence() == 1

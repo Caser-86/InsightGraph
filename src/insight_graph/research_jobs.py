@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -44,7 +44,7 @@ TERMINAL_RESEARCH_JOB_STATUSES = {
     RESEARCH_JOB_STATUS_FAILED,
     RESEARCH_JOB_STATUS_CANCELLED,
 }
-_JOBS_LOCK = Lock()
+_JOBS_LOCK = RLock()
 _MAX_RESEARCH_JOBS = 100
 _MAX_ACTIVE_RESEARCH_JOBS = 100
 _NEXT_JOB_SEQUENCE = 0
@@ -189,9 +189,10 @@ class ResearchJobsStateSnapshot:
 
 
 def _research_jobs_state_snapshot_locked() -> ResearchJobsStateSnapshot:
+    snapshot = _RESEARCH_JOBS_BACKEND.snapshot()
     return ResearchJobsStateSnapshot(
-        next_job_sequence=_NEXT_JOB_SEQUENCE,
-        jobs=dict(_JOBS),
+        next_job_sequence=snapshot.next_job_sequence,
+        jobs=snapshot.jobs,
     )
 
 
@@ -199,8 +200,7 @@ def _restore_research_jobs_state_locked(snapshot: ResearchJobsStateSnapshot) -> 
     global _NEXT_JOB_SEQUENCE
 
     _NEXT_JOB_SEQUENCE = snapshot.next_job_sequence
-    _JOBS.clear()
-    _JOBS.update(snapshot.jobs)
+    _RESEARCH_JOBS_BACKEND.restore(snapshot)
 
 
 def _persist_research_jobs_locked() -> None:
@@ -238,7 +238,7 @@ def _queued_job_positions_locked() -> dict[str, int]:
 
 
 def _active_research_job_count_locked() -> int:
-    return sum(1 for job in _JOBS.values() if job.status in ACTIVE_RESEARCH_JOB_STATUSES)
+    return _RESEARCH_JOBS_BACKEND.active_count()
 
 
 def _job_queue_position_field(
@@ -336,15 +336,7 @@ def _persist_research_jobs_best_effort_locked() -> None:
 
 
 def _prune_finished_jobs_locked() -> None:
-    finished_jobs = [
-        job for job in _JOBS.values() if job.status in TERMINAL_RESEARCH_JOB_STATUSES
-    ]
-    overflow = len(finished_jobs) - _MAX_RESEARCH_JOBS
-    if overflow <= 0:
-        return
-
-    for job in sorted(finished_jobs, key=lambda item: item.created_order)[:overflow]:
-        del _JOBS[job.id]
+    _RESEARCH_JOBS_BACKEND.prune_finished()
 
 
 def create_research_job(
@@ -362,6 +354,7 @@ def create_research_job(
             )
         snapshot = _research_jobs_state_snapshot_locked()
         _NEXT_JOB_SEQUENCE += 1
+        _RESEARCH_JOBS_BACKEND.set_next_sequence(_NEXT_JOB_SEQUENCE)
         job = ResearchJob(
             id=str(uuid4()),
             query=query,
