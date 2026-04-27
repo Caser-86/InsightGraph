@@ -106,13 +106,13 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         raise ResearchJobsStoreError("Research jobs store job id is invalid.")
     if not isinstance(job["query"], str):
         raise ResearchJobsStoreError("Research jobs store job query is invalid.")
-    if job["preset"] not in _RESEARCH_PRESETS:
+    if not isinstance(job["preset"], str) or job["preset"] not in _RESEARCH_PRESETS:
         raise ResearchJobsStoreError("Research jobs store job preset is invalid.")
     if not _is_int(job["created_order"]):
         raise ResearchJobsStoreError("Research jobs store job created_order is invalid.")
     if not isinstance(job["created_at"], str):
         raise ResearchJobsStoreError("Research jobs store job created_at is invalid.")
-    if job["status"] not in _RESEARCH_JOB_STATUSES:
+    if not isinstance(job["status"], str) or job["status"] not in _RESEARCH_JOB_STATUSES:
         raise ResearchJobsStoreError("Research jobs store job status is invalid.")
     if job["started_at"] is not None and not isinstance(job["started_at"], str):
         raise ResearchJobsStoreError("Research jobs store job started_at is invalid.")
