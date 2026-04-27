@@ -76,7 +76,7 @@ python scripts/validate_github_search.py --markdown
 
 ## API MVP
 
-当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/{job_id}` 轮询状态。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。
+当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/{job_id}` 轮询状态。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。内存 store 只保留最近 100 个 `succeeded` / `failed` jobs；`queued` / `running` jobs 不会被裁剪。
 
 ```bash
 python -m pip install "uvicorn[standard]"

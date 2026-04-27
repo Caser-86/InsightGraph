@@ -23,6 +23,8 @@ app = FastAPI(title="InsightGraph API")
 _RESEARCH_ENV_LOCK = Lock()
 _JOBS_LOCK = Lock()
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+_MAX_RESEARCH_JOBS = 100
+_NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
 
 
@@ -31,6 +33,7 @@ class ResearchJob:
     id: str
     query: str
     preset: ResearchPreset
+    created_order: int
     status: str = "queued"
     result: dict[str, Any] | None = None
     error: str | None = None
@@ -86,9 +89,18 @@ def research(request: ResearchRequest) -> dict[str, Any]:
 
 @app.post("/research/jobs", status_code=202)
 def create_research_job(request: ResearchRequest) -> dict[str, str]:
-    job = ResearchJob(id=str(uuid4()), query=request.query, preset=request.preset)
+    global _NEXT_JOB_SEQUENCE
+
     with _JOBS_LOCK:
+        _NEXT_JOB_SEQUENCE += 1
+        job = ResearchJob(
+            id=str(uuid4()),
+            query=request.query,
+            preset=request.preset,
+            created_order=_NEXT_JOB_SEQUENCE,
+        )
         _JOBS[job.id] = job
+        _prune_finished_jobs_locked()
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
     return {"job_id": job.id, "status": "queued"}
 
@@ -121,8 +133,24 @@ def _run_research_job(job_id: str) -> None:
         with _JOBS_LOCK:
             job.status = "failed"
             job.error = "Research workflow failed."
+            _prune_finished_jobs_locked()
         return
 
     with _JOBS_LOCK:
         job.status = "succeeded"
         job.result = result
+        _prune_finished_jobs_locked()
+
+
+def _prune_finished_jobs_locked() -> None:
+    finished_jobs = [
+        job
+        for job in _JOBS.values()
+        if job.status in {"succeeded", "failed"}
+    ]
+    overflow = len(finished_jobs) - _MAX_RESEARCH_JOBS
+    if overflow <= 0:
+        return
+
+    for job in sorted(finished_jobs, key=lambda item: item.created_order)[:overflow]:
+        del _JOBS[job.id]

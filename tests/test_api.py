@@ -428,3 +428,70 @@ def test_get_research_job_returns_404_for_unknown_job() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Research job not found."}
+
+
+def test_create_research_job_prunes_oldest_finished_jobs(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 2)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
+    second = client.post("/research/jobs", json={"query": "Second"}).json()["job_id"]
+    third = client.post("/research/jobs", json={"query": "Third"}).json()["job_id"]
+
+    assert client.get(f"/research/jobs/{first}").status_code == 404
+    assert client.get(f"/research/jobs/{second}").json()["status"] == "succeeded"
+    assert client.get(f"/research/jobs/{third}").json()["status"] == "succeeded"
+
+
+def test_create_research_job_does_not_prune_queued_or_running_jobs(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
+    running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[running].status = "running"
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    finished = client.post("/research/jobs", json={"query": "Finished"}).json()["job_id"]
+    newest = client.post("/research/jobs", json={"query": "Newest"}).json()["job_id"]
+
+    assert client.get(f"/research/jobs/{queued}").json()["status"] == "queued"
+    assert client.get(f"/research/jobs/{running}").json()["status"] == "running"
+    assert client.get(f"/research/jobs/{finished}").status_code == 404
+    assert client.get(f"/research/jobs/{newest}").json()["status"] == "succeeded"
+
+
+def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
+    second = client.post("/research/jobs", json={"query": "Second"}).json()["job_id"]
+
+    assert client.get(f"/research/jobs/{first}").status_code == 404
+    assert client.get(f"/research/jobs/{second}").json() == {
+        "job_id": second,
+        "status": "failed",
+        "error": "Research workflow failed.",
+    }
