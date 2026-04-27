@@ -1,6 +1,7 @@
 import os
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 import insight_graph.api as api_module
@@ -104,6 +105,24 @@ def test_health_returns_ok() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_create_app_returns_configured_fastapi_app() -> None:
+    app = api_module.create_app()
+    client = TestClient(app)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_module_level_app_remains_configured() -> None:
+    route_paths = {route.path for route in api_module.app.routes}
+
+    assert "/health" in route_paths
+    assert "/research/jobs" in route_paths
+    assert "/research/jobs/{job_id}" in route_paths
 
 
 def test_current_utc_timestamp_uses_z_suffix() -> None:
@@ -1086,6 +1105,92 @@ def test_list_research_jobs_rejects_invalid_limits() -> None:
     assert too_large.status_code == 422
 
 
+def test_initialize_research_jobs_noops_without_store_path(monkeypatch) -> None:
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", None)
+    api_module._NEXT_JOB_SEQUENCE = 8
+    api_module._JOBS.clear()
+    api_module._JOBS["existing"] = api_module.ResearchJob(
+        id="existing",
+        query="Existing",
+        preset=api_module.ResearchPreset.offline,
+        created_order=8,
+        created_at="2026-04-27T20:00:00Z",
+    )
+
+    api_module.initialize_research_jobs()
+
+    assert api_module._NEXT_JOB_SEQUENCE == 8
+    assert set(api_module._JOBS) == {"existing"}
+
+
+def test_initialize_research_jobs_loads_configured_store(monkeypatch, tmp_path) -> None:
+    store_path = tmp_path / "jobs.json"
+    store_path.write_text(
+        """
+{
+  "jobs": [
+    {
+      "created_at": "2026-04-27T20:00:00Z",
+      "created_order": 4,
+      "error": null,
+      "finished_at": "2026-04-27T20:00:02Z",
+      "id": "job-4",
+      "preset": "offline",
+      "query": "Persisted",
+      "result": {"report_markdown": "# Report"},
+      "started_at": "2026-04-27T20:00:01Z",
+      "status": "succeeded"
+    }
+  ],
+  "next_job_sequence": 4
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    api_module._JOBS.clear()
+    api_module._NEXT_JOB_SEQUENCE = 0
+
+    api_module.initialize_research_jobs()
+
+    assert api_module._NEXT_JOB_SEQUENCE == 4
+    assert api_module._JOBS["job-4"].status == "succeeded"
+
+
+def test_initialize_research_jobs_fails_closed_for_bad_store(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    store_path = tmp_path / "jobs.json"
+    store_path.write_text("{bad-json", encoding="utf-8")
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+
+    with pytest.raises(api_module.ResearchJobsStoreError):
+        api_module.initialize_research_jobs()
+
+
+def test_research_jobs_state_snapshot_restores_jobs_and_sequence() -> None:
+    original = api_module.ResearchJob(
+        id="job-1",
+        query="Original",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    api_module._NEXT_JOB_SEQUENCE = 1
+    api_module._JOBS.clear()
+    api_module._JOBS[original.id] = original
+    snapshot = api_module._research_jobs_state_snapshot_locked()
+
+    api_module._NEXT_JOB_SEQUENCE = 2
+    api_module._JOBS.clear()
+
+    api_module._restore_research_jobs_state_locked(snapshot)
+
+    assert api_module._NEXT_JOB_SEQUENCE == 1
+    assert api_module._JOBS == {"job-1": original}
+
+
 def test_create_research_job_writes_configured_store(monkeypatch, tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
     fake_executor = FakeExecutor()
@@ -1135,7 +1240,7 @@ def test_load_research_jobs_from_store_restores_jobs(monkeypatch, tmp_path) -> N
     api_module._JOBS.clear()
     api_module._NEXT_JOB_SEQUENCE = 0
 
-    api_module._load_research_jobs_from_store()
+    api_module.initialize_research_jobs()
 
     assert api_module._NEXT_JOB_SEQUENCE == 4
     assert api_module._JOBS["job-4"].status == "succeeded"
@@ -1177,7 +1282,7 @@ def test_load_research_jobs_from_store_marks_unfinished_jobs_failed(
     )
     api_module._JOBS.clear()
 
-    api_module._load_research_jobs_from_store()
+    api_module.initialize_research_jobs()
 
     job = api_module._JOBS["job-1"]
     assert job.status == "failed"

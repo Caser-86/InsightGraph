@@ -9,7 +9,7 @@ from threading import Lock
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, FastAPI, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
@@ -26,7 +26,13 @@ from insight_graph.research_jobs_store import (
     save_research_jobs,
 )
 
-app = FastAPI(title="InsightGraph API")
+router = APIRouter()
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="InsightGraph API")
+    application.include_router(router)
+    return application
 
 # Presets use process env, so this synchronous MVP serializes /research execution.
 _RESEARCH_ENV_LOCK = Lock()
@@ -155,7 +161,7 @@ def _research_preset_environment(preset: ResearchPreset) -> Iterator[None]:
                 os.environ[name] = value
 
 
-@app.get("/health")
+@router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -179,7 +185,7 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
     )
 
 
-def _load_research_jobs_from_store() -> None:
+def initialize_research_jobs() -> None:
     global _NEXT_JOB_SEQUENCE
 
     if _RESEARCH_JOBS_PATH is None:
@@ -193,6 +199,27 @@ def _load_research_jobs_from_store() -> None:
     for item in loaded.jobs:
         job = _research_job_from_store(item)
         _JOBS[job.id] = job
+
+
+@dataclass(frozen=True)
+class ResearchJobsStateSnapshot:
+    next_job_sequence: int
+    jobs: dict[str, ResearchJob]
+
+
+def _research_jobs_state_snapshot_locked() -> ResearchJobsStateSnapshot:
+    return ResearchJobsStateSnapshot(
+        next_job_sequence=_NEXT_JOB_SEQUENCE,
+        jobs=dict(_JOBS),
+    )
+
+
+def _restore_research_jobs_state_locked(snapshot: ResearchJobsStateSnapshot) -> None:
+    global _NEXT_JOB_SEQUENCE
+
+    _NEXT_JOB_SEQUENCE = snapshot.next_job_sequence
+    _JOBS.clear()
+    _JOBS.update(snapshot.jobs)
 
 
 def _persist_research_jobs_locked() -> None:
@@ -212,7 +239,7 @@ def _persist_research_jobs_or_500_locked() -> None:
         raise HTTPException(status_code=500, detail="Research job store failed.") from exc
 
 
-_load_research_jobs_from_store()
+initialize_research_jobs()
 
 
 def _job_timing_fields(job: ResearchJob) -> dict[str, str]:
@@ -323,7 +350,7 @@ def _jobs_summary_response_locked() -> dict[str, Any]:
     }
 
 
-@app.post("/research")
+@router.post("/research")
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
         with _RESEARCH_ENV_LOCK:
@@ -334,7 +361,7 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     return _build_research_json_payload(state)
 
 
-@app.post(
+@router.post(
     "/research/jobs",
     status_code=202,
     response_model=ResearchJobCreateResponse,
@@ -349,8 +376,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
                 status_code=429,
                 detail="Too many active research jobs.",
             )
-        previous_sequence = _NEXT_JOB_SEQUENCE
-        previous_jobs = dict(_JOBS)
+        snapshot = _research_jobs_state_snapshot_locked()
         _NEXT_JOB_SEQUENCE += 1
         job = ResearchJob(
             id=str(uuid4()),
@@ -364,15 +390,13 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         try:
             _persist_research_jobs_or_500_locked()
         except HTTPException:
-            _JOBS.clear()
-            _JOBS.update(previous_jobs)
-            _NEXT_JOB_SEQUENCE = previous_sequence
+            _restore_research_jobs_state_locked(snapshot)
             raise
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
     return _job_create_response(job)
 
 
-@app.get(
+@router.get(
     "/research/jobs",
     response_model=ResearchJobsListResponse,
     response_model_exclude_none=True,
@@ -385,7 +409,7 @@ def list_research_jobs(
         return _jobs_list_response_locked(status=status, limit=limit)
 
 
-@app.get(
+@router.get(
     "/research/jobs/summary",
     response_model=ResearchJobsSummaryResponse,
     response_model_exclude_none=True,
@@ -395,7 +419,7 @@ def summarize_research_jobs() -> dict[str, Any]:
         return _jobs_summary_response_locked()
 
 
-@app.post(
+@router.post(
     "/research/jobs/{job_id}/cancel",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
@@ -410,7 +434,7 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
                 status_code=409,
                 detail="Only queued research jobs can be cancelled.",
             )
-        previous_jobs = dict(_JOBS)
+        snapshot = _research_jobs_state_snapshot_locked()
         previous_status = job.status
         previous_finished_at = job.finished_at
         job.status = _RESEARCH_JOB_STATUS_CANCELLED
@@ -421,13 +445,12 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
         except HTTPException:
             job.status = previous_status
             job.finished_at = previous_finished_at
-            _JOBS.clear()
-            _JOBS.update(previous_jobs)
+            _restore_research_jobs_state_locked(snapshot)
             raise
         return _job_detail(job, _queued_job_positions_locked())
 
 
-@app.get(
+@router.get(
     "/research/jobs/{job_id}",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
@@ -493,3 +516,6 @@ def _prune_finished_jobs_locked() -> None:
 
     for job in sorted(finished_jobs, key=lambda item: item.created_order)[:overflow]:
         del _JOBS[job.id]
+
+
+app = create_app()

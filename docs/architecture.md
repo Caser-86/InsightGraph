@@ -289,7 +289,7 @@ flowchart LR
 
 - **Checkpoint**：目标态每节点执行后写入 PostgreSQL，支持任务中断后 `resume`；当前 MVP 使用内存状态
 - **Long-term Memory**：目标态由 pgvector 存储历史研究摘要、实体画像与证据片段；当前 MVP 未实现长期记忆
-- **任务追踪**：目标态通过 `task_id` 与 `thread_id` 关联用户请求、Graph 状态和最终报告；当前 API jobs 仅为单进程内存 job store，支持状态数量 summary、按状态与数量上限列出任务摘要、按 `job_id` 查询详情、取消尚未执行的 `queued` jobs，并返回 `created_at` / `started_at` / `finished_at` UTC 时间 metadata；`queued` jobs 还返回按当前内存队列动态计算的 1-based `queue_position`；内存 store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs，`queued` / `running` jobs 不会被裁剪，但 `queued + running` 达到 active cap 后会拒绝新 job；可通过 `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` opt-in JSON metadata 持久化，重启后未完成 job 会恢复为 `failed`，但 PostgreSQL checkpoint 与自动恢复执行仍未实现
+- **任务追踪**：目标态通过 `task_id` 与 `thread_id` 关联用户请求、Graph 状态和最终报告；当前 API jobs 仅为单进程内存 job store，支持状态数量 summary、按状态与数量上限列出任务摘要、按 `job_id` 查询详情、取消尚未执行的 `queued` jobs，并返回 `created_at` / `started_at` / `finished_at` UTC 时间 metadata；`queued` jobs 还返回按当前内存队列动态计算的 1-based `queue_position`；内存 store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs，`queued` / `running` jobs 不会被裁剪，但 `queued + running` 达到 active cap 后会拒绝新 job；API jobs 现在有显式初始化边界与状态 rollback snapshot helper，可通过 `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` opt-in JSON metadata 持久化，重启后未完成 job 会恢复为 `failed`，但 PostgreSQL checkpoint 与自动恢复执行仍未实现
 
 ## 示例输出
 
