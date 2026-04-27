@@ -1209,6 +1209,107 @@ def test_create_research_job_returns_safe_500_when_store_write_fails(
     assert api_module._JOBS == {}
 
 
+def test_create_research_job_restores_pruned_jobs_when_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def fail_persist() -> None:
+        raise api_module.ResearchJobsStoreError("secret path")
+
+    store_path = tmp_path / "jobs.json"
+    existing = api_module.ResearchJob(
+        id="existing-job",
+        query="Existing",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+        status="succeeded",
+        finished_at="2026-04-27T20:00:01Z",
+    )
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    api_module._NEXT_JOB_SEQUENCE = 1
+    api_module._JOBS.clear()
+    api_module._JOBS[existing.id] = existing
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs", json={"query": "New"})
+
+    assert response.status_code == 500
+    assert api_module._NEXT_JOB_SEQUENCE == 1
+    assert api_module._JOBS == {"existing-job": existing}
+    assert fake_executor.submissions == []
+
+
+def test_cancel_research_job_rolls_back_when_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def fail_persist() -> None:
+        raise api_module.ResearchJobsStoreError("secret path")
+
+    store_path = tmp_path / "jobs.json"
+    job = api_module.ResearchJob(
+        id="job-1",
+        query="Cancel",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    api_module._JOBS.clear()
+    api_module._JOBS[job.id] = job
+    client = TestClient(api_module.app)
+
+    response = client.post(f"/research/jobs/{job.id}/cancel")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Research job store failed."}
+    assert api_module._JOBS[job.id].status == "queued"
+    assert api_module._JOBS[job.id].finished_at is None
+
+
+def test_run_research_job_marks_failed_when_running_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def fail_persist() -> None:
+        raise api_module.ResearchJobsStoreError("secret path")
+
+    def fail_if_called(query: str) -> GraphState:
+        raise AssertionError("run_research should not be called")
+
+    store_path = tmp_path / "jobs.json"
+    job = api_module.ResearchJob(
+        id="job-1",
+        query="Run",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    monkeypatch.setattr(api_module, "run_research", fail_if_called)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
+    )
+    api_module._JOBS.clear()
+    api_module._JOBS[job.id] = job
+
+    api_module._run_research_job(job.id)
+
+    assert job.status == "failed"
+    assert job.started_at == "2026-04-27T20:00:01Z"
+    assert job.finished_at == "2026-04-27T20:00:02Z"
+    assert job.error == "Research job store failed."
+
+
 def test_run_research_job_updates_configured_store(monkeypatch, tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
 

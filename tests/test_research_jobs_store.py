@@ -150,3 +150,46 @@ def test_load_research_jobs_rejects_malformed_json(tmp_path) -> None:
 
     with pytest.raises(ResearchJobsStoreError):
         load_research_jobs(path=path, restart_timestamp="2026-04-27T11:00:00Z")
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("id", 123),
+        ("query", 123),
+        ("preset", 123),
+        ("created_order", "1"),
+        ("created_at", 123),
+        ("status", "paused"),
+        ("started_at", 123),
+        ("finished_at", 123),
+        ("result", "not-object"),
+        ("error", 123),
+    ],
+)
+def test_load_research_jobs_rejects_invalid_job_values(
+    tmp_path,
+    field: str,
+    value: object,
+) -> None:
+    path = tmp_path / "jobs.json"
+    job = {
+        "id": "job-1",
+        "query": "Compare Cursor",
+        "preset": "offline",
+        "created_order": 1,
+        "created_at": "2026-04-27T10:00:00Z",
+        "status": "succeeded",
+        "started_at": None,
+        "finished_at": "2026-04-27T10:00:01Z",
+        "result": {"report_markdown": "# Report"},
+        "error": None,
+    }
+    job[field] = value
+    path.write_text(
+        json.dumps({"next_job_sequence": 1, "jobs": [job]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchJobsStoreError):
+        load_research_jobs(path=path, restart_timestamp="2026-04-27T11:00:00Z")

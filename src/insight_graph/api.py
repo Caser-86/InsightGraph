@@ -350,6 +350,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
                 detail="Too many active research jobs.",
             )
         previous_sequence = _NEXT_JOB_SEQUENCE
+        previous_jobs = dict(_JOBS)
         _NEXT_JOB_SEQUENCE += 1
         job = ResearchJob(
             id=str(uuid4()),
@@ -363,7 +364,8 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         try:
             _persist_research_jobs_or_500_locked()
         except HTTPException:
-            _JOBS.pop(job.id, None)
+            _JOBS.clear()
+            _JOBS.update(previous_jobs)
             _NEXT_JOB_SEQUENCE = previous_sequence
             raise
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
@@ -408,10 +410,17 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
                 status_code=409,
                 detail="Only queued research jobs can be cancelled.",
             )
+        previous_status = job.status
+        previous_finished_at = job.finished_at
         job.status = _RESEARCH_JOB_STATUS_CANCELLED
         job.finished_at = _current_utc_timestamp()
         _prune_finished_jobs_locked()
-        _persist_research_jobs_or_500_locked()
+        try:
+            _persist_research_jobs_or_500_locked()
+        except HTTPException:
+            job.status = previous_status
+            job.finished_at = previous_finished_at
+            raise
         return _job_detail(job, _queued_job_positions_locked())
 
 
@@ -435,7 +444,17 @@ def _run_research_job(job_id: str) -> None:
             return
         job.status = _RESEARCH_JOB_STATUS_RUNNING
         job.started_at = _current_utc_timestamp()
-        _persist_research_jobs_locked()
+        try:
+            _persist_research_jobs_locked()
+        except ResearchJobsStoreError:
+            job.status = _RESEARCH_JOB_STATUS_FAILED
+            job.finished_at = _current_utc_timestamp()
+            job.error = "Research job store failed."
+            try:
+                _persist_research_jobs_locked()
+            except ResearchJobsStoreError:
+                pass
+            return
 
     try:
         with _RESEARCH_ENV_LOCK:

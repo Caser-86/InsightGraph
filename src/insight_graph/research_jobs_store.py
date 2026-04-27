@@ -19,6 +19,8 @@ _REQUIRED_JOB_FIELDS = {
     "result",
     "error",
 }
+_RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
+_RESEARCH_PRESETS = {"offline", "live-llm"}
 
 
 class ResearchJobsStoreError(RuntimeError):
@@ -91,11 +93,35 @@ def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
     if not isinstance(item, dict) or set(item) != _REQUIRED_JOB_FIELDS:
         raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
     job = dict(item)
+    _validate_job_values(job)
     if job["status"] in {"queued", "running"}:
         job["status"] = "failed"
         job["finished_at"] = restart_timestamp
         job["error"] = RESTART_FAILURE_ERROR
     return job
+
+
+def _validate_job_values(job: dict[str, Any]) -> None:
+    if not isinstance(job["id"], str):
+        raise ResearchJobsStoreError("Research jobs store job id is invalid.")
+    if not isinstance(job["query"], str):
+        raise ResearchJobsStoreError("Research jobs store job query is invalid.")
+    if job["preset"] not in _RESEARCH_PRESETS:
+        raise ResearchJobsStoreError("Research jobs store job preset is invalid.")
+    if not isinstance(job["created_order"], int):
+        raise ResearchJobsStoreError("Research jobs store job created_order is invalid.")
+    if not isinstance(job["created_at"], str):
+        raise ResearchJobsStoreError("Research jobs store job created_at is invalid.")
+    if job["status"] not in _RESEARCH_JOB_STATUSES:
+        raise ResearchJobsStoreError("Research jobs store job status is invalid.")
+    if job["started_at"] is not None and not isinstance(job["started_at"], str):
+        raise ResearchJobsStoreError("Research jobs store job started_at is invalid.")
+    if job["finished_at"] is not None and not isinstance(job["finished_at"], str):
+        raise ResearchJobsStoreError("Research jobs store job finished_at is invalid.")
+    if job["result"] is not None and not isinstance(job["result"], dict):
+        raise ResearchJobsStoreError("Research jobs store job result is invalid.")
+    if job["error"] is not None and not isinstance(job["error"], str):
+        raise ResearchJobsStoreError("Research jobs store job error is invalid.")
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
