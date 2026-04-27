@@ -130,6 +130,22 @@ def test_research_job_status_constants_match_public_statuses() -> None:
     }
 
 
+def test_job_create_response_builder_returns_public_shape() -> None:
+    job = api_module.ResearchJob(
+        id="job-1",
+        query="Compare Cursor",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T10:00:00Z",
+    )
+
+    assert api_module._job_create_response(job) == {
+        "job_id": "job-1",
+        "status": "queued",
+        "created_at": "2026-04-27T10:00:00Z",
+    }
+
+
 def test_research_returns_cli_aligned_json(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)

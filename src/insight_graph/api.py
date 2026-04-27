@@ -150,6 +150,14 @@ def _job_summary(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str
     }
 
 
+def _job_create_response(job: ResearchJob) -> dict[str, str]:
+    return {
+        "job_id": job.id,
+        "status": _RESEARCH_JOB_STATUS_QUEUED,
+        "created_at": job.created_at,
+    }
+
+
 def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str, Any]:
     response: dict[str, Any] = {
         "job_id": job.id,
@@ -162,6 +170,41 @@ def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str,
     elif job.status == _RESEARCH_JOB_STATUS_FAILED:
         response["error"] = job.error
     return response
+
+
+def _jobs_list_response_locked() -> dict[str, Any]:
+    jobs = sorted(
+        _JOBS.values(),
+        key=lambda item: item.created_order,
+        reverse=True,
+    )
+    queued_positions = _queued_job_positions_locked()
+    summaries = [_job_summary(job, queued_positions) for job in jobs]
+    return {"jobs": summaries, "count": len(summaries)}
+
+
+def _jobs_summary_response_locked() -> dict[str, Any]:
+    counts = {status: 0 for status in _RESEARCH_JOB_STATUSES}
+    for job in _JOBS.values():
+        counts[job.status] = counts.get(job.status, 0) + 1
+    counts["total"] = len(_JOBS)
+
+    queued_positions = _queued_job_positions_locked()
+    queued_jobs = sorted(
+        (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_QUEUED),
+        key=lambda item: item.created_order,
+    )
+    running_jobs = sorted(
+        (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_RUNNING),
+        key=lambda item: item.created_order,
+    )
+    return {
+        "counts": counts,
+        "active_count": _active_research_job_count_locked(),
+        "active_limit": _MAX_ACTIVE_RESEARCH_JOBS,
+        "queued_jobs": [_job_summary(job, queued_positions) for job in queued_jobs],
+        "running_jobs": [_job_summary(job, queued_positions) for job in running_jobs],
+    }
 
 
 @app.post("/research")
@@ -196,50 +239,19 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         _JOBS[job.id] = job
         _prune_finished_jobs_locked()
     _JOB_EXECUTOR.submit(_run_research_job, job.id)
-    return {
-        "job_id": job.id,
-        "status": _RESEARCH_JOB_STATUS_QUEUED,
-        "created_at": job.created_at,
-    }
+    return _job_create_response(job)
 
 
 @app.get("/research/jobs")
 def list_research_jobs() -> dict[str, Any]:
     with _JOBS_LOCK:
-        jobs = sorted(
-            _JOBS.values(),
-            key=lambda item: item.created_order,
-            reverse=True,
-        )
-        queued_positions = _queued_job_positions_locked()
-        summaries = [_job_summary(job, queued_positions) for job in jobs]
-    return {"jobs": summaries, "count": len(summaries)}
+        return _jobs_list_response_locked()
 
 
 @app.get("/research/jobs/summary")
 def summarize_research_jobs() -> dict[str, Any]:
     with _JOBS_LOCK:
-        counts = {status: 0 for status in _RESEARCH_JOB_STATUSES}
-        for job in _JOBS.values():
-            counts[job.status] = counts.get(job.status, 0) + 1
-        counts["total"] = len(_JOBS)
-
-        queued_positions = _queued_job_positions_locked()
-        queued_jobs = sorted(
-            (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_QUEUED),
-            key=lambda item: item.created_order,
-        )
-        running_jobs = sorted(
-            (job for job in _JOBS.values() if job.status == _RESEARCH_JOB_STATUS_RUNNING),
-            key=lambda item: item.created_order,
-        )
-        return {
-            "counts": counts,
-            "active_count": _active_research_job_count_locked(),
-            "active_limit": _MAX_ACTIVE_RESEARCH_JOBS,
-            "queued_jobs": [_job_summary(job, queued_positions) for job in queued_jobs],
-            "running_jobs": [_job_summary(job, queued_positions) for job in running_jobs],
-        }
+        return _jobs_summary_response_locked()
 
 
 @app.post("/research/jobs/{job_id}/cancel")
