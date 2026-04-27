@@ -13,9 +13,9 @@
 - Prepare a storage interface plan before any SQLite/Postgres migration.
 
 3. Keep API docs aligned with runtime behavior
-- Keep OpenAPI examples aligned with queued/running/terminal job states.
-- Document active cap and retained terminal job cap where clients can find it.
-- Add examples for list filtering, limit handling, summary, and cancel conflict responses.
+- Done: OpenAPI examples aligned with queued/running/terminal job states.
+- Done: active cap and retained terminal job cap documented in `docs/research-jobs-api.md`.
+- Done: examples for list filtering, limit handling, summary, and cancel conflict responses.
 
 4. Improve release workflow
 - Ensure CI runs `python -m pytest` and `python -m ruff check .`.

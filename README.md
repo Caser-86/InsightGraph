@@ -27,6 +27,7 @@ MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 C
 - [配置说明](docs/configuration.md)：搜索 provider、GitHub provider、document reader、LLM preset、observability、后续配置项。
 - [架构蓝图](docs/architecture.md)：目标项目结构、核心特性、技术架构、执行流程、agent 协作、工具和证据链。
 - [脚本说明](docs/scripts.md)：run、benchmark、validator、LLM metadata log 脚本用法。
+- [Research jobs API](docs/research-jobs-api.md)：异步 research jobs 端点、状态、限制、取消和持久化行为。
 - [Research job repository contract](docs/research-job-repository-contract.md)：research jobs 稳定契约、内存实现细节和未来存储后端要求。
 - [Roadmap](docs/roadmap.md)：近期工程优先级和延后事项。
 - [Caveman project skills](docs/skills/caveman-applied-skills.md)：当前项目已应用的本地 OpenCode/Caveman 规则。
