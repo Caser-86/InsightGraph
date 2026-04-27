@@ -28,6 +28,7 @@ MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 C
 - [架构蓝图](docs/architecture.md)：目标项目结构、核心特性、技术架构、执行流程、agent 协作、工具和证据链。
 - [脚本说明](docs/scripts.md)：run、benchmark、validator、LLM metadata log 脚本用法。
 - [Caveman project skills](docs/skills/caveman-applied-skills.md)：当前项目已应用的本地 OpenCode/Caveman 规则。
+- [Changelog](CHANGELOG.md)：版本变更记录。
 
 ## 快速开始（当前 MVP）
 
@@ -104,6 +105,12 @@ curl -X POST http://127.0.0.1:8000/research/jobs/<job_id>/cancel
 ```
 
 Job 状态包括 `queued`、`running`、`succeeded`、`failed` 和 `cancelled`。列表和 summary 只返回摘要，不包含 `result` 或错误细节；summary 额外返回各状态数量以及 queued/running 活跃任务概览。`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。取消接口只接受 `queued` jobs；`running` / `succeeded` / `failed` jobs 返回 `409`，不尝试强杀正在运行的 workflow。
+
+### Research job repository helpers
+
+`src/insight_graph/research_jobs.py` owns research job state, persistence orchestration, lifecycle transitions, and API response shaping. Tests and maintenance code should use the public helper surface instead of mutating private module state such as `_JOBS`, `_NEXT_JOB_SEQUENCE`, `_RESEARCH_JOBS_PATH`, or `_MAX_*` directly.
+
+Maintenance helpers include `reset_research_jobs_state()`, `seed_research_job()`, `seed_research_jobs()`, `set_research_jobs_store_path()`, `set_research_job_limits()`, `get_research_job_record()`, `get_next_research_job_sequence()`, and `update_research_job_record()`. `get_research_job_record()` returns a copy, so mutating the returned object does not change internal state; use `update_research_job_record()` for explicit state updates.
 
 `uvicorn` 是运行示例依赖，不是当前 package runtime dependency。
 
