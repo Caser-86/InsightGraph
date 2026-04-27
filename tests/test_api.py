@@ -1458,6 +1458,126 @@ def test_run_research_job_marks_failed_when_running_store_write_fails(
     assert job.error == "Research job store failed."
 
 
+def test_run_research_job_keeps_failed_state_when_terminal_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    persist_calls = 0
+
+    def fail_second_persist() -> None:
+        nonlocal persist_calls
+        persist_calls += 1
+        if persist_calls == 2:
+            raise api_module.ResearchJobsStoreError("secret path")
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload")
+
+    store_path = tmp_path / "jobs.json"
+    job = api_module.ResearchJob(
+        id="job-terminal-failure",
+        query="Fail terminal persist",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_second_persist)
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
+    )
+    api_module._JOBS.clear()
+    api_module._JOBS[job.id] = job
+
+    api_module._run_research_job(job.id)
+
+    assert persist_calls == 2
+    assert job.status == "failed"
+    assert job.started_at == "2026-04-27T20:00:01Z"
+    assert job.finished_at == "2026-04-27T20:00:02Z"
+    assert job.error == "Research workflow failed."
+
+
+def test_run_research_job_keeps_success_state_when_terminal_store_write_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    persist_calls = 0
+
+    def fail_second_persist() -> None:
+        nonlocal persist_calls
+        persist_calls += 1
+        if persist_calls == 2:
+            raise api_module.ResearchJobsStoreError("secret path")
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    store_path = tmp_path / "jobs.json"
+    job = api_module.ResearchJob(
+        id="job-terminal-success",
+        query="Succeed terminal persist",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_second_persist)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence("2026-04-27T20:00:01Z", "2026-04-27T20:00:02Z"),
+    )
+    api_module._JOBS.clear()
+    api_module._JOBS[job.id] = job
+
+    api_module._run_research_job(job.id)
+
+    assert persist_calls == 2
+    assert job.status == "succeeded"
+    assert job.started_at == "2026-04-27T20:00:01Z"
+    assert job.finished_at == "2026-04-27T20:00:02Z"
+    assert job.result is not None
+    assert job.result["user_request"] == "Succeed terminal persist"
+
+
+def test_run_research_job_skips_cancelled_job_without_store_write(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def fail_persist() -> None:
+        raise AssertionError("persist should not be called")
+
+    def fail_if_called(query: str) -> GraphState:
+        raise AssertionError("run_research should not be called")
+
+    store_path = tmp_path / "jobs.json"
+    job = api_module.ResearchJob(
+        id="job-cancelled-before-worker",
+        query="Cancelled",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+        status="cancelled",
+        finished_at="2026-04-27T20:00:01Z",
+    )
+    monkeypatch.setattr(api_module, "_RESEARCH_JOBS_PATH", store_path)
+    monkeypatch.setattr(api_module, "_persist_research_jobs_locked", fail_persist)
+    monkeypatch.setattr(api_module, "run_research", fail_if_called)
+    api_module._JOBS.clear()
+    api_module._JOBS[job.id] = job
+
+    api_module._run_research_job(job.id)
+
+    assert job.status == "cancelled"
+    assert job.started_at is None
+    assert job.finished_at == "2026-04-27T20:00:01Z"
+
+
 def test_run_research_job_updates_configured_store(monkeypatch, tmp_path) -> None:
     store_path = tmp_path / "jobs.json"
 

@@ -463,23 +463,53 @@ def get_research_job(job_id: str) -> dict[str, Any]:
         return _job_detail(job, _queued_job_positions_locked())
 
 
+def _persist_research_jobs_best_effort_locked() -> None:
+    try:
+        _persist_research_jobs_locked()
+    except ResearchJobsStoreError:
+        pass
+
+
+def _mark_research_job_running_locked(job: ResearchJob) -> bool:
+    if job.status == _RESEARCH_JOB_STATUS_CANCELLED:
+        return False
+    job.status = _RESEARCH_JOB_STATUS_RUNNING
+    job.started_at = _current_utc_timestamp()
+    try:
+        _persist_research_jobs_locked()
+    except ResearchJobsStoreError:
+        job.status = _RESEARCH_JOB_STATUS_FAILED
+        job.finished_at = _current_utc_timestamp()
+        job.error = "Research job store failed."
+        _prune_finished_jobs_locked()
+        _persist_research_jobs_best_effort_locked()
+        return False
+    return True
+
+
+def _mark_research_job_failed_locked(job: ResearchJob, error: str) -> None:
+    job.status = _RESEARCH_JOB_STATUS_FAILED
+    job.finished_at = _current_utc_timestamp()
+    job.error = error
+    _prune_finished_jobs_locked()
+    _persist_research_jobs_best_effort_locked()
+
+
+def _mark_research_job_succeeded_locked(
+    job: ResearchJob,
+    result: dict[str, Any],
+) -> None:
+    job.status = _RESEARCH_JOB_STATUS_SUCCEEDED
+    job.finished_at = _current_utc_timestamp()
+    job.result = result
+    _prune_finished_jobs_locked()
+    _persist_research_jobs_best_effort_locked()
+
+
 def _run_research_job(job_id: str) -> None:
     with _JOBS_LOCK:
         job = _JOBS[job_id]
-        if job.status == _RESEARCH_JOB_STATUS_CANCELLED:
-            return
-        job.status = _RESEARCH_JOB_STATUS_RUNNING
-        job.started_at = _current_utc_timestamp()
-        try:
-            _persist_research_jobs_locked()
-        except ResearchJobsStoreError:
-            job.status = _RESEARCH_JOB_STATUS_FAILED
-            job.finished_at = _current_utc_timestamp()
-            job.error = "Research job store failed."
-            try:
-                _persist_research_jobs_locked()
-            except ResearchJobsStoreError:
-                pass
+        if not _mark_research_job_running_locked(job):
             return
 
     try:
@@ -489,19 +519,14 @@ def _run_research_job(job_id: str) -> None:
         result = _build_research_json_payload(state)
     except Exception:
         with _JOBS_LOCK:
-            job.status = _RESEARCH_JOB_STATUS_FAILED
-            job.finished_at = _current_utc_timestamp()
-            job.error = "Research workflow failed."
-            _prune_finished_jobs_locked()
-            _persist_research_jobs_locked()
+            _mark_research_job_failed_locked(
+                job,
+                "Research workflow failed.",
+            )
         return
 
     with _JOBS_LOCK:
-        job.status = _RESEARCH_JOB_STATUS_SUCCEEDED
-        job.finished_at = _current_utc_timestamp()
-        job.result = result
-        _prune_finished_jobs_locked()
-        _persist_research_jobs_locked()
+        _mark_research_job_succeeded_locked(job, result)
 
 
 def _prune_finished_jobs_locked() -> None:
