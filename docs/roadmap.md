@@ -11,6 +11,7 @@
 - Done: stable contract documented in `docs/research-job-repository-contract.md`.
 - Done: rollback behavior documented for create/cancel/persist failures.
 - Done: storage interface design and plan saved under `docs/superpowers/`.
+- Done: implemented backend boundary documented with service/backend responsibilities and implementation links.
 
 3. Keep API docs aligned with runtime behavior
 - Done: OpenAPI examples aligned with queued/running/terminal job states.

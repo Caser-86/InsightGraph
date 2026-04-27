@@ -1,6 +1,6 @@
 # Research Job Repository Contract
 
-`src/insight_graph/research_jobs.py` owns the in-process research job repository for the current MVP. This document defines which behaviors are stable contract and which are implementation details.
+`src/insight_graph/research_jobs.py` owns the service-facing research job repository contract for the current MVP. `src/insight_graph/research_jobs_backend.py` owns the in-memory backend used by that service layer. This document defines which behaviors are stable contract and which are implementation details.
 
 ## Stable contract
 
@@ -18,12 +18,21 @@
 - State mutation through maintenance helpers must use explicit update APIs such as `update_research_job_record()`.
 - Unknown fields in `update_research_job_record()` are rejected.
 
-## In-memory implementation details
+## Service/backend boundary
 
-- Jobs are stored in a module-level dictionary guarded by `_JOBS_LOCK`.
+- `research_jobs.py` remains the API-facing service layer for validation, response shaping, persistence calls, rollback decisions, and worker scheduling.
+- `research_jobs_backend.py` owns low-level in-memory state access through `InMemoryResearchJobsBackend`.
+- Backend-owned helpers include active-job counting, terminal-job pruning, snapshot/restore, job copy reads, explicit updates, seeding, clearing, and sequence tracking.
+- The backend boundary is an internal seam, not a public storage plugin API.
+- API handlers and tests should prefer the public service helpers instead of mutating module globals directly.
+- Implementation links: [#2](https://github.com/Caser-86/InsightGraph/issues/2), [#3](https://github.com/Caser-86/InsightGraph/issues/3), [`c8d3853`](https://github.com/Caser-86/InsightGraph/commit/c8d385386b6b9f5ca0d7a8cf65d52d7a11a76f08), [`9985245`](https://github.com/Caser-86/InsightGraph/commit/99852450a22c65aa8dee7f419a61a3b1f0275866).
+
+## In-memory backend details
+
+- Jobs are stored in a dictionary owned by `InMemoryResearchJobsBackend` and guarded by a re-entrant lock.
 - Job IDs are generated with `uuid4()`.
-- `created_order` is backed by a module-level sequence counter.
-- Retention currently prunes oldest terminal jobs only.
+- `created_order` is backed by an in-memory sequence counter.
+- Retention currently prunes oldest terminal jobs only through backend pruning helpers.
 - `queued` and `running` jobs are not pruned by terminal-job retention.
 - The current implementation is single-process. Multi-process coordination is not part of the MVP contract.
 
@@ -53,3 +62,4 @@ Out of scope until storage abstraction exists:
 - Multi-process worker coordination.
 - Distributed locks.
 - Per-user quotas or auth-aware rate limits.
+- SQLite/Postgres-backed storage.
