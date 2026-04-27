@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.3 - 2026-04-28
+
+- Added research job backend boundary documentation.
+- Added SQLite-first database storage design and implementation plan.
+- Closed backend boundary planning issues #4 and #5.
+
+## v0.1.2 - 2026-04-28
+
+- Added in-memory research job backend boundary.
+- Moved active count, terminal pruning, snapshot/restore, and sequence helpers into the backend.
+- Fixed backend annotation compatibility for Python 3.11 CI.
+
 ## v0.1.1 - 2026-04-27
 
 - Split research job state management into `src/insight_graph/research_jobs.py`.
