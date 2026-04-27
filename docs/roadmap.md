@@ -8,9 +8,9 @@
 - Done: lightweight lock/concurrency test around explicit job updates.
 
 2. Clarify repository/storage contract
-- Define which `research_jobs.py` behaviors are stable repository contract versus in-memory implementation detail.
-- Document rollback behavior for create/cancel/persist failures.
-- Prepare a storage interface plan before any SQLite/Postgres migration.
+- Done: stable contract documented in `docs/research-job-repository-contract.md`.
+- Done: rollback behavior documented for create/cancel/persist failures.
+- Done: storage interface design and plan saved under `docs/superpowers/`.
 
 3. Keep API docs aligned with runtime behavior
 - Done: OpenAPI examples aligned with queued/running/terminal job states.
