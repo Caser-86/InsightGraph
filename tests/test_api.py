@@ -430,6 +430,86 @@ def test_get_research_job_returns_404_for_unknown_job() -> None:
     assert response.json() == {"detail": "Research job not found."}
 
 
+def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    observed_queries: list[str] = []
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_queries.append(query)
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    job_id = client.post("/research/jobs", json={"query": "Cancel me"}).json()[
+        "job_id"
+    ]
+
+    response = client.post(f"/research/jobs/{job_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json() == {"job_id": job_id, "status": "cancelled"}
+    assert client.get(f"/research/jobs/{job_id}").json() == {
+        "job_id": job_id,
+        "status": "cancelled",
+    }
+
+    fake_executor.run_next()
+
+    assert observed_queries == []
+    assert client.get(f"/research/jobs/{job_id}").json()["status"] == "cancelled"
+
+
+def test_cancel_research_job_returns_404_for_unknown_job() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs/missing/cancel")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research job not found."}
+
+
+def test_cancel_research_job_rejects_running_or_finished_jobs(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    job_id = client.post("/research/jobs", json={"query": "Finished"}).json()[
+        "job_id"
+    ]
+
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[job_id].status = "running"
+    running_response = client.post(f"/research/jobs/{job_id}/cancel")
+    assert running_response.status_code == 409
+    assert running_response.json() == {
+        "detail": "Only queued research jobs can be cancelled."
+    }
+
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[job_id].status = "succeeded"
+    succeeded_response = client.post(f"/research/jobs/{job_id}/cancel")
+    assert succeeded_response.status_code == 409
+    assert succeeded_response.json() == {
+        "detail": "Only queued research jobs can be cancelled."
+    }
+
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[job_id].status = "failed"
+    failed_response = client.post(f"/research/jobs/{job_id}/cancel")
+    assert failed_response.status_code == 409
+    assert failed_response.json() == {
+        "detail": "Only queued research jobs can be cancelled."
+    }
+
+
 def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
     fake_executor = FakeExecutor()
 
@@ -440,6 +520,12 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
     monkeypatch.setattr(api_module, "run_research", fake_run_research)
     api_module._JOBS.clear()
     client = TestClient(api_module.app)
+
+    cancelled = client.post("/research/jobs", json={"query": "Cancelled"}).json()[
+        "job_id"
+    ]
+    cancel_response = client.post(f"/research/jobs/{cancelled}/cancel")
+    assert cancel_response.status_code == 200
 
     queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
     running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
@@ -486,8 +572,14 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
                 "query": "Queued",
                 "preset": "offline",
             },
+            {
+                "job_id": cancelled,
+                "status": "cancelled",
+                "query": "Cancelled",
+                "preset": "offline",
+            },
         ],
-        "count": 4,
+        "count": 5,
     }
     assert "secret provider payload" not in response.text
     assert "result" not in response.text
@@ -558,4 +650,23 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
         "job_id": second,
         "status": "failed",
         "error": "Research workflow failed.",
+    }
+
+
+def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_MAX_RESEARCH_JOBS", 1)
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    first = client.post("/research/jobs", json={"query": "First"}).json()["job_id"]
+    assert client.post(f"/research/jobs/{first}/cancel").status_code == 200
+    second = client.post("/research/jobs", json={"query": "Second"}).json()["job_id"]
+    assert client.post(f"/research/jobs/{second}/cancel").status_code == 200
+
+    assert client.get(f"/research/jobs/{first}").status_code == 404
+    assert client.get(f"/research/jobs/{second}").json() == {
+        "job_id": second,
+        "status": "cancelled",
     }

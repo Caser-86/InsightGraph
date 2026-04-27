@@ -125,6 +125,22 @@ def list_research_jobs() -> dict[str, Any]:
     return {"jobs": summaries, "count": len(summaries)}
 
 
+@app.post("/research/jobs/{job_id}/cancel")
+def cancel_research_job(job_id: str) -> dict[str, str]:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Research job not found.")
+        if job.status != "queued":
+            raise HTTPException(
+                status_code=409,
+                detail="Only queued research jobs can be cancelled.",
+            )
+        job.status = "cancelled"
+        _prune_finished_jobs_locked()
+        return {"job_id": job.id, "status": job.status}
+
+
 @app.get("/research/jobs/{job_id}")
 def get_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
@@ -142,6 +158,8 @@ def get_research_job(job_id: str) -> dict[str, Any]:
 def _run_research_job(job_id: str) -> None:
     with _JOBS_LOCK:
         job = _JOBS[job_id]
+        if job.status == "cancelled":
+            return
         job.status = "running"
 
     try:
@@ -166,7 +184,7 @@ def _prune_finished_jobs_locked() -> None:
     finished_jobs = [
         job
         for job in _JOBS.values()
-        if job.status in {"succeeded", "failed"}
+        if job.status in {"succeeded", "failed", "cancelled"}
     ]
     overflow = len(finished_jobs) - _MAX_RESEARCH_JOBS
     if overflow <= 0:
