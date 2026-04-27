@@ -92,6 +92,28 @@ def test_research_job_record_inspection_returns_copy_and_updates_are_explicit() 
     assert jobs_module.get_research_job_record("job-1") == updated
 
 
+def test_update_research_job_record_rejects_unknown_fields() -> None:
+    job = jobs_module.ResearchJob(
+        id="job-1",
+        query="Original",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-27T20:00:00Z",
+    )
+    jobs_module.reset_research_jobs_state(jobs=[job])
+
+    with pytest.raises(ValueError, match="Unknown research job field: unknown_field"):
+        jobs_module.update_research_job_record("job-1", unknown_field="bad")
+
+    assert jobs_module.get_research_job_record("job-1") == job
+
+
+def test_update_research_job_record_returns_none_for_missing_job() -> None:
+    reset_jobs_state()
+
+    assert jobs_module.update_research_job_record("missing", status="running") is None
+
+
 def test_research_job_status_constants_match_public_statuses() -> None:
     assert jobs_module.RESEARCH_JOB_STATUSES == (
         "queued",

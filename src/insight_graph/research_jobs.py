@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from threading import Lock
 from typing import Any, Literal
@@ -129,7 +129,10 @@ def update_research_job_record(job_id: str, **changes: Any) -> ResearchJob | Non
         job = _JOBS.get(job_id)
         if job is None:
             return None
+        valid_fields = {field.name for field in fields(ResearchJob)}
         for name, value in changes.items():
+            if name not in valid_fields:
+                raise ValueError(f"Unknown research job field: {name}")
             setattr(job, name, value)
         return replace(job)
 
