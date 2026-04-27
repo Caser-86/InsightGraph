@@ -749,6 +749,121 @@ def test_list_research_jobs_returns_summaries_newest_first(monkeypatch) -> None:
     assert "error" not in response.text
 
 
+def test_get_research_jobs_summary_returns_counts_and_active_jobs(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-27T16:00:00Z",
+            "2026-04-27T16:00:01Z",
+            "2026-04-27T16:00:02Z",
+            "2026-04-27T16:00:03Z",
+            "2026-04-27T16:00:05Z",
+            "2026-04-27T16:00:06Z",
+            "2026-04-27T16:00:07Z",
+            "2026-04-27T16:00:08Z",
+            "2026-04-27T16:00:09Z",
+            "2026-04-27T16:00:10Z",
+        ),
+    )
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    cancelled = client.post("/research/jobs", json={"query": "Cancelled"}).json()[
+        "job_id"
+    ]
+    assert client.post(f"/research/jobs/{cancelled}/cancel").status_code == 200
+    queued = client.post("/research/jobs", json={"query": "Queued"}).json()["job_id"]
+    running = client.post("/research/jobs", json={"query": "Running"}).json()["job_id"]
+    with api_module._JOBS_LOCK:
+        api_module._JOBS[running].status = "running"
+        api_module._JOBS[running].started_at = "2026-04-27T16:00:04Z"
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    client.post("/research/jobs", json={"query": "Succeeded"})
+
+    def fail_run_research(query: str) -> GraphState:
+        raise RuntimeError("secret provider payload")
+
+    monkeypatch.setattr(api_module, "run_research", fail_run_research)
+    client.post("/research/jobs", json={"query": "Failed"})
+
+    response = client.get("/research/jobs/summary")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "counts": {
+            "total": 5,
+            "queued": 1,
+            "running": 1,
+            "succeeded": 1,
+            "failed": 1,
+            "cancelled": 1,
+        },
+        "queued_jobs": [
+            {
+                "job_id": queued,
+                "status": "queued",
+                "query": "Queued",
+                "preset": "offline",
+                "created_at": "2026-04-27T16:00:02Z",
+                "queue_position": 1,
+            }
+        ],
+        "running_jobs": [
+            {
+                "job_id": running,
+                "status": "running",
+                "query": "Running",
+                "preset": "offline",
+                "created_at": "2026-04-27T16:00:03Z",
+                "started_at": "2026-04-27T16:00:04Z",
+            }
+        ],
+    }
+    assert "secret provider payload" not in response.text
+    assert "result" not in response.text
+    assert "error" not in response.text
+
+
+def test_get_research_jobs_summary_returns_empty_counts() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/summary")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "counts": {
+            "total": 0,
+            "queued": 0,
+            "running": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "cancelled": 0,
+        },
+        "queued_jobs": [],
+        "running_jobs": [],
+    }
+
+
+def test_get_research_jobs_summary_route_is_not_job_detail() -> None:
+    api_module._JOBS.clear()
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/summary")
+
+    assert response.status_code == 200
+    assert response.json()["counts"]["total"] == 0
+
+
 def test_create_research_job_prunes_oldest_finished_jobs(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)

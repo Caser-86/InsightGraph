@@ -185,6 +185,31 @@ def list_research_jobs() -> dict[str, Any]:
     return {"jobs": summaries, "count": len(summaries)}
 
 
+@app.get("/research/jobs/summary")
+def summarize_research_jobs() -> dict[str, Any]:
+    statuses = ["queued", "running", "succeeded", "failed", "cancelled"]
+    with _JOBS_LOCK:
+        counts = {status: 0 for status in statuses}
+        for job in _JOBS.values():
+            counts[job.status] = counts.get(job.status, 0) + 1
+        counts["total"] = len(_JOBS)
+
+        queued_positions = _queued_job_positions_locked()
+        queued_jobs = sorted(
+            (job for job in _JOBS.values() if job.status == "queued"),
+            key=lambda item: item.created_order,
+        )
+        running_jobs = sorted(
+            (job for job in _JOBS.values() if job.status == "running"),
+            key=lambda item: item.created_order,
+        )
+        return {
+            "counts": counts,
+            "queued_jobs": [_job_summary(job, queued_positions) for job in queued_jobs],
+            "running_jobs": [_job_summary(job, queued_positions) for job in running_jobs],
+        }
+
+
 @app.post("/research/jobs/{job_id}/cancel")
 def cancel_research_job(job_id: str) -> dict[str, str]:
     with _JOBS_LOCK:

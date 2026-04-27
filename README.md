@@ -76,7 +76,7 @@ python scripts/validate_github_search.py --markdown
 
 ## API MVP
 
-当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs` 列出当前任务摘要，`GET /research/jobs/{job_id}` 轮询状态，`POST /research/jobs/{job_id}/cancel` 取消尚未执行的 queued job。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。job 响应包含 UTC 时间 metadata：`created_at` 总是存在，`started_at` 在进入 `running` 后出现，`finished_at` 在 `succeeded` / `failed` / `cancelled` 后出现；`queued` jobs 还包含 1-based `queue_position`，该值按当前内存 queued jobs 动态计算，`running` / terminal jobs 不返回。内存 store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs；`queued` / `running` jobs 不会被裁剪。
+当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/summary` 获取状态数量和 queued/running 概览，`GET /research/jobs` 列出当前任务摘要，`GET /research/jobs/{job_id}` 轮询状态，`POST /research/jobs/{job_id}/cancel` 取消尚未执行的 queued job。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。job 响应包含 UTC 时间 metadata：`created_at` 总是存在，`started_at` 在进入 `running` 后出现，`finished_at` 在 `succeeded` / `failed` / `cancelled` 后出现；`queued` jobs 还包含 1-based `queue_position`，该值按当前内存 queued jobs 动态计算，`running` / terminal jobs 不返回。内存 store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs；`queued` / `running` jobs 不会被裁剪。
 
 ```bash
 python -m pip install "uvicorn[standard]"
@@ -96,12 +96,14 @@ curl -X POST http://127.0.0.1:8000/research/jobs \
 
 curl http://127.0.0.1:8000/research/jobs
 
+curl http://127.0.0.1:8000/research/jobs/summary
+
 curl http://127.0.0.1:8000/research/jobs/<job_id>
 
 curl -X POST http://127.0.0.1:8000/research/jobs/<job_id>/cancel
 ```
 
-Job 状态包括 `queued`、`running`、`succeeded`、`failed` 和 `cancelled`。列表只返回摘要，不包含 `result` 或错误细节；`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。取消接口只接受 `queued` jobs；`running` / `succeeded` / `failed` jobs 返回 `409`，不尝试强杀正在运行的 workflow。
+Job 状态包括 `queued`、`running`、`succeeded`、`failed` 和 `cancelled`。列表和 summary 只返回摘要，不包含 `result` 或错误细节；summary 额外返回各状态数量以及 queued/running 活跃任务概览。`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。取消接口只接受 `queued` jobs；`running` / `succeeded` / `failed` jobs 返回 `409`，不尝试强杀正在运行的 workflow。
 
 `uvicorn` 是运行示例依赖，不是当前 package runtime dependency。
 
