@@ -169,34 +169,142 @@ def test_research_job_routes_document_response_models_in_openapi() -> None:
     api_module.app.openapi_schema = None
 
     schema = api_module.app.openapi()
+    paths = schema["paths"]
+    create_operation = paths["/research/jobs"]["post"]
+    list_operation = paths["/research/jobs"]["get"]
+    summary_operation = paths["/research/jobs/summary"]["get"]
+    detail_operation = paths["/research/jobs/{job_id}"]["get"]
+    cancel_operation = paths["/research/jobs/{job_id}/cancel"]["post"]
+    job_operations = [
+        create_operation,
+        list_operation,
+        summary_operation,
+        detail_operation,
+        cancel_operation,
+    ]
 
-    assert schema["paths"]["/research/jobs"]["post"]["responses"]["202"]["content"][
-        "application/json"
-    ]["schema"] == {"$ref": "#/components/schemas/ResearchJobCreateResponse"}
-    assert schema["paths"]["/research/jobs"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"] == {"$ref": "#/components/schemas/ResearchJobsListResponse"}
-    assert schema["paths"]["/research/jobs/summary"]["get"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/ResearchJobsSummaryResponse"
+    for operation in job_operations:
+        assert operation["tags"] == ["research jobs"]
+        assert operation["summary"]
+        assert operation["description"]
+
+    assert create_operation["responses"]["202"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ResearchJobCreateResponse"}
+    assert list_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ResearchJobsListResponse"}
+    assert summary_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ResearchJobsSummaryResponse"}
+    assert detail_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ResearchJobDetailResponse"}
+    assert cancel_operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/ResearchJobDetailResponse"}
+
+    assert create_operation["responses"]["202"]["content"]["application/json"][
+        "example"
+    ] == {
+        "job_id": "job-123",
+        "status": "queued",
+        "created_at": "2026-04-27T10:00:00Z",
     }
-    assert schema["paths"]["/research/jobs/{job_id}"]["get"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/ResearchJobDetailResponse"
+    assert list_operation["responses"]["200"]["content"]["application/json"][
+        "example"
+    ] == {
+        "jobs": [
+            {
+                "job_id": "job-123",
+                "status": "queued",
+                "query": "Compare AI coding agents",
+                "preset": "offline",
+                "created_at": "2026-04-27T10:00:00Z",
+                "queue_position": 1,
+            }
+        ],
+        "count": 1,
     }
-    assert schema["paths"]["/research/jobs/{job_id}/cancel"]["post"]["responses"][
-        "200"
-    ]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/ResearchJobDetailResponse"
+    assert summary_operation["responses"]["200"]["content"]["application/json"][
+        "example"
+    ] == {
+        "counts": {
+            "queued": 1,
+            "running": 1,
+            "succeeded": 0,
+            "failed": 0,
+            "cancelled": 0,
+            "total": 2,
+        },
+        "active_count": 2,
+        "active_limit": 100,
+        "queued_jobs": [
+            {
+                "job_id": "job-123",
+                "status": "queued",
+                "query": "Compare AI coding agents",
+                "preset": "offline",
+                "created_at": "2026-04-27T10:00:00Z",
+                "queue_position": 1,
+            }
+        ],
+        "running_jobs": [
+            {
+                "job_id": "job-456",
+                "status": "running",
+                "query": "Analyze market signals",
+                "preset": "offline",
+                "created_at": "2026-04-27T10:01:00Z",
+                "started_at": "2026-04-27T10:01:01Z",
+            }
+        ],
     }
-    list_parameters = schema["paths"]["/research/jobs"]["get"]["parameters"]
+    assert detail_operation["responses"]["200"]["content"]["application/json"][
+        "example"
+    ] == {
+        "job_id": "job-789",
+        "status": "succeeded",
+        "created_at": "2026-04-27T10:02:00Z",
+        "started_at": "2026-04-27T10:02:01Z",
+        "finished_at": "2026-04-27T10:02:05Z",
+        "result": {"report_markdown": "# InsightGraph Research Report\n"},
+    }
+    assert cancel_operation["responses"]["200"]["content"]["application/json"][
+        "example"
+    ] == {
+        "job_id": "job-123",
+        "status": "cancelled",
+        "created_at": "2026-04-27T10:00:00Z",
+        "finished_at": "2026-04-27T10:00:10Z",
+    }
+
+    assert create_operation["responses"]["429"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Too many active research jobs."}
+    assert create_operation["responses"]["500"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Research job store failed."}
+    assert detail_operation["responses"]["404"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Research job not found."}
+    assert cancel_operation["responses"]["404"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Research job not found."}
+    assert cancel_operation["responses"]["409"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Only queued research jobs can be cancelled."}
+    assert cancel_operation["responses"]["500"]["content"]["application/json"][
+        "example"
+    ] == {"detail": "Research job store failed."}
+
+    list_parameters = list_operation["parameters"]
     assert list_parameters == [
         {
             "name": "status",
             "in": "query",
             "required": False,
+            "description": "Filter jobs by status. Omit to return all retained jobs.",
             "schema": {
                 "anyOf": [
                     {
@@ -211,6 +319,7 @@ def test_research_job_routes_document_response_models_in_openapi() -> None:
                     },
                     {"type": "null"},
                 ],
+                "description": "Filter jobs by status. Omit to return all retained jobs.",
                 "title": "Status",
             },
         },
@@ -218,8 +327,16 @@ def test_research_job_routes_document_response_models_in_openapi() -> None:
             "name": "limit",
             "in": "query",
             "required": False,
+            "description": (
+                "Maximum number of jobs to return. The response count is the "
+                "returned count, not a total."
+            ),
             "schema": {
                 "default": 100,
+                "description": (
+                    "Maximum number of jobs to return. The response count is the "
+                    "returned count, not a total."
+                ),
                 "maximum": 100,
                 "minimum": 1,
                 "title": "Limit",

@@ -52,14 +52,28 @@ _RESEARCH_JOB_STATUSES = (
     _RESEARCH_JOB_STATUS_FAILED,
     _RESEARCH_JOB_STATUS_CANCELLED,
 )
-ResearchJobStatusQuery = Literal[
-    "queued",
-    "running",
-    "succeeded",
-    "failed",
-    "cancelled",
+ResearchJobStatusQuery = Annotated[
+    Literal[
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+    ]
+    | None,
+    Query(description="Filter jobs by status. Omit to return all retained jobs."),
 ]
-ResearchJobsLimitQuery = Annotated[int, Query(ge=1, le=100)]
+ResearchJobsLimitQuery = Annotated[
+    int,
+    Query(
+        ge=1,
+        le=100,
+        description=(
+            "Maximum number of jobs to return. The response count is the "
+            "returned count, not a total."
+        ),
+    ),
+]
 _ACTIVE_RESEARCH_JOB_STATUSES = {
     _RESEARCH_JOB_STATUS_QUEUED,
     _RESEARCH_JOB_STATUS_RUNNING,
@@ -140,6 +154,97 @@ class ResearchJobsSummaryResponse(BaseModel):
     active_limit: int
     queued_jobs: list[ResearchJobSummary]
     running_jobs: list[ResearchJobSummary]
+
+
+_RESEARCH_JOBS_TAG = "research jobs"
+_RESEARCH_JOB_NOT_FOUND_RESPONSE = {
+    "description": "Research job not found.",
+    "content": {"application/json": {"example": {"detail": "Research job not found."}}},
+}
+_RESEARCH_JOB_STORE_FAILED_RESPONSE = {
+    "description": "Research job store failed.",
+    "content": {
+        "application/json": {"example": {"detail": "Research job store failed."}}
+    },
+}
+_TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE = {
+    "description": "Too many active research jobs.",
+    "content": {
+        "application/json": {"example": {"detail": "Too many active research jobs."}}
+    },
+}
+_RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE = {
+    "description": "Only queued research jobs can be cancelled.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Only queued research jobs can be cancelled."}
+        }
+    },
+}
+_RESEARCH_JOB_CREATE_EXAMPLE = {
+    "job_id": "job-123",
+    "status": "queued",
+    "created_at": "2026-04-27T10:00:00Z",
+}
+_RESEARCH_JOB_LIST_EXAMPLE = {
+    "jobs": [
+        {
+            "job_id": "job-123",
+            "status": "queued",
+            "query": "Compare AI coding agents",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:00:00Z",
+            "queue_position": 1,
+        }
+    ],
+    "count": 1,
+}
+_RESEARCH_JOBS_SUMMARY_EXAMPLE = {
+    "counts": {
+        "queued": 1,
+        "running": 1,
+        "succeeded": 0,
+        "failed": 0,
+        "cancelled": 0,
+        "total": 2,
+    },
+    "active_count": 2,
+    "active_limit": 100,
+    "queued_jobs": [
+        {
+            "job_id": "job-123",
+            "status": "queued",
+            "query": "Compare AI coding agents",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:00:00Z",
+            "queue_position": 1,
+        }
+    ],
+    "running_jobs": [
+        {
+            "job_id": "job-456",
+            "status": "running",
+            "query": "Analyze market signals",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:01:00Z",
+            "started_at": "2026-04-27T10:01:01Z",
+        }
+    ],
+}
+_RESEARCH_JOB_DETAIL_EXAMPLE = {
+    "job_id": "job-789",
+    "status": "succeeded",
+    "created_at": "2026-04-27T10:02:00Z",
+    "started_at": "2026-04-27T10:02:01Z",
+    "finished_at": "2026-04-27T10:02:05Z",
+    "result": {"report_markdown": "# InsightGraph Research Report\n"},
+}
+_RESEARCH_JOB_CANCEL_EXAMPLE = {
+    "job_id": "job-123",
+    "status": "cancelled",
+    "created_at": "2026-04-27T10:00:00Z",
+    "finished_at": "2026-04-27T10:00:10Z",
+}
 
 
 @contextmanager
@@ -366,6 +471,17 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     status_code=202,
     response_model=ResearchJobCreateResponse,
     response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Create research job",
+    description=(
+        "Queue a research workflow for background execution. Jobs start as queued and "
+        "can be inspected with the job detail endpoint."
+    ),
+    responses={
+        202: {"content": {"application/json": {"example": _RESEARCH_JOB_CREATE_EXAMPLE}}},
+        429: _TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
 )
 def create_research_job(request: ResearchRequest) -> dict[str, str]:
     global _NEXT_JOB_SEQUENCE
@@ -400,9 +516,18 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     "/research/jobs",
     response_model=ResearchJobsListResponse,
     response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="List research jobs",
+    description=(
+        "Return retained research jobs ordered newest first. Optional status filtering "
+        "does not change queued job positions."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_LIST_EXAMPLE}}},
+    },
 )
 def list_research_jobs(
-    status: ResearchJobStatusQuery | None = None,
+    status: ResearchJobStatusQuery = None,
     limit: ResearchJobsLimitQuery = 100,
 ) -> dict[str, Any]:
     with _JOBS_LOCK:
@@ -413,6 +538,16 @@ def list_research_jobs(
     "/research/jobs/summary",
     response_model=ResearchJobsSummaryResponse,
     response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Summarize research jobs",
+    description=(
+        "Return job counts plus queued and running job summaries for monitoring active work."
+    ),
+    responses={
+        200: {
+            "content": {"application/json": {"example": _RESEARCH_JOBS_SUMMARY_EXAMPLE}}
+        },
+    },
 )
 def summarize_research_jobs() -> dict[str, Any]:
     with _JOBS_LOCK:
@@ -423,6 +558,17 @@ def summarize_research_jobs() -> dict[str, Any]:
     "/research/jobs/{job_id}/cancel",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Cancel queued research job",
+    description=(
+        "Cancel a queued research job. Running and terminal jobs are not cancellable."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_CANCEL_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
 )
 def cancel_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
@@ -454,6 +600,16 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
     "/research/jobs/{job_id}",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Get research job",
+    description=(
+        "Return one research job. Succeeded jobs include result, failed jobs include "
+        "a safe error message, and queued jobs include queue position."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_DETAIL_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+    },
 )
 def get_research_job(job_id: str) -> dict[str, Any]:
     with _JOBS_LOCK:
