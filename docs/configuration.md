@@ -119,6 +119,41 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 LLM Reporter 只生成报告正文；最终 References 由系统根据 verified evidence 重建。LLM 返回的 fake References 会被丢弃；缺失 `Competitive Matrix` 时会确定性补齐矩阵并保留有效 LLM findings，无法映射到合法引用的矩阵会被替换为 deterministic 矩阵；非法 citation 会 fallback 到 deterministic Reporter。测试不调用外部 LLM。
 
+## LLM Rules Router
+
+InsightGraph can opt into an internal rules router that chooses among user-defined model tiers while keeping the same OpenAI-compatible endpoint configuration.
+
+```bash
+INSIGHT_GRAPH_LLM_ROUTER=rules \
+INSIGHT_GRAPH_LLM_MODEL_FAST=gpt-4o-mini \
+INSIGHT_GRAPH_LLM_MODEL_DEFAULT=gpt-4.1-mini \
+INSIGHT_GRAPH_LLM_MODEL_STRONG=gpt-4.1 \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_LLM_ROUTER` | 设置为 `rules` 时启用内部规则路由；未设置时使用 `INSIGHT_GRAPH_LLM_MODEL` | 未启用 |
+| `INSIGHT_GRAPH_LLM_MODEL_FAST` | 短 default-purpose prompt 使用的低成本模型 | 回退到 default tier |
+| `INSIGHT_GRAPH_LLM_MODEL_DEFAULT` | 默认模型 tier | `INSIGHT_GRAPH_LLM_MODEL` 或 `gpt-4o-mini` |
+| `INSIGHT_GRAPH_LLM_MODEL_STRONG` | Reporter 或长 prompt 使用的强模型 | 回退到 default tier |
+| `INSIGHT_GRAPH_LLM_ROUTER_FAST_CHAR_THRESHOLD` | default-purpose prompt 字符数小于等于该值时使用 fast tier | `2000` |
+| `INSIGHT_GRAPH_LLM_ROUTER_STRONG_CHAR_THRESHOLD` | prompt 字符数超过该值时使用 strong tier | `12000` |
+
+Routing is deterministic and does not call a classifier model. Reporter uses the strong tier. Analyst uses the default tier unless the prompt exceeds the strong threshold. Default-purpose short prompts can use the fast tier.
+
+LiteLLM Proxy can be used without adding a Python dependency by pointing `INSIGHT_GRAPH_LLM_BASE_URL` at the proxy and using proxy model aliases as tier names:
+
+```bash
+INSIGHT_GRAPH_LLM_BASE_URL=http://localhost:4000/v1 \
+INSIGHT_GRAPH_LLM_API_KEY=proxy-key \
+INSIGHT_GRAPH_LLM_ROUTER=rules \
+INSIGHT_GRAPH_LLM_MODEL_FAST=cheap-model-alias \
+INSIGHT_GRAPH_LLM_MODEL_DEFAULT=default-model-alias \
+INSIGHT_GRAPH_LLM_MODEL_STRONG=strong-model-alias \
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
+```
+
 ## Live LLM Preset
 
 默认 CLI 保持 deterministic/offline：
