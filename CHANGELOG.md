@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.14 - 2026-04-28
 
 - Added safe node-level execution events for Planner, Collector, Analyst, Critic, and Reporter.
 - Extended WebSocket streams with stage, tool call, LLM call, and report-ready events.
