@@ -157,13 +157,13 @@ def _analyze_evidence_with_llm(
     llm_client: ChatCompletionClient | None = None,
 ) -> GraphState:
     config = resolve_llm_config()
+    messages = _build_analyst_messages(state)
     if llm_client is None:
         if not config.api_key:
             raise ValueError("LLM api_key is required")
-        llm_client = get_llm_client(config)
+        llm_client = get_llm_client(config, purpose="analyst", messages=messages)
 
     wire_api = get_llm_wire_api(llm_client)
-    messages = _build_analyst_messages(state)
     started = time.perf_counter()
     try:
         result = complete_json_with_observability(llm_client, messages)

@@ -47,6 +47,11 @@ class UsageLLMClient(FakeLLMClient):
         return ChatCompletionResult(content=self.content)
 
 
+class RecordingRouterClient(FakeLLMClient):
+    def __init__(self, content: str) -> None:
+        super().__init__(content=content)
+
+
 class FakeClientConfig:
     def __init__(self, wire_api: str) -> None:
         self.wire_api = wire_api
@@ -607,6 +612,30 @@ def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
     assert record.error is None
 
 
+def test_llm_analyst_creates_client_with_routing_context(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    calls: list[dict] = []
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        calls.append({"config": config, "purpose": purpose, "messages": messages})
+        return RecordingRouterClient(
+            '{"findings": [{"title": "Pricing differs", '
+            '"summary": "Cursor and Copilot differ.", '
+            '"evidence_ids": ["cursor-pricing"]}]}'
+        )
+
+    monkeypatch.setattr("insight_graph.agents.analyst.get_llm_client", fake_get_llm_client)
+
+    updated = analyze_evidence(make_analyst_state())
+
+    assert updated.findings[0].title == "Pricing differs"
+    assert len(calls) == 1
+    assert calls[0]["purpose"] == "analyst"
+    assert calls[0]["messages"] is not None
+    assert "cursor-pricing" in calls[0]["messages"][-1].content
+
+
 def test_analyze_evidence_records_llm_wire_api(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
     client = FakeLLMClient(
@@ -1143,6 +1172,30 @@ def test_llm_reporter_inserts_competitive_matrix_when_missing(monkeypatch) -> No
         "| Cursor | Official product positioning signal | "
         "Official/documented source coverage | [1] |"
     ) in updated.report_markdown
+
+
+def test_llm_reporter_creates_client_with_routing_context(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    calls: list[dict] = []
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        calls.append({"config": config, "purpose": purpose, "messages": messages})
+        return RecordingRouterClient(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1]."}'
+        )
+
+    monkeypatch.setattr("insight_graph.agents.reporter.get_llm_client", fake_get_llm_client)
+
+    updated = write_report(make_reporter_state())
+
+    assert "Cursor differs from Copilot [1]." in updated.report_markdown
+    assert len(calls) == 1
+    assert calls[0]["purpose"] == "reporter"
+    assert calls[0]["messages"] is not None
+    assert "allowed_citations" in calls[0]["messages"][-1].content
 
 
 def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None:

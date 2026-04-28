@@ -101,13 +101,13 @@ def _write_report_with_llm(
         raise ReporterFallbackError("Verified references are required")
 
     config = resolve_llm_config()
+    messages = _build_reporter_messages(state, verified_evidence, reference_numbers)
     if llm_client is None:
         if not config.api_key:
             raise ReporterFallbackError("LLM api_key is required")
-        llm_client = get_llm_client(config)
+        llm_client = get_llm_client(config, purpose="reporter", messages=messages)
 
     wire_api = get_llm_wire_api(llm_client)
-    messages = _build_reporter_messages(state, verified_evidence, reference_numbers)
     started = time.perf_counter()
     try:
         result = complete_json_with_observability(llm_client, messages)
