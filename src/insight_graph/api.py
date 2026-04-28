@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import os
 from collections.abc import Iterator
@@ -8,7 +9,18 @@ from html import escape as html_escape
 from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+    status,
+)
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
@@ -66,6 +78,7 @@ _RESEARCH_ENV_LOCK = Lock()
 _API_KEY_ENV_VAR = "INSIGHT_GRAPH_API_KEY"
 _API_KEY_AUTH_ERROR_DETAIL = "Invalid or missing API key."
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+_RESEARCH_JOB_STREAM_INTERVAL_SECONDS = 1.0
 ResearchJobStatusQuery = Annotated[
     ResearchJobStatus | None,
     Query(description="Filter jobs by status. Omit to return all retained jobs."),
@@ -425,6 +438,13 @@ def _bearer_token(authorization: str | None) -> str | None:
     return token or None
 
 
+def _api_key_is_authorized(*candidates: str | None) -> bool:
+    expected_api_key = _configured_api_key()
+    if expected_api_key is None:
+        return True
+    return any(_candidate_matches_api_key(candidate, expected_api_key) for candidate in candidates)
+
+
 def require_api_key(
     authorization: Annotated[
         str | None,
@@ -435,12 +455,7 @@ def require_api_key(
         Header(alias="X-API-Key", include_in_schema=False),
     ] = None,
 ) -> None:
-    expected_api_key = _configured_api_key()
-    if expected_api_key is None:
-        return
-
-    candidates = [_bearer_token(authorization), x_api_key]
-    if any(_candidate_matches_api_key(candidate, expected_api_key) for candidate in candidates):
+    if _api_key_is_authorized(_bearer_token(authorization), x_api_key):
         return
 
     raise HTTPException(status_code=401, detail=_API_KEY_AUTH_ERROR_DETAIL)
@@ -679,6 +694,38 @@ def download_research_job_html_report(job_id: str) -> HTMLResponse:
         _markdown_report_to_html(_research_job_report_markdown(job_id)),
         headers={"Content-Disposition": f'attachment; filename="{job_id}.html"'},
     )
+
+
+async def _send_research_job_stream_event(websocket: WebSocket, job_id: str) -> bool:
+    try:
+        job = _with_research_job_progress(get_research_job_record(job_id))
+    except HTTPException as exc:
+        await websocket.send_json({"type": "error", "detail": exc.detail})
+        return True
+
+    await websocket.send_json({"type": "job_snapshot", "job": job})
+    return job["status"] in {"succeeded", "failed", "cancelled"}
+
+
+@router.websocket("/research/jobs/{job_id}/stream")
+async def stream_research_job(
+    websocket: WebSocket,
+    job_id: str,
+    api_key: str | None = None,
+) -> None:
+    if not _api_key_is_authorized(api_key):
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    await websocket.accept()
+    try:
+        while True:
+            terminal = await _send_research_job_stream_event(websocket, job_id)
+            if terminal:
+                await websocket.close()
+                return
+            await asyncio.sleep(_RESEARCH_JOB_STREAM_INTERVAL_SECONDS)
+    except WebSocketDisconnect:
+        return
 
 
 @router.get(

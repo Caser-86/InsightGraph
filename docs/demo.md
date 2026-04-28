@@ -43,9 +43,10 @@ http://127.0.0.1:8000/dashboard
 
 Submit an offline query from the dashboard, then watch the job list, status cards,
 workflow timeline, report, tool calls, and LLM metadata tabs update as the job
-completes. Completed jobs expose Markdown and HTML download buttons in the Report
-tab. If `INSIGHT_GRAPH_API_KEY` is set, enter that key in the dashboard before
-using job actions or downloads.
+completes. The dashboard uses the WebSocket job stream when available and falls
+back to REST polling if the stream is unavailable. Completed jobs expose Markdown
+and HTML download buttons in the Report tab. If `INSIGHT_GRAPH_API_KEY` is set,
+enter that key in the dashboard before using job actions, downloads, or streams.
 
 ## Live LLM Demo
 

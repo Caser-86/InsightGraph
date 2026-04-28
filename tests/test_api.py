@@ -1,7 +1,9 @@
 import os
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 import insight_graph.api as api_module
 import insight_graph.research_jobs as jobs_module
@@ -257,6 +259,10 @@ def test_dashboard_returns_html() -> None:
     assert "download-html" in response.text
     assert "renderProgressTimeline" in response.text
     assert "downloadReport" in response.text
+    assert "connectJobStream" in response.text
+    assert "closeJobStream" in response.text
+    assert "WebSocket" in response.text
+    assert "/stream" in response.text
     assert "'/research/jobs'" in response.text
     assert "'/research/jobs/summary'" in response.text
     assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text
@@ -455,6 +461,19 @@ def test_research_job_report_export_rejects_missing_api_key_when_configured(
     assert response.json() == {"detail": "Invalid or missing API key."}
 
 
+def test_research_job_stream_rejects_missing_api_key_when_configured(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/research/jobs/job-123/stream"):
+            pass
+
+    assert exc_info.value.code == 1008
+
+
 def test_research_job_cancel_rejects_missing_api_key_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
     client = TestClient(api_module.app)
@@ -494,6 +513,7 @@ def test_module_level_app_remains_configured() -> None:
     assert "/research/jobs/{job_id}" in route_paths
     assert "/research/jobs/{job_id}/report.md" in route_paths
     assert "/research/jobs/{job_id}/report.html" in route_paths
+    assert "/research/jobs/{job_id}/stream" in route_paths
 
 
 def test_current_utc_timestamp_uses_z_suffix() -> None:
@@ -1245,6 +1265,58 @@ def test_get_research_job_includes_progress_metadata_for_cancelled_job() -> None
     assert payload["progress_percent"] == 100
     assert payload["runtime_seconds"] == 4
     assert {step["status"] for step in payload["progress_steps"]} == {"skipped"}
+
+
+def test_research_job_stream_sends_job_snapshot() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="stream-job",
+        query="Stream progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect("/research/jobs/stream-job/stream") as websocket:
+        event = websocket.receive_json()
+
+    assert event["type"] == "job_snapshot"
+    assert event["job"]["job_id"] == "stream-job"
+    assert event["job"]["progress_stage"] == "queued"
+
+
+def test_research_job_stream_sends_error_for_unknown_job() -> None:
+    jobs_module.reset_research_jobs_state()
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect("/research/jobs/missing/stream") as websocket:
+        event = websocket.receive_json()
+
+    assert event == {"type": "error", "detail": "Research job not found."}
+
+
+def test_research_job_stream_accepts_api_key_query_param(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="protected-stream-job",
+        query="Protected stream",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect(
+        "/research/jobs/protected-stream-job/stream?api_key=demo-key"
+    ) as websocket:
+        event = websocket.receive_json()
+
+    assert event["type"] == "job_snapshot"
+    assert event["job"]["job_id"] == "protected-stream-job"
 
 
 def test_research_job_includes_created_at_until_started(monkeypatch) -> None:

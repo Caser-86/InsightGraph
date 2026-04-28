@@ -109,8 +109,9 @@ Dashboard:
 http://127.0.0.1:8000/dashboard
 ```
 
-Dashboard 是一个静态本地 UI，用于创建、轮询和查看 research jobs，包含执行进度
-timeline、report、tool calls、LLM metadata 和 Markdown/HTML 下载。如果配置了
+Dashboard 是一个静态本地 UI，用于创建、流式跟踪和查看 research jobs，包含执行进度
+timeline、report、tool calls、LLM metadata 和 Markdown/HTML 下载。Dashboard 会优先连接
+`/research/jobs/<job_id>/stream` WebSocket；不可用时回退到 REST polling。如果配置了
 `INSIGHT_GRAPH_API_KEY`，请先在 dashboard 的 API key 输入框填入同一个 key。
 
 ```bash
@@ -129,6 +130,8 @@ curl http://127.0.0.1:8000/research/jobs
 curl http://127.0.0.1:8000/research/jobs/summary
 
 curl http://127.0.0.1:8000/research/jobs/<job_id>
+
+# WebSocket stream: ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 
 curl http://127.0.0.1:8000/research/jobs/<job_id>/report.md
 

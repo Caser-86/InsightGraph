@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.13 - 2026-04-28
+
+- Added a WebSocket research job snapshot stream at `/research/jobs/{job_id}/stream`.
+- Updated the dashboard to use WebSocket streaming for selected jobs with polling fallback.
+- Documented the FastAPI REST + WebSocket dashboard flow.
+
 ## v0.1.12 - 2026-04-28
 
 - Added derived research job progress metadata for dashboard timelines.

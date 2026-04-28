@@ -529,6 +529,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
       activeTab: 'overview',
       autoRefresh: true,
       timer: null,
+      streamSocket: null,
+      streamJobId: '',
+      streamApiKey: '',
+      streamTerminal: false,
     };
 
     const els = {
@@ -624,6 +628,84 @@ _DASHBOARD_HTML = r"""<!doctype html>
             </div>
           </button>`;
       }).join('');
+    }
+
+    function jobIsTerminal(status) {
+      return ['succeeded', 'failed', 'cancelled'].includes(status);
+    }
+
+    function streamIsOpen() {
+      return state.streamSocket && state.streamSocket.readyState === WebSocket.OPEN;
+    }
+
+    function closeJobStream() {
+      if (!state.streamSocket) return;
+      state.streamSocket.onclose = null;
+      state.streamSocket.onerror = null;
+      state.streamSocket.onmessage = null;
+      state.streamSocket.close();
+      state.streamSocket = null;
+      state.streamJobId = '';
+      state.streamApiKey = '';
+      state.streamTerminal = false;
+    }
+
+    function jobStreamUrl(jobId) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = new URL(`${protocol}//${window.location.host}/research/jobs/${encodeURIComponent(jobId)}/stream`);
+      const key = els.apiKey.value.trim();
+      if (key) url.searchParams.set('api_key', key);
+      return url.toString();
+    }
+
+    function mergeSnapshotJob(job) {
+      state.jobs = state.jobs.map((item) => (
+        item.job_id === job.job_id
+          ? { ...item, status: job.status, started_at: job.started_at, finished_at: job.finished_at }
+          : item
+      ));
+      renderJobList();
+    }
+
+    function connectJobStream(jobId) {
+      const key = els.apiKey.value.trim();
+      if (!state.autoRefresh || !jobId || !('WebSocket' in window)) return;
+      const sameStream = state.streamJobId === jobId && state.streamApiKey === key;
+      if (sameStream && state.streamSocket && state.streamSocket.readyState <= WebSocket.OPEN) return;
+
+      closeJobStream();
+      const socket = new WebSocket(jobStreamUrl(jobId));
+      state.streamSocket = socket;
+      state.streamJobId = jobId;
+      state.streamApiKey = key;
+      state.streamTerminal = false;
+
+      socket.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'job_snapshot') {
+          state.detail = payload.job;
+          state.streamTerminal = jobIsTerminal(payload.job.status);
+          mergeSnapshotJob(payload.job);
+          renderDetail();
+          els.connection.textContent = 'streaming';
+        }
+        if (payload.type === 'error') {
+          state.streamTerminal = true;
+          setMessage(payload.detail || 'Stream failed.', 'error');
+        }
+      };
+      socket.onerror = () => {
+        if (!state.streamTerminal) setMessage('Stream unavailable; using polling fallback.', 'error');
+      };
+      socket.onclose = () => {
+        const wasCurrent = state.streamSocket === socket;
+        if (wasCurrent) {
+          state.streamSocket = null;
+          state.streamJobId = '';
+          state.streamApiKey = '';
+        }
+        if (!state.streamTerminal && state.autoRefresh) scheduleRefresh();
+      };
     }
 
     function renderMarkdown(markdown) {
@@ -775,6 +857,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         if (state.selectedJobId) {
           state.detail = await apiFetch(`/research/jobs/${encodeURIComponent(state.selectedJobId)}`, { headers: headers() });
           localStorage.setItem('insightgraph.dashboard.jobId', state.selectedJobId);
+          connectJobStream(state.selectedJobId);
         }
         renderDetail();
         els.connection.textContent = 'connected';
@@ -791,7 +874,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       clearTimeout(state.timer);
       if (!state.autoRefresh) return;
       const active = ['queued', 'running'].includes(state.detail?.status);
-      state.timer = setTimeout(refresh, active ? 2000 : 8000);
+      state.timer = setTimeout(refresh, active && !streamIsOpen() ? 2000 : 8000);
     }
 
     async function submitJob() {
@@ -806,6 +889,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
           body: JSON.stringify({ query, preset: els.preset.value }),
         });
         state.selectedJobId = payload.job_id;
+        closeJobStream();
         setMessage(`Queued ${payload.job_id}.`, 'ok');
         await refresh();
       } catch (error) {
@@ -832,6 +916,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         headers: headers(),
       });
       state.selectedJobId = payload.job_id;
+      closeJobStream();
       setMessage(`Retry queued ${payload.job_id}.`, 'ok');
       await refresh();
     }
@@ -841,12 +926,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
     els.autoRefresh.addEventListener('click', () => {
       state.autoRefresh = !state.autoRefresh;
       els.autoRefresh.textContent = state.autoRefresh ? 'auto refresh on' : 'auto refresh off';
+      if (!state.autoRefresh) closeJobStream();
+      if (state.autoRefresh && state.selectedJobId) connectJobStream(state.selectedJobId);
       scheduleRefresh();
     });
     els.jobList.addEventListener('click', (event) => {
       const card = event.target.closest('[data-job-id]');
       if (!card) return;
       state.selectedJobId = card.dataset.jobId;
+      closeJobStream();
       state.detail = null;
       renderJobList();
       renderDetail();

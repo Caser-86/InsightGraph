@@ -10,6 +10,7 @@ If `INSIGHT_GRAPH_API_KEY` is configured, all research job endpoints require `Au
 - `GET /research/jobs` lists retained jobs newest first.
 - `GET /research/jobs/summary` returns status counts and active queued/running jobs.
 - `GET /research/jobs/{job_id}` returns job detail.
+- `WS /research/jobs/{job_id}/stream` streams safe job snapshots for dashboard updates.
 - `GET /research/jobs/{job_id}/report.md` downloads a completed Markdown report.
 - `GET /research/jobs/{job_id}/report.html` downloads an escaped HTML report.
 - `POST /research/jobs/{job_id}/cancel` cancels a queued job.
@@ -129,6 +130,41 @@ Unknown jobs return `404`:
 
 ```json
 {"detail":"Research job not found."}
+```
+
+## WebSocket stream
+
+```text
+ws://127.0.0.1:8000/research/jobs/job-123/stream
+```
+
+The stream sends safe JSON events using the same job detail shape as REST,
+including derived progress fields. It does not stream prompts, completions, raw
+provider responses, headers, request bodies, or API keys.
+
+```json
+{
+  "type": "job_snapshot",
+  "job": {
+    "job_id": "job-123",
+    "status": "running",
+    "progress_stage": "planner",
+    "progress_percent": 20
+  }
+}
+```
+
+Unknown jobs send an error event and close:
+
+```json
+{"type":"error","detail":"Research job not found."}
+```
+
+If `INSIGHT_GRAPH_API_KEY` is configured, browser clients pass the key as a query
+parameter because standard browser WebSocket APIs cannot set custom headers:
+
+```text
+ws://127.0.0.1:8000/research/jobs/job-123/stream?api_key=demo-key
 ```
 
 ## Report export
