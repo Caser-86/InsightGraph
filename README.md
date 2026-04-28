@@ -27,6 +27,7 @@ MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 C
 - [配置说明](docs/configuration.md)：搜索 provider、GitHub provider、document reader、LLM preset、observability、后续配置项。
 - [架构蓝图](docs/architecture.md)：目标项目结构、核心特性、技术架构、执行流程、agent 协作、工具和证据链。
 - [脚本说明](docs/scripts.md)：run、benchmark、validator、LLM metadata log 脚本用法。
+- [MVP Demo](docs/demo.md)：展示报告、offline/live LLM demo 命令和 observability 演示。
 - [Research jobs API](docs/research-jobs-api.md)：异步 research jobs 端点、状态、限制、取消和持久化行为。
 - [Research job repository contract](docs/research-job-repository-contract.md)：research jobs 稳定契约、内存实现细节和未来存储后端要求。
 - [Roadmap](docs/roadmap.md)：近期工程优先级和延后事项。
@@ -76,6 +77,20 @@ python scripts/benchmark_research.py --markdown
 python scripts/validate_sources.py report.md
 python scripts/validate_document_reader.py --markdown
 python scripts/validate_github_search.py --markdown
+```
+
+### MVP Demo
+
+查看已生成的技术评审展示报告：
+
+```text
+reports/ai-coding-agents-technical-review.md
+```
+
+复现 demo、live LLM 运行和 LLM metadata observability：
+
+```text
+docs/demo.md
 ```
 
 ## API MVP
