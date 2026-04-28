@@ -1,3 +1,4 @@
+import hmac
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -6,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
@@ -59,6 +60,8 @@ def create_app() -> FastAPI:
 
 # Presets use process env, so this synchronous MVP serializes /research execution.
 _RESEARCH_ENV_LOCK = Lock()
+_API_KEY_ENV_VAR = "INSIGHT_GRAPH_API_KEY"
+_API_KEY_AUTH_ERROR_DETAIL = "Invalid or missing API key."
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 ResearchJobStatusQuery = Annotated[
     ResearchJobStatus | None,
@@ -305,7 +308,43 @@ def _initialize_research_jobs_from_env() -> None:
 _initialize_research_jobs_from_env()
 
 
-@router.post("/research")
+def _configured_api_key() -> str | None:
+    api_key = os.environ.get(_API_KEY_ENV_VAR, "").strip()
+    return api_key or None
+
+
+def _candidate_matches_api_key(candidate: str | None, expected: str) -> bool:
+    if candidate is None:
+        return False
+    return hmac.compare_digest(candidate, expected)
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if authorization is None:
+        return None
+    prefix = "Bearer "
+    if not authorization.startswith(prefix):
+        return None
+    token = authorization[len(prefix) :].strip()
+    return token or None
+
+
+def require_api_key(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> None:
+    expected_api_key = _configured_api_key()
+    if expected_api_key is None:
+        return
+
+    candidates = [_bearer_token(authorization), x_api_key]
+    if any(_candidate_matches_api_key(candidate, expected_api_key) for candidate in candidates):
+        return
+
+    raise HTTPException(status_code=401, detail=_API_KEY_AUTH_ERROR_DETAIL)
+
+
+@router.post("/research", dependencies=[Depends(require_api_key)])
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
         with _RESEARCH_ENV_LOCK:

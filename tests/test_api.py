@@ -213,6 +213,126 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_health_remains_public_when_api_key_is_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_research_allows_requests_when_api_key_is_unset(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_API_KEY", raising=False)
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post("/research", json={"query": "Compare AI coding agents"})
+
+    assert response.status_code == 200
+    assert response.json()["user_request"] == "Compare AI coding agents"
+
+
+def test_research_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.post("/research", json={"query": "Compare AI coding agents"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_rejects_wrong_bearer_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        headers={"Authorization": "Bearer wrong-key"},
+        json={"query": "Compare AI coding agents"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_rejects_malformed_authorization(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        headers={"Authorization": "Token demo-key"},
+        json={"query": "Compare AI coding agents"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_accepts_bearer_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        headers={"Authorization": "Bearer demo-key"},
+        json={"query": "Compare AI coding agents"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_request"] == "Compare AI coding agents"
+
+
+def test_research_accepts_x_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        headers={"X-API-Key": "demo-key"},
+        json={"query": "Compare AI coding agents"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_request"] == "Compare AI coding agents"
+
+
+def test_research_accepts_matching_key_when_other_header_is_wrong(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        headers={"Authorization": "Bearer wrong-key", "X-API-Key": "demo-key"},
+        json={"query": "Compare AI coding agents"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_request"] == "Compare AI coding agents"
+
+
 def test_create_app_returns_configured_fastapi_app() -> None:
     app = api_module.create_app()
     client = TestClient(app)
