@@ -53,6 +53,9 @@ RETRYABLE_RESEARCH_JOB_STATUSES = {
 _JOBS_LOCK = RLock()
 _MAX_RESEARCH_JOBS = 100
 _MAX_ACTIVE_RESEARCH_JOBS = 100
+RESEARCH_JOB_LEASE_TTL_SECONDS = 300
+RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS = 60
+_RESEARCH_JOBS_WORKER_ID = uuid4().hex
 _NEXT_JOB_SEQUENCE = 0
 _JOBS: dict[str, "ResearchJob"] = {}
 _RESEARCH_JOBS_PATH: Path | None = research_jobs_path_from_env()
@@ -203,6 +206,14 @@ def configure_research_jobs_sqlite_backend(path: Path) -> None:
 
 def _using_sqlite_research_jobs_backend() -> bool:
     return _RESEARCH_JOBS_BACKEND.__class__.__name__ == "SQLiteResearchJobsBackend"
+
+
+def research_jobs_worker_id() -> str:
+    return _RESEARCH_JOBS_WORKER_ID
+
+
+def using_sqlite_research_jobs_backend() -> bool:
+    return _using_sqlite_research_jobs_backend()
 
 
 configure_research_jobs_backend_from_env()
@@ -550,13 +561,24 @@ def mark_research_job_running(
     job_id: str,
     started_at: Callable[[], str],
     store_failure_finished_at: Callable[[], str],
+    *,
+    worker_id: str | None = None,
+    lease_expires_at: Callable[[str], str] | None = None,
 ) -> ResearchJob | None:
     with _JOBS_LOCK:
         if _using_sqlite_research_jobs_backend():
+            start_timestamp = started_at()
+            lease_until = (
+                lease_expires_at(start_timestamp)
+                if lease_expires_at is not None
+                else start_timestamp
+            )
             try:
-                return _RESEARCH_JOBS_BACKEND.mark_running(
+                return _RESEARCH_JOBS_BACKEND.claim_for_worker(
                     job_id,
-                    started_at=started_at(),
+                    worker_id=worker_id or _RESEARCH_JOBS_WORKER_ID,
+                    now=start_timestamp,
+                    lease_expires_at=lease_until,
                 )
             except ValueError:
                 return None
@@ -577,13 +599,43 @@ def mark_research_job_running(
         return job
 
 
+def heartbeat_research_job(
+    job_id: str,
+    *,
+    worker_id: str,
+    now: str,
+    lease_expires_at: str,
+) -> bool:
+    with _JOBS_LOCK:
+        if not _using_sqlite_research_jobs_backend():
+            return False
+        return _RESEARCH_JOBS_BACKEND.heartbeat(
+            job_id,
+            worker_id=worker_id,
+            now=now,
+            lease_expires_at=lease_expires_at,
+        )
+
+
 def mark_research_job_failed(
     job: ResearchJob,
     finished_at: str,
     error: str,
+    *,
+    worker_id: str | None = None,
 ) -> None:
     with _JOBS_LOCK:
         if _using_sqlite_research_jobs_backend():
+            if worker_id is not None:
+                _RESEARCH_JOBS_BACKEND.mark_terminal_for_worker(
+                    job.id,
+                    worker_id=worker_id,
+                    status=RESEARCH_JOB_STATUS_FAILED,
+                    finished_at=finished_at,
+                    result=None,
+                    error=error,
+                )
+                return
             _RESEARCH_JOBS_BACKEND.mark_terminal(
                 job.id,
                 status=RESEARCH_JOB_STATUS_FAILED,
@@ -603,9 +655,21 @@ def mark_research_job_succeeded(
     job: ResearchJob,
     finished_at: str,
     result: dict[str, Any],
+    *,
+    worker_id: str | None = None,
 ) -> None:
     with _JOBS_LOCK:
         if _using_sqlite_research_jobs_backend():
+            if worker_id is not None:
+                _RESEARCH_JOBS_BACKEND.mark_terminal_for_worker(
+                    job.id,
+                    worker_id=worker_id,
+                    status=RESEARCH_JOB_STATUS_SUCCEEDED,
+                    finished_at=finished_at,
+                    result=result,
+                    error=None,
+                )
+                return
             _RESEARCH_JOBS_BACKEND.mark_terminal(
                 job.id,
                 status=RESEARCH_JOB_STATUS_SUCCEEDED,

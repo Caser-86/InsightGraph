@@ -151,6 +151,102 @@ def test_retry_research_job_returns_404_for_missing_job() -> None:
     assert exc_info.value.status_code == 404
 
 
+def test_sqlite_mark_running_claims_job_with_worker_lease(tmp_path) -> None:
+    jobs_module.configure_research_jobs_sqlite_backend(tmp_path / "jobs.sqlite3")
+    try:
+        created = jobs_module.create_research_job(
+            query="Lease service",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+
+        claimed = jobs_module.mark_research_job_running(
+            created["job_id"],
+            started_at=lambda: "2026-04-28T10:00:01Z",
+            store_failure_finished_at=lambda: "2026-04-28T10:00:02Z",
+            worker_id="worker-a",
+            lease_expires_at=lambda started_at: "2026-04-28T10:05:01Z",
+        )
+
+        assert claimed is not None
+        assert claimed.status == "running"
+        assert claimed.started_at == "2026-04-28T10:00:01Z"
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_sqlite_heartbeat_research_job_returns_false_for_non_owner(tmp_path) -> None:
+    jobs_module.configure_research_jobs_sqlite_backend(tmp_path / "jobs.sqlite3")
+    try:
+        created = jobs_module.create_research_job(
+            query="Heartbeat service",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        assert (
+            jobs_module.mark_research_job_running(
+                created["job_id"],
+                started_at=lambda: "2026-04-28T10:00:01Z",
+                store_failure_finished_at=lambda: "2026-04-28T10:00:02Z",
+                worker_id="worker-a",
+                lease_expires_at=lambda started_at: "2026-04-28T10:05:01Z",
+            )
+            is not None
+        )
+
+        assert (
+            jobs_module.heartbeat_research_job(
+                created["job_id"],
+                worker_id="worker-b",
+                now="2026-04-28T10:01:01Z",
+                lease_expires_at="2026-04-28T10:06:01Z",
+            )
+            is False
+        )
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_sqlite_terminal_write_uses_worker_ownership(tmp_path) -> None:
+    jobs_module.configure_research_jobs_sqlite_backend(tmp_path / "jobs.sqlite3")
+    try:
+        created = jobs_module.create_research_job(
+            query="Terminal service",
+            preset=ResearchPreset.offline,
+            created_at="2026-04-28T10:00:00Z",
+        )
+        job = jobs_module.mark_research_job_running(
+            created["job_id"],
+            started_at=lambda: "2026-04-28T10:00:01Z",
+            store_failure_finished_at=lambda: "2026-04-28T10:00:02Z",
+            worker_id="worker-a",
+            lease_expires_at=lambda started_at: "2026-04-28T10:05:01Z",
+        )
+        assert job is not None
+
+        jobs_module.mark_research_job_succeeded(
+            job,
+            finished_at="2026-04-28T10:00:03Z",
+            result={"report_markdown": "# Wrong"},
+            worker_id="worker-b",
+        )
+        record = jobs_module.get_research_job_record(created["job_id"])
+        assert record is not None
+        assert record.status == "running"
+
+        jobs_module.mark_research_job_succeeded(
+            job,
+            finished_at="2026-04-28T10:00:04Z",
+            result={"report_markdown": "# Right"},
+            worker_id="worker-a",
+        )
+        record = jobs_module.get_research_job_record(created["job_id"])
+        assert record is not None
+        assert record.status == "succeeded"
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
 def test_configure_research_jobs_backend_from_env_defaults_to_memory(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", raising=False)
 
