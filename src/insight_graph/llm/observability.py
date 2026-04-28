@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from insight_graph.llm.client import ChatCompletionClient, ChatCompletionResult, ChatMessage
+from insight_graph.llm.router import get_llm_router_decision
 from insight_graph.state import LLMCallRecord
 
 
@@ -17,12 +18,20 @@ def build_llm_call_record(
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     total_tokens: int | None = None,
+    llm_client: ChatCompletionClient | None = None,
 ) -> LLMCallRecord:
+    router_decision = get_llm_router_decision(llm_client) if llm_client is not None else None
     return LLMCallRecord(
         stage=stage,
         provider=provider,
         model=model,
         wire_api=wire_api,
+        router=router_decision.router if router_decision is not None else None,
+        router_tier=router_decision.tier if router_decision is not None else None,
+        router_reason=router_decision.reason if router_decision is not None else None,
+        router_message_chars=router_decision.message_chars
+        if router_decision is not None
+        else None,
         success=success,
         duration_ms=max(duration_ms, 0),
         input_tokens=_normalize_token_count(input_tokens),

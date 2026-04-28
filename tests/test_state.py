@@ -6,6 +6,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.llm.router import LLMRouterDecision
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Evidence,
@@ -246,6 +247,91 @@ def test_complete_json_with_observability_falls_back_to_legacy_client() -> None:
     )
 
     assert result == ChatCompletionResult(content='{"ok": true}')
+
+
+def test_llm_call_record_stores_router_metadata() -> None:
+    record = LLMCallRecord(
+        stage="analyst",
+        provider="llm",
+        model="fast-model",
+        success=True,
+        duration_ms=12,
+        router="rules",
+        router_tier="fast",
+        router_reason="short_default_prompt",
+        router_message_chars=123,
+    )
+
+    assert record.router == "rules"
+    assert record.router_tier == "fast"
+    assert record.router_reason == "short_default_prompt"
+    assert record.router_message_chars == 123
+
+
+def test_build_llm_call_record_copies_router_metadata() -> None:
+    class RoutedClient:
+        router_decision = LLMRouterDecision(
+            router="rules",
+            tier="strong",
+            reason="long_prompt",
+            message_chars=12001,
+        )
+
+    record = build_llm_call_record(
+        stage="analyst",
+        provider="llm",
+        model="strong-model",
+        success=True,
+        duration_ms=12,
+        llm_client=RoutedClient(),
+    )
+
+    assert record.router == "rules"
+    assert record.router_tier == "strong"
+    assert record.router_reason == "long_prompt"
+    assert record.router_message_chars == 12001
+
+
+def test_build_llm_call_record_omits_router_metadata_without_decision() -> None:
+    class PlainClient:
+        pass
+
+    record = build_llm_call_record(
+        stage="analyst",
+        provider="llm",
+        model="relay-model",
+        success=True,
+        duration_ms=12,
+        llm_client=PlainClient(),
+    )
+
+    assert record.router is None
+    assert record.router_tier is None
+    assert record.router_reason is None
+    assert record.router_message_chars is None
+
+
+def test_router_metadata_does_not_store_prompt_content() -> None:
+    class RoutedClient:
+        router_decision = LLMRouterDecision(
+            router="rules",
+            tier="fast",
+            reason="short_default_prompt",
+            message_chars=19,
+        )
+
+    record = build_llm_call_record(
+        stage="analyst",
+        provider="llm",
+        model="fast-model",
+        success=True,
+        duration_ms=12,
+        llm_client=RoutedClient(),
+    )
+
+    serialized = record.model_dump_json()
+    assert "Sensitive prompt" not in serialized
+    assert record.router_message_chars == 19
 
 
 def test_build_llm_call_record_does_not_store_raw_exception_payloads() -> None:

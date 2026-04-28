@@ -6,6 +6,7 @@ from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import get_reporter_provider, write_report
 from insight_graph.llm import ChatCompletionResult, ChatMessage
+from insight_graph.llm.router import LLMRouterDecision
 from insight_graph.state import CompetitiveMatrixRow, Critique, Evidence, Finding, GraphState
 
 
@@ -48,13 +49,26 @@ class UsageLLMClient(FakeLLMClient):
 
 
 class RecordingRouterClient(FakeLLMClient):
-    def __init__(self, content: str) -> None:
+    def __init__(
+        self,
+        content: str,
+        *,
+        config: object | None = None,
+        router_decision: LLMRouterDecision | None = None,
+    ) -> None:
         super().__init__(content=content)
+        if config is not None:
+            self.config = config
+        if router_decision is not None:
+            self.router_decision = router_decision
 
 
 class FakeClientConfig:
-    def __init__(self, wire_api: str) -> None:
-        self.wire_api = wire_api
+    def __init__(self, wire_api: str | None = None, model: str | None = None) -> None:
+        if wire_api is not None:
+            self.wire_api = wire_api
+        if model is not None:
+            self.model = model
 
 
 def make_analyst_state() -> GraphState:
@@ -610,6 +624,38 @@ def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_llm_analyst_log_records_router_metadata(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_ROUTER", "rules")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_DEFAULT", "default-model")
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        return RecordingRouterClient(
+            '{"findings": [{"title": "Pricing differs", '
+            '"summary": "Cursor and Copilot differ.", '
+            '"evidence_ids": ["cursor-pricing"]}]}',
+            config=FakeClientConfig(model="default-model"),
+            router_decision=LLMRouterDecision(
+                router="rules",
+                tier="default",
+                reason="default",
+                message_chars=123,
+            ),
+        )
+
+    monkeypatch.setattr("insight_graph.agents.analyst.get_llm_client", fake_get_llm_client)
+
+    updated = analyze_evidence(make_analyst_state())
+
+    record = updated.llm_call_log[0]
+    assert record.model == "default-model"
+    assert record.router == "rules"
+    assert record.router_tier == "default"
+    assert record.router_reason == "default"
+    assert record.router_message_chars is not None
 
 
 def test_llm_analyst_creates_client_with_routing_context(monkeypatch) -> None:
@@ -1387,6 +1433,40 @@ def test_write_report_records_successful_llm_call(monkeypatch) -> None:
     assert record.success is True
     assert record.duration_ms >= 0
     assert record.error is None
+
+
+def test_llm_reporter_log_records_router_metadata(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_ROUTER", "rules")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_STRONG", "strong-model")
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        return RecordingRouterClient(
+            '{"markdown": "# InsightGraph Research Report\\n\\n'
+            '## Key Findings\\n\\n'
+            '### Pricing and packaging differ\\n\\n'
+            'The verified sources support this comparison [1]."}',
+            config=FakeClientConfig(model="strong-model"),
+            router_decision=LLMRouterDecision(
+                router="rules",
+                tier="strong",
+                reason="reporter_strong",
+                message_chars=123,
+            ),
+        )
+
+    monkeypatch.setattr("insight_graph.agents.reporter.get_llm_client", fake_get_llm_client)
+
+    updated = write_report(make_reporter_state())
+
+    record = updated.llm_call_log[0]
+    assert record.model == "strong-model"
+    assert record.router == "rules"
+    assert record.router_tier == "strong"
+    assert record.router_reason == "reporter_strong"
+    assert record.router_message_chars is not None
 
 
 def test_write_report_records_llm_wire_api(monkeypatch) -> None:

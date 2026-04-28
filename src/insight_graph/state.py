@@ -65,6 +65,10 @@ class LLMCallRecord(BaseModel):
     provider: str
     model: str
     wire_api: str | None = None
+    router: str | None = None
+    router_tier: str | None = None
+    router_reason: str | None = None
+    router_message_chars: int | None = None
     success: bool
     duration_ms: int
     input_tokens: int | None = None

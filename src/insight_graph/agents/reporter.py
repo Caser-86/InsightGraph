@@ -117,12 +117,13 @@ def _write_report_with_llm(
             build_llm_call_record(
                 stage="reporter",
                 provider="llm",
-                model=config.model,
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
                 success=False,
                 duration_ms=duration_ms,
                 wire_api=wire_api,
                 error=exc,
                 secrets=[config.api_key],
+                llm_client=llm_client,
             )
         )
         raise
@@ -132,12 +133,13 @@ def _write_report_with_llm(
             build_llm_call_record(
                 stage="reporter",
                 provider="llm",
-                model=config.model,
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
                 success=False,
                 duration_ms=duration_ms,
                 wire_api=wire_api,
                 error=exc,
                 secrets=[config.api_key],
+                llm_client=llm_client,
             )
         )
         raise ReporterFallbackError("LLM reporter failed.") from exc
@@ -162,7 +164,7 @@ def _write_report_with_llm(
             build_llm_call_record(
                 stage="reporter",
                 provider="llm",
-                model=config.model,
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
                 success=False,
                 duration_ms=duration_ms,
                 wire_api=wire_api,
@@ -171,6 +173,7 @@ def _write_report_with_llm(
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 total_tokens=result.total_tokens,
+                llm_client=llm_client,
             )
         )
         raise
@@ -179,7 +182,7 @@ def _write_report_with_llm(
         build_llm_call_record(
             stage="reporter",
             provider="llm",
-            model=config.model,
+            model=getattr(getattr(llm_client, "config", None), "model", config.model),
             success=True,
             duration_ms=duration_ms,
             wire_api=wire_api,
@@ -187,6 +190,7 @@ def _write_report_with_llm(
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             total_tokens=result.total_tokens,
+            llm_client=llm_client,
         )
     )
 

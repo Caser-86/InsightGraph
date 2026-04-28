@@ -229,15 +229,16 @@ def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
     assert (
-        "| Stage | Provider | Model | Wire API | Success | Duration ms | "
+        "| Stage | Provider | Model | Router | Tier | Reason | Wire API | Success | Duration ms | "
         "Input tokens | Output tokens | Total tokens | Error |"
     ) in result.output
     assert (
-        "| relevance | openai_compatible | relay-model | responses | true | 7 |  |  |  |  |"
+        "| relevance | openai_compatible | relay-model | - | - | - | responses | "
+        "true | 7 |  |  |  |  |"
         in result.output
     )
     assert (
-        "| reporter | llm | relay-model |  | false | 9 |  |  |  | "
+        "| reporter | llm | relay-model | - | - | - |  | false | 9 |  |  |  | "
         "ReporterFallbackError: LLM call failed. |"
     ) in result.output
 
@@ -266,9 +267,94 @@ def test_cli_research_show_llm_log_includes_token_columns(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert (
-        "| analyst | llm | relay-model |  | true | 12 | 10 | 5 | 15 |  |"
+        "| analyst | llm | relay-model | - | - | - |  | true | 12 | 10 | 5 | 15 |  |"
         in result.output
     )
+
+
+def test_cli_research_show_llm_log_includes_router_columns(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="fast-model",
+                success=True,
+                duration_ms=12,
+                router="rules",
+                router_tier="fast",
+                router_reason="short_default_prompt",
+                router_message_chars=19,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+
+    result = CliRunner().invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "| Stage | Provider | Model | Router | Tier | Reason | Wire API |" in result.output
+    assert "| analyst | llm | fast-model | rules | fast | short_default_prompt |" in result.output
+
+
+def test_cli_research_show_llm_log_renders_missing_router_metadata_as_dash(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="reporter",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=12,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+
+    result = CliRunner().invoke(
+        app, ["research", "Compare AI coding agents", "--show-llm-log"]
+    )
+
+    assert result.exit_code == 0
+    assert "| reporter | llm | relay-model | - | - | - |" in result.output
+
+
+def test_cli_research_output_json_includes_router_metadata(monkeypatch) -> None:
+    def fake_run_research(query: str) -> GraphState:
+        state = GraphState(user_request=query, report_markdown="# Report\n")
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="fast-model",
+                success=True,
+                duration_ms=12,
+                router="rules",
+                router_tier="fast",
+                router_reason="short_default_prompt",
+                router_message_chars=19,
+            )
+        )
+        return state
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+
+    result = CliRunner().invoke(
+        app, ["research", "Compare AI coding agents", "--output-json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["llm_call_log"][0]["router"] == "rules"
+    assert payload["llm_call_log"][0]["router_tier"] == "fast"
+    assert payload["llm_call_log"][0]["router_reason"] == "short_default_prompt"
+    assert payload["llm_call_log"][0]["router_message_chars"] == 19
 
 
 def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
@@ -285,7 +371,7 @@ def test_cli_research_show_llm_log_reports_empty_log(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "# Report" in result.output
     assert "## LLM Call Log" in result.output
-    assert "| Model | Wire API | Success |" in result.output
+    assert "| Model | Router | Tier | Reason | Wire API | Success |" in result.output
     assert "| Input tokens | Output tokens | Total tokens |" in result.output
     assert "No LLM calls were recorded." in result.output
 
@@ -405,6 +491,10 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 "input_tokens": None,
                 "output_tokens": None,
                 "total_tokens": None,
+                "router": None,
+                "router_tier": None,
+                "router_reason": None,
+                "router_message_chars": None,
                 "error": None,
             }
         ],
