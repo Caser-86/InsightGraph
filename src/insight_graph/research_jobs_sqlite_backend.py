@@ -93,7 +93,10 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
         "worker_id": "ALTER TABLE research_jobs ADD COLUMN worker_id TEXT",
         "lease_expires_at": "ALTER TABLE research_jobs ADD COLUMN lease_expires_at TEXT",
         "heartbeat_at": "ALTER TABLE research_jobs ADD COLUMN heartbeat_at TEXT",
-        "attempt_count": "ALTER TABLE research_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+        "attempt_count": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0"
+        ),
     }
     for column_name, statement in migrations.items():
         if column_name not in existing_columns:
