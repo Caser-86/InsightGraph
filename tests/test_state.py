@@ -6,6 +6,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.llm.router import LLMRouterDecision
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Evidence,
@@ -246,9 +247,6 @@ def test_complete_json_with_observability_falls_back_to_legacy_client() -> None:
     )
 
     assert result == ChatCompletionResult(content='{"ok": true}')
-
-
-from insight_graph.llm.router import LLMRouterDecision
 
 
 def test_llm_call_record_stores_router_metadata() -> None:
