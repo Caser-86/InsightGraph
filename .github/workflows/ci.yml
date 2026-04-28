@@ -26,3 +26,6 @@ jobs:
 
       - name: Test
         run: python -m pytest
+
+      - name: Eval Gate
+        run: insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure

@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "query": "Compare Cursor, OpenCode, and GitHub Copilot",
+      "min_findings": 1,
+      "min_matrix_rows": 1,
+      "min_references": 2
+    },
+    {
+      "query": "Analyze AI coding agents market positioning",
+      "min_findings": 1,
+      "min_matrix_rows": 1,
+      "min_references": 2
+    },
+    {
+      "query": "Compare Claude Code, Codeium, and Windsurf",
+      "min_findings": 1,
+      "min_matrix_rows": 1,
+      "min_references": 2
+    }
+  ]
+}

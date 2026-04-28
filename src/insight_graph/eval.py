@@ -58,6 +58,10 @@ class EvalCase:
     min_references: int = 2
 
 
+class EvalConfigError(ValueError):
+    pass
+
+
 BENCHMARK_CASES = [
     "Compare Cursor, OpenCode, and GitHub Copilot",
     "Analyze AI coding agents market positioning",
@@ -95,6 +99,42 @@ def build_benchmark_payload(
     run_research_func: Callable[[str], GraphState] = run_research,
 ) -> dict[str, Any]:
     return build_eval_payload(cases, run_research_func=run_research_func)
+
+
+def load_eval_cases(path: Path | str) -> list[EvalCase]:
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvalConfigError("case file could not be loaded") from exc
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("cases"), list):
+        raise EvalConfigError("case file must contain a cases list")
+    return [_eval_case_from_payload(item) for item in payload["cases"]]
+
+
+def _eval_case_from_payload(item: object) -> EvalCase:
+    if not isinstance(item, dict):
+        raise EvalConfigError("each case must be an object")
+    query = item.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise EvalConfigError("each case must include a non-empty query")
+    return EvalCase(
+        query=query.strip(),
+        min_findings=_optional_non_negative_int(item, "min_findings", 1),
+        min_matrix_rows=_optional_non_negative_int(item, "min_matrix_rows", 1),
+        min_references=_optional_non_negative_int(item, "min_references", 2),
+    )
+
+
+def _optional_non_negative_int(
+    item: dict[str, Any],
+    key: str,
+    default: int,
+) -> int:
+    value = item.get(key, default)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise EvalConfigError(f"{key} must be a non-negative integer")
+    return value
 
 
 def _coerce_eval_case(case: EvalCase | str) -> EvalCase:
@@ -326,8 +366,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run offline InsightGraph eval bench.")
     parser.add_argument("--markdown", action="store_true", help="Print Markdown instead of JSON.")
     parser.add_argument("--output", help="Write output to a file instead of stdout.")
+    parser.add_argument("--case-file", help="Load eval cases from a JSON file.")
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        help="Fail when average score is below this value.",
+    )
+    parser.add_argument(
+        "--fail-on-case-failure",
+        action="store_true",
+        help="Fail when any eval case fails.",
+    )
     args = parser.parse_args(argv)
-    payload = build_eval_payload()
+    try:
+        cases = load_eval_cases(args.case_file) if args.case_file else None
+    except EvalConfigError as exc:
+        print(f"Eval config error: {exc}", file=sys.stderr)
+        return 2
+
+    payload = build_eval_payload(cases) if cases is not None else build_eval_payload()
     output = (
         format_markdown(payload)
         if args.markdown
@@ -337,7 +394,40 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.output).write_text(output, encoding="utf-8")
     else:
         print(output, end="")
-    return 0
+
+    gate_failures = _gate_failures(
+        payload,
+        min_score=args.min_score,
+        fail_on_case_failure=args.fail_on_case_failure,
+    )
+    for failure in gate_failures:
+        print(failure, file=sys.stderr)
+    return 1 if gate_failures else 0
+
+
+def _gate_failures(
+    payload: dict[str, Any],
+    *,
+    min_score: float | None,
+    fail_on_case_failure: bool,
+) -> list[str]:
+    failures: list[str] = []
+    summary = payload["summary"]
+    average_score = float(summary["average_score"])
+    if min_score is not None and average_score < min_score:
+        average = _format_number(average_score)
+        threshold = _format_number(min_score)
+        failures.append(
+            f"Eval gate failed: average score {average} < {threshold}"
+        )
+    failed_count = int(summary["failed_count"])
+    if fail_on_case_failure and failed_count > 0:
+        failures.append(f"Eval gate failed: {failed_count} case(s) failed")
+    return failures
+
+
+def _format_number(value: float) -> str:
+    return str(int(value)) if value.is_integer() else str(value)
 
 
 if __name__ == "__main__":

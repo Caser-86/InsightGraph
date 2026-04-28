@@ -93,8 +93,17 @@ The LLM log includes stage, provider, selected model, wire API, token usage when
 Run deterministic offline evaluation to score report structure and citation coverage:
 
 ```bash
-insight-graph-eval --markdown --output reports/eval.md
+insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
 ```
+
+For CI-style gating, set a minimum average score and fail when any case fails:
+
+```bash
+insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure --output reports/eval.json
+```
+
+Use `docs/evals/default.json` for the checked-in default case set, or pass
+`--case-file path/to/cases.json` to run a custom JSON case set.
 
 The eval bench clears live search and LLM opt-in environment variables while cases
 run. It reports per-case score, pass/fail status, failed rules, references,

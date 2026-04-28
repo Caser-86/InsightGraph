@@ -193,6 +193,183 @@ def test_main_writes_json_output_file(monkeypatch, tmp_path, capsys) -> None:
     assert json.loads(output_path.read_text(encoding="utf-8")) == payload
 
 
+def test_load_eval_cases_reads_case_file(tmp_path) -> None:
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "query": "Compare Cursor",
+                        "min_findings": 2,
+                        "min_matrix_rows": 3,
+                        "min_references": 4,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cases = eval_module.load_eval_cases(case_file)
+
+    assert cases == [
+        eval_module.EvalCase(
+            query="Compare Cursor",
+            min_findings=2,
+            min_matrix_rows=3,
+            min_references=4,
+        )
+    ]
+
+
+def test_main_uses_case_file(monkeypatch, tmp_path) -> None:
+    observed_cases: list[eval_module.EvalCase] = []
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(
+        json.dumps({"cases": [{"query": "Compare Cursor", "min_references": 4}]}),
+        encoding="utf-8",
+    )
+
+    def fake_build_eval_payload(cases=None, run_research_func=eval_module.run_research):
+        observed_cases.extend(cases)
+        return {
+            "cases": [],
+            "summary": {
+                "case_count": 0,
+                "average_score": 0,
+                "passed_count": 0,
+                "failed_count": 0,
+                "failed_rules": {},
+                "total_duration_ms": 0,
+                "all_critique_passed": True,
+                "total_findings": 0,
+                "total_competitive_matrix_rows": 0,
+                "total_references": 0,
+                "total_tool_calls": 0,
+                "total_llm_calls": 0,
+            },
+        }
+
+    monkeypatch.setattr(eval_module, "build_eval_payload", fake_build_eval_payload)
+
+    exit_code = eval_module.main(["--case-file", str(case_file)])
+
+    assert exit_code == 0
+    assert observed_cases == [
+        eval_module.EvalCase(query="Compare Cursor", min_references=4)
+    ]
+
+
+def test_main_returns_two_for_malformed_case_file(tmp_path, capsys) -> None:
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(json.dumps({"cases": [{"query": ""}]}), encoding="utf-8")
+
+    exit_code = eval_module.main(["--case-file", str(case_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "Eval config error:" in captured.err
+
+
+def test_main_returns_one_when_average_score_below_minimum(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 72,
+            "passed_count": 0,
+            "failed_count": 1,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": False,
+            "total_findings": 0,
+            "total_competitive_matrix_rows": 0,
+            "total_references": 0,
+            "total_tool_calls": 0,
+            "total_llm_calls": 0,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--min-score", "80"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: average score 72 < 80" in captured.err
+    assert '"average_score": 72' in captured.out
+
+
+def test_main_returns_one_when_any_case_fails(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 2,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 1,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": False,
+            "total_findings": 0,
+            "total_competitive_matrix_rows": 0,
+            "total_references": 0,
+            "total_tool_calls": 0,
+            "total_llm_calls": 0,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--fail-on-case-failure"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: 1 case(s) failed" in captured.err
+
+
+def test_main_writes_output_before_gate_failure(monkeypatch, tmp_path) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 72,
+            "passed_count": 0,
+            "failed_count": 1,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": False,
+            "total_findings": 0,
+            "total_competitive_matrix_rows": 0,
+            "total_references": 0,
+            "total_tool_calls": 0,
+            "total_llm_calls": 0,
+        },
+    }
+    output_path = tmp_path / "eval.json"
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--output", str(output_path), "--min-score", "80"])
+
+    assert exit_code == 1
+    assert json.loads(output_path.read_text(encoding="utf-8")) == payload
+
+
+def test_default_eval_case_file_loads_expected_cases() -> None:
+    case_path = eval_module.Path(__file__).parents[1] / "docs" / "evals" / "default.json"
+
+    cases = eval_module.load_eval_cases(case_path)
+
+    assert [case.query for case in cases] == [
+        "Compare Cursor, OpenCode, and GitHub Copilot",
+        "Analyze AI coding agents market positioning",
+        "Compare Claude Code, Codeium, and Windsurf",
+    ]
+    assert [case.min_findings for case in cases] == [1, 1, 1]
+    assert [case.min_matrix_rows for case in cases] == [1, 1, 1]
+    assert [case.min_references for case in cases] == [2, 2, 2]
+
+
 def test_pyproject_registers_eval_console_script() -> None:
     pyproject = (eval_module.Path(__file__).parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"

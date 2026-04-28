@@ -75,8 +75,11 @@ python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
 # Offline benchmark
 python scripts/benchmark_research.py --markdown
 
-# Offline eval bench with quality score
-insight-graph-eval --markdown --output reports/eval.md
+# Offline eval bench with the default case set
+insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
+
+# CI-ready eval gate
+insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
 
 # Offline validators
 python scripts/validate_sources.py report.md
