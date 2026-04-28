@@ -233,7 +233,8 @@ def test_cli_research_show_llm_log_appends_metadata_table(monkeypatch) -> None:
         "Input tokens | Output tokens | Total tokens | Error |"
     ) in result.output
     assert (
-        "| relevance | openai_compatible | relay-model | - | - | - | responses | true | 7 |  |  |  |  |"
+        "| relevance | openai_compatible | relay-model | - | - | - | responses | "
+        "true | 7 |  |  |  |  |"
         in result.output
     )
     assert (
