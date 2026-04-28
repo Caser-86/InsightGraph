@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.9 - 2026-04-28
+
+- Added safe LLM router decision metadata to routed Analyst and Reporter LLM call logs.
+- Added Router, Tier, and Reason columns to `--show-llm-log` while keeping prompt and completion content out of logs.
+- Included router metadata fields in JSON output for observability automation.
+
 ## v0.1.8 - 2026-04-28
 
 - Added opt-in internal LLM rules router with user-defined fast/default/strong model tiers.
