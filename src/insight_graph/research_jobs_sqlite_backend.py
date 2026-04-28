@@ -392,6 +392,84 @@ class SQLiteResearchJobsBackend:
             connection.commit()
         return self.get(job_id)
 
+    def _requeue_expired_running(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        now: str,
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE research_jobs
+            SET status = 'queued',
+                worker_id = NULL,
+                lease_expires_at = NULL,
+                heartbeat_at = NULL,
+                result_json = NULL,
+                error = NULL
+            WHERE status = 'running'
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at < ?
+            """,
+            (now,),
+        )
+
+    def claim_for_worker(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        now: str,
+        lease_expires_at: str,
+    ) -> ResearchJob | None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._requeue_expired_running(connection, now=now)
+            current = connection.execute(
+                "SELECT * FROM research_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            if current is None or current["status"] != "queued":
+                connection.rollback()
+                return None
+            started_at = current["started_at"] or now
+            connection.execute(
+                """
+                UPDATE research_jobs
+                SET status = 'running',
+                    started_at = ?,
+                    worker_id = ?,
+                    heartbeat_at = ?,
+                    lease_expires_at = ?,
+                    attempt_count = attempt_count + 1
+                WHERE id = ? AND status = 'queued'
+                """,
+                (started_at, worker_id, now, lease_expires_at, job_id),
+            )
+            connection.commit()
+        return self.get(job_id)
+
+    def heartbeat(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        now: str,
+        lease_expires_at: str,
+    ) -> bool:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE research_jobs
+                SET heartbeat_at = ?, lease_expires_at = ?
+                WHERE id = ? AND worker_id = ? AND status = 'running'
+                """,
+                (now, lease_expires_at, job_id, worker_id),
+            )
+            connection.commit()
+        return cursor.rowcount == 1
+
     def mark_running(self, job_id: str, *, started_at: str) -> ResearchJob | None:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -414,6 +492,41 @@ class SQLiteResearchJobsBackend:
                 (started_at, job_id),
             )
             connection.commit()
+        return self.get(job_id)
+
+    def mark_terminal_for_worker(
+        self,
+        job_id: str,
+        *,
+        worker_id: str,
+        status: str,
+        finished_at: str,
+        result: dict[str, Any] | None,
+        error: str | None,
+    ) -> ResearchJob | None:
+        if status not in TERMINAL_RESEARCH_JOB_STATUSES:
+            raise ValueError(f"Invalid terminal status: {status}")
+        result_json = json.dumps(result) if result is not None else None
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE research_jobs
+                SET status = ?,
+                    finished_at = ?,
+                    result_json = ?,
+                    error = ?,
+                    worker_id = NULL,
+                    lease_expires_at = NULL,
+                    heartbeat_at = NULL
+                WHERE id = ? AND worker_id = ? AND status = 'running'
+                """,
+                (status, finished_at, result_json, error, job_id, worker_id),
+            )
+            connection.commit()
+        if cursor.rowcount != 1:
+            return None
+        self.prune_finished()
         return self.get(job_id)
 
     def mark_terminal(

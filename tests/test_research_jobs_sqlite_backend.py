@@ -91,6 +91,288 @@ def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
     }.issubset(sqlite_columns(db_path, "research_jobs"))
 
 
+def sqlite_job_row(db_path, job_id: str):
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        return connection.execute(
+            "SELECT * FROM research_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+
+
+def test_sqlite_backend_claims_queued_job_for_worker(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Claim",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+
+    claimed = backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+
+    assert claimed is not None
+    assert claimed.status == "running"
+    assert claimed.started_at == "2026-04-28T10:00:01Z"
+    row = sqlite_job_row(db_path, "job-1")
+    assert row["worker_id"] == "worker-a"
+    assert row["heartbeat_at"] == "2026-04-28T10:00:01Z"
+    assert row["lease_expires_at"] == "2026-04-28T10:05:01Z"
+    assert row["attempt_count"] == 1
+
+
+def test_sqlite_backend_refuses_active_lease_from_another_worker(tmp_path) -> None:
+    backend = SQLiteResearchJobsBackend(tmp_path / "jobs.sqlite3")
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Claim",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    assert (
+        backend.claim_for_worker(
+            "job-1",
+            worker_id="worker-a",
+            now="2026-04-28T10:00:01Z",
+            lease_expires_at="2026-04-28T10:05:01Z",
+        )
+        is not None
+    )
+
+    assert (
+        backend.claim_for_worker(
+            "job-1",
+            worker_id="worker-b",
+            now="2026-04-28T10:01:00Z",
+            lease_expires_at="2026-04-28T10:06:00Z",
+        )
+        is None
+    )
+
+
+def test_sqlite_backend_heartbeat_extends_owned_lease(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Heartbeat",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+
+    assert (
+        backend.heartbeat(
+            "job-1",
+            worker_id="worker-a",
+            now="2026-04-28T10:01:01Z",
+            lease_expires_at="2026-04-28T10:06:01Z",
+        )
+        is True
+    )
+    row = sqlite_job_row(db_path, "job-1")
+    assert row["heartbeat_at"] == "2026-04-28T10:01:01Z"
+    assert row["lease_expires_at"] == "2026-04-28T10:06:01Z"
+
+
+def test_sqlite_backend_heartbeat_rejects_non_owner(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Heartbeat",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+
+    assert (
+        backend.heartbeat(
+            "job-1",
+            worker_id="worker-b",
+            now="2026-04-28T10:01:01Z",
+            lease_expires_at="2026-04-28T10:06:01Z",
+        )
+        is False
+    )
+    row = sqlite_job_row(db_path, "job-1")
+    assert row["worker_id"] == "worker-a"
+    assert row["heartbeat_at"] == "2026-04-28T10:00:01Z"
+
+
+def test_sqlite_backend_claim_requeues_expired_running_job(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Expired",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+
+    claimed = backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-b",
+        now="2026-04-28T10:05:02Z",
+        lease_expires_at="2026-04-28T10:10:02Z",
+    )
+
+    assert claimed is not None
+    assert claimed.status == "running"
+    assert claimed.started_at == "2026-04-28T10:00:01Z"
+    row = sqlite_job_row(db_path, "job-1")
+    assert row["worker_id"] == "worker-b"
+    assert row["attempt_count"] == 2
+
+
+def test_sqlite_backend_terminal_update_requires_owner(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Terminal",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+
+    assert (
+        backend.mark_terminal_for_worker(
+            "job-1",
+            worker_id="worker-b",
+            status="succeeded",
+            finished_at="2026-04-28T10:00:03Z",
+            result={"report_markdown": "# Wrong"},
+            error=None,
+        )
+        is None
+    )
+
+    updated = backend.mark_terminal_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        status="succeeded",
+        finished_at="2026-04-28T10:00:04Z",
+        result={"report_markdown": "# Right"},
+        error=None,
+    )
+
+    assert updated is not None
+    assert updated.status == "succeeded"
+    assert updated.result == {"report_markdown": "# Right"}
+    row = sqlite_job_row(db_path, "job-1")
+    assert row["worker_id"] is None
+    assert row["lease_expires_at"] is None
+    assert row["heartbeat_at"] is None
+
+
+def test_sqlite_backend_stale_terminal_does_not_overwrite_new_attempt(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-1",
+                query="Stale",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            )
+        ]
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-a",
+        now="2026-04-28T10:00:01Z",
+        lease_expires_at="2026-04-28T10:05:01Z",
+    )
+    backend.claim_for_worker(
+        "job-1",
+        worker_id="worker-b",
+        now="2026-04-28T10:05:02Z",
+        lease_expires_at="2026-04-28T10:10:02Z",
+    )
+
+    assert (
+        backend.mark_terminal_for_worker(
+            "job-1",
+            worker_id="worker-a",
+            status="succeeded",
+            finished_at="2026-04-28T10:05:03Z",
+            result={"report_markdown": "# Stale"},
+            error=None,
+        )
+        is None
+    )
+    current = backend.get("job-1")
+    assert current is not None
+    assert current.status == "running"
+
+
 def test_sqlite_backend_serializes_job_rows(tmp_path) -> None:
     backend = SQLiteResearchJobsBackend(tmp_path / "jobs.sqlite3")
     backend.initialize()
