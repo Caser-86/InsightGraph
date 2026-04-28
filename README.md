@@ -109,7 +109,8 @@ Dashboard:
 http://127.0.0.1:8000/dashboard
 ```
 
-Dashboard 是一个静态本地 UI，用于创建、轮询和查看 research jobs。如果配置了
+Dashboard 是一个静态本地 UI，用于创建、轮询和查看 research jobs，包含执行进度
+timeline、report、tool calls、LLM metadata 和 Markdown/HTML 下载。如果配置了
 `INSIGHT_GRAPH_API_KEY`，请先在 dashboard 的 API key 输入框填入同一个 key。
 
 ```bash
@@ -128,6 +129,10 @@ curl http://127.0.0.1:8000/research/jobs
 curl http://127.0.0.1:8000/research/jobs/summary
 
 curl http://127.0.0.1:8000/research/jobs/<job_id>
+
+curl http://127.0.0.1:8000/research/jobs/<job_id>/report.md
+
+curl http://127.0.0.1:8000/research/jobs/<job_id>/report.html
 
 curl -X POST http://127.0.0.1:8000/research/jobs/<job_id>/cancel
 

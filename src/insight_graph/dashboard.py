@@ -324,6 +324,52 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 
+    .progress-timeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 14px;
+    }
+
+    .progress-step {
+      border: 1px solid rgba(117, 229, 232, 0.14);
+      border-radius: 16px;
+      background: rgba(2, 10, 16, 0.42);
+      padding: 12px;
+      min-height: 86px;
+    }
+
+    .progress-step.completed { border-color: rgba(116, 246, 167, 0.45); }
+    .progress-step.active { border-color: var(--line-hot); box-shadow: 0 0 24px rgba(99, 242, 227, 0.1); }
+    .progress-step.failed { border-color: rgba(255, 107, 130, 0.54); }
+    .progress-step.skipped { opacity: 0.62; }
+
+    .progress-step span {
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .progress-step strong { display: block; margin-top: 8px; }
+
+    .progress-bar {
+      height: 8px;
+      border: 1px solid rgba(117, 229, 232, 0.14);
+      border-radius: 999px;
+      background: rgba(2, 10, 16, 0.58);
+      margin: 0 0 14px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      box-shadow: 0 0 22px rgba(99, 242, 227, 0.3);
+    }
+
     .overview-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -376,6 +422,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     @media (max-width: 1120px) {
       .grid, .workspace { grid-template-columns: 1fr; }
       .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .progress-timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .job-list { max-height: none; }
     }
 
@@ -384,6 +431,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       .topbar { align-items: flex-start; flex-direction: column; }
       .status-row { justify-content: flex-start; }
       .metric-grid, .overview-grid, .actions { grid-template-columns: 1fr; }
+      .progress-timeline { grid-template-columns: 1fr; }
       .panel { border-radius: 18px; }
     }
   </style>
@@ -611,6 +659,49 @@ _DASHBOARD_HTML = r"""<!doctype html>
       return `<pre>${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</pre>`;
     }
 
+    function renderProgressTimeline(detail) {
+      const percent = Number(detail?.progress_percent || 0);
+      const steps = detail?.progress_steps || [];
+      if (!steps.length) return '';
+      return `
+        <div id="progress-timeline" class="progress-timeline">
+          ${steps.map((step) => `
+            <div class="progress-step ${escapeHtml(step.status)}">
+              <span>${escapeHtml(step.status)}</span>
+              <strong>${escapeHtml(step.label)}</strong>
+            </div>`).join('')}
+        </div>
+        <div class="progress-bar" aria-label="Job progress">
+          <div class="progress-bar-fill" style="width: ${Math.max(0, Math.min(100, percent))}%"></div>
+        </div>`;
+    }
+
+    async function downloadReport(format) {
+      if (!state.selectedJobId) return;
+      const extension = format === 'html' ? 'html' : 'md';
+      const response = await fetch(
+        `/research/jobs/${encodeURIComponent(state.selectedJobId)}/report.${extension}`,
+        { headers: headers() },
+      );
+      if (!response.ok) {
+        let detail = response.statusText;
+        try {
+          const payload = await response.json();
+          detail = payload.detail || detail;
+        } catch (_) {}
+        throw new Error(detail);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${state.selectedJobId}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
     function renderOverview(detail) {
       if (!detail) return '<div class="empty">Select a job to inspect.</div>';
       const result = detail.result || {};
@@ -620,12 +711,17 @@ _DASHBOARD_HTML = r"""<!doctype html>
           <button id="cancel-job" class="btn danger" type="button">Cancel queued job</button>
           <button id="retry-job" class="btn ghost" type="button">Retry failed/cancelled</button>
         </div>
+        ${renderProgressTimeline(detail)}
         <div class="overview-grid">
           <div class="info-card"><span>Status</span><strong>${escapeHtml(detail.status)}</strong></div>
+          <div class="info-card"><span>Stage</span><strong>${escapeHtml(detail.progress_stage || 'unknown')}</strong></div>
           <div class="info-card"><span>Job ID</span><strong>${escapeHtml(detail.job_id)}</strong></div>
           <div class="info-card"><span>Created</span><strong>${escapeHtml(detail.created_at)}</strong></div>
           <div class="info-card"><span>Started</span><strong>${escapeHtml(detail.started_at || 'not started')}</strong></div>
           <div class="info-card"><span>Finished</span><strong>${escapeHtml(detail.finished_at || 'not finished')}</strong></div>
+          <div class="info-card"><span>Runtime</span><strong>${escapeHtml(detail.runtime_seconds || 0)}s</strong></div>
+          <div class="info-card"><span>Tools</span><strong>${escapeHtml(detail.tool_call_count || 0)}</strong></div>
+          <div class="info-card"><span>LLM Calls</span><strong>${escapeHtml(detail.llm_call_count || 0)}</strong></div>
           <div class="info-card"><span>Iterations</span><strong>${escapeHtml(result.iterations || 0)}</strong></div>
           <div class="info-card"><span>Critic</span><strong>${escapeHtml(critique.passed === false ? 'needs review' : 'passed/unknown')}</strong></div>
           <div class="info-card"><span>Error</span><strong>${escapeHtml(detail.error || 'none')}</strong></div>
@@ -650,8 +746,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
       const result = detail?.result || {};
       if (state.activeTab === 'overview') els.reportPanel.innerHTML = renderOverview(detail);
       if (state.activeTab === 'report') {
+        const canDownload = result.report_markdown ? '' : 'disabled';
         els.reportPanel.innerHTML = result.report_markdown
-          ? `<article class="markdown">${renderMarkdown(result.report_markdown)}</article>`
+          ? `<div class="detail-actions">
+              <button id="download-md" class="btn ghost" type="button" ${canDownload}>Download Markdown</button>
+              <button id="download-html" class="btn ghost" type="button" ${canDownload}>Download HTML</button>
+            </div>
+            <article class="markdown">${renderMarkdown(result.report_markdown)}</article>`
           : '<div class="empty">Report will appear after the job succeeds.</div>';
       }
       if (state.activeTab === 'findings') els.reportPanel.innerHTML = renderFindings(result);
@@ -762,6 +863,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
     els.reportPanel.addEventListener('click', (event) => {
       if (event.target.id === 'cancel-job') cancelSelected().catch((error) => setMessage(error.message, 'error'));
       if (event.target.id === 'retry-job') retrySelected().catch((error) => setMessage(error.message, 'error'));
+      if (event.target.id === 'download-md') downloadReport('md').catch((error) => setMessage(error.message, 'error'));
+      if (event.target.id === 'download-html') downloadReport('html').catch((error) => setMessage(error.message, 'error'));
     });
 
     refresh();

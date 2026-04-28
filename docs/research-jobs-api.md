@@ -10,6 +10,8 @@ If `INSIGHT_GRAPH_API_KEY` is configured, all research job endpoints require `Au
 - `GET /research/jobs` lists retained jobs newest first.
 - `GET /research/jobs/summary` returns status counts and active queued/running jobs.
 - `GET /research/jobs/{job_id}` returns job detail.
+- `GET /research/jobs/{job_id}/report.md` downloads a completed Markdown report.
+- `GET /research/jobs/{job_id}/report.html` downloads an escaped HTML report.
 - `POST /research/jobs/{job_id}/cancel` cancels a queued job.
 - `POST /research/jobs/{job_id}/retry` creates a new queued job from a failed or cancelled job.
 
@@ -120,11 +122,28 @@ curl http://127.0.0.1:8000/research/jobs/job-123
 - `succeeded` includes `result`.
 - `failed` includes safe `error` only.
 - `cancelled` includes `finished_at`.
+- Detail responses include derived progress metadata: `progress_stage`, `progress_percent`, `progress_steps`, `runtime_seconds`, `tool_call_count`, and `llm_call_count`.
+- Progress is derived from stored job state and result logs; it does not change the storage schema.
 
 Unknown jobs return `404`:
 
 ```json
 {"detail":"Research job not found."}
+```
+
+## Report export
+
+```bash
+curl http://127.0.0.1:8000/research/jobs/job-123/report.md
+curl http://127.0.0.1:8000/research/jobs/job-123/report.html
+```
+
+Report export endpoints require the same API key headers as other research job
+endpoints when `INSIGHT_GRAPH_API_KEY` is configured. They return completed report
+content only. Jobs without an available report return `409`:
+
+```json
+{"detail":"Research job report is not available."}
 ```
 
 ## Cancel

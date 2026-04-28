@@ -204,6 +204,22 @@ def require_research_job_record(job_id: str) -> jobs_module.ResearchJob:
     return job
 
 
+def without_progress_fields(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            "progress_stage",
+            "progress_percent",
+            "progress_steps",
+            "runtime_seconds",
+            "tool_call_count",
+            "llm_call_count",
+        }
+    }
+
+
 def test_health_returns_ok() -> None:
     client = TestClient(api_module.app)
 
@@ -236,6 +252,11 @@ def test_dashboard_returns_html() -> None:
     assert "id=\"query-input\"" in response.text
     assert "id=\"job-list\"" in response.text
     assert "id=\"report-panel\"" in response.text
+    assert "progress-timeline" in response.text
+    assert "download-md" in response.text
+    assert "download-html" in response.text
+    assert "renderProgressTimeline" in response.text
+    assert "downloadReport" in response.text
     assert "'/research/jobs'" in response.text
     assert "'/research/jobs/summary'" in response.text
     assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text
@@ -422,6 +443,18 @@ def test_research_job_detail_rejects_missing_api_key_when_configured(monkeypatch
     assert response.json() == {"detail": "Invalid or missing API key."}
 
 
+def test_research_job_report_export_rejects_missing_api_key_when_configured(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/job-123/report.md")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
 def test_research_job_cancel_rejects_missing_api_key_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
     client = TestClient(api_module.app)
@@ -459,6 +492,8 @@ def test_module_level_app_remains_configured() -> None:
     assert "/health" in route_paths
     assert "/research/jobs" in route_paths
     assert "/research/jobs/{job_id}" in route_paths
+    assert "/research/jobs/{job_id}/report.md" in route_paths
+    assert "/research/jobs/{job_id}/report.html" in route_paths
 
 
 def test_current_utc_timestamp_uses_z_suffix() -> None:
@@ -1080,6 +1115,138 @@ def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
     assert job_response.json()["status"] == "succeeded"
 
 
+def test_get_research_job_includes_progress_metadata_for_queued_job() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="queued-job",
+        query="Queued progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+
+    response = TestClient(api_module.app).get("/research/jobs/queued-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "queued"
+    assert payload["progress_percent"] == 0
+    assert payload["runtime_seconds"] == 0
+    assert payload["tool_call_count"] == 0
+    assert payload["llm_call_count"] == 0
+    assert payload["progress_steps"] == [
+        {"id": "planner", "label": "Planner", "status": "pending"},
+        {"id": "collector", "label": "Collector", "status": "pending"},
+        {"id": "analyst", "label": "Analyst", "status": "pending"},
+        {"id": "critic", "label": "Critic", "status": "pending"},
+        {"id": "reporter", "label": "Reporter", "status": "pending"},
+    ]
+
+
+def test_get_research_job_includes_progress_metadata_for_running_job() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="running-job",
+        query="Running progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        status="running",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+
+    response = TestClient(api_module.app).get("/research/jobs/running-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "planner"
+    assert payload["progress_percent"] == 20
+    assert payload["runtime_seconds"] == 0
+    assert payload["progress_steps"][0] == {
+        "id": "planner",
+        "label": "Planner",
+        "status": "active",
+    }
+
+
+def test_get_research_job_includes_progress_metadata_for_succeeded_job() -> None:
+    result = api_module._build_research_json_payload(make_api_state("Succeeded progress"))
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="succeeded-job",
+        query="Succeeded progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        finished_at="2026-04-28T10:00:17Z",
+        status="succeeded",
+        result=result,
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+
+    response = TestClient(api_module.app).get("/research/jobs/succeeded-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "completed"
+    assert payload["progress_percent"] == 100
+    assert payload["runtime_seconds"] == 12
+    assert payload["tool_call_count"] == 1
+    assert payload["llm_call_count"] == 1
+    assert {step["status"] for step in payload["progress_steps"]} == {"completed"}
+
+
+def test_get_research_job_includes_progress_metadata_for_failed_job() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="failed-job",
+        query="Failed progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        finished_at="2026-04-28T10:00:08Z",
+        status="failed",
+        error="Research workflow failed.",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+
+    response = TestClient(api_module.app).get("/research/jobs/failed-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "failed"
+    assert payload["progress_percent"] == 100
+    assert payload["runtime_seconds"] == 3
+    assert payload["progress_steps"][0]["status"] == "failed"
+
+
+def test_get_research_job_includes_progress_metadata_for_cancelled_job() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="cancelled-job",
+        query="Cancelled progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        finished_at="2026-04-28T10:00:04Z",
+        status="cancelled",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+
+    response = TestClient(api_module.app).get("/research/jobs/cancelled-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "cancelled"
+    assert payload["progress_percent"] == 100
+    assert payload["runtime_seconds"] == 4
+    assert {step["status"] for step in payload["progress_steps"]} == {"skipped"}
+
+
 def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
     fake_executor = FakeExecutor()
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
@@ -1101,7 +1268,7 @@ def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
         "status": "queued",
         "created_at": "2026-04-27T10:00:00Z",
     }
-    assert client.get(f"/research/jobs/{job_id}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{job_id}").json()) == {
         "job_id": job_id,
         "status": "queued",
         "created_at": "2026-04-27T10:00:00Z",
@@ -1137,19 +1304,19 @@ def test_research_job_detail_includes_queue_position_for_queued_jobs(
         started_at="2026-04-27T09:00:03Z",
     )
 
-    assert client.get(f"/research/jobs/{first}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{first}").json()) == {
         "job_id": first,
         "status": "queued",
         "created_at": "2026-04-27T09:00:00Z",
         "queue_position": 1,
     }
-    assert client.get(f"/research/jobs/{running}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{running}").json()) == {
         "job_id": running,
         "status": "running",
         "created_at": "2026-04-27T09:00:01Z",
         "started_at": "2026-04-27T09:00:03Z",
     }
-    assert client.get(f"/research/jobs/{third}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{third}").json()) == {
         "job_id": third,
         "status": "queued",
         "created_at": "2026-04-27T09:00:02Z",
@@ -1188,7 +1355,7 @@ def test_get_research_job_returns_success_result(monkeypatch) -> None:
 
     queued_response = client.get(f"/research/jobs/{job_id}")
     assert queued_response.status_code == 200
-    assert queued_response.json() == {
+    assert without_progress_fields(queued_response.json()) == {
         "job_id": job_id,
         "status": "queued",
         "created_at": "2026-04-27T10:00:00Z",
@@ -1237,7 +1404,7 @@ def test_get_research_job_returns_safe_failure(monkeypatch) -> None:
     response = client.get(f"/research/jobs/{job_id}")
 
     assert response.status_code == 200
-    assert response.json() == {
+    assert without_progress_fields(response.json()) == {
         "job_id": job_id,
         "status": "failed",
         "created_at": "2026-04-27T11:00:00Z",
@@ -1253,6 +1420,86 @@ def test_get_research_job_returns_404_for_unknown_job() -> None:
     client = TestClient(api_module.app)
 
     response = client.get("/research/jobs/missing")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research job not found."}
+
+
+def test_research_job_markdown_report_export_returns_completed_report() -> None:
+    result = api_module._build_research_json_payload(make_api_state("Export report"))
+    jobs_module.reset_research_jobs_state()
+    jobs_module.seed_research_job(
+        jobs_module.ResearchJob(
+            id="report-job",
+            query="Export report",
+            preset=api_module.ResearchPreset.offline,
+            created_order=1,
+            created_at="2026-04-28T10:00:00Z",
+            started_at="2026-04-28T10:00:01Z",
+            finished_at="2026-04-28T10:00:02Z",
+            status="succeeded",
+            result=result,
+        ),
+        next_job_sequence=1,
+    )
+
+    response = TestClient(api_module.app).get("/research/jobs/report-job/report.md")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.text == "# InsightGraph Research Report\n"
+
+
+def test_research_job_html_report_export_escapes_report_content() -> None:
+    jobs_module.reset_research_jobs_state()
+    jobs_module.seed_research_job(
+        jobs_module.ResearchJob(
+            id="html-report-job",
+            query="HTML report",
+            preset=api_module.ResearchPreset.offline,
+            created_order=1,
+            created_at="2026-04-28T10:00:00Z",
+            started_at="2026-04-28T10:00:01Z",
+            finished_at="2026-04-28T10:00:02Z",
+            status="succeeded",
+            result={"report_markdown": "# Safe\n\n<script>alert('x')</script>\n"},
+        ),
+        next_job_sequence=1,
+    )
+
+    response = TestClient(api_module.app).get("/research/jobs/html-report-job/report.html")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<h1>Safe</h1>" in response.text
+    assert "<script>alert" not in response.text
+    assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" in response.text
+
+
+def test_research_job_report_export_rejects_jobs_without_report() -> None:
+    jobs_module.reset_research_jobs_state()
+    jobs_module.seed_research_job(
+        jobs_module.ResearchJob(
+            id="queued-report-job",
+            query="No report",
+            preset=api_module.ResearchPreset.offline,
+            created_order=1,
+            created_at="2026-04-28T10:00:00Z",
+        ),
+        next_job_sequence=1,
+    )
+
+    response = TestClient(api_module.app).get("/research/jobs/queued-report-job/report.md")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Research job report is not available."}
+
+
+def test_research_job_report_export_returns_404_for_unknown_job() -> None:
+    jobs_module.reset_research_jobs_state()
+
+    response = TestClient(api_module.app).get("/research/jobs/missing/report.md")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Research job not found."}
@@ -1289,7 +1536,7 @@ def test_cancel_research_job_cancels_queued_job(monkeypatch) -> None:
         "created_at": "2026-04-27T12:00:00Z",
         "finished_at": "2026-04-27T12:00:01Z",
     }
-    assert client.get(f"/research/jobs/{job_id}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{job_id}").json()) == {
         "job_id": job_id,
         "status": "cancelled",
         "created_at": "2026-04-27T12:00:00Z",
@@ -2150,7 +2397,7 @@ def test_create_research_job_prunes_oldest_failed_jobs(monkeypatch) -> None:
     second = client.post("/research/jobs", json={"query": "Second"}).json()["job_id"]
 
     assert client.get(f"/research/jobs/{first}").status_code == 404
-    assert client.get(f"/research/jobs/{second}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{second}").json()) == {
         "job_id": second,
         "status": "failed",
         "created_at": "2026-04-27T14:00:03Z",
@@ -2182,7 +2429,7 @@ def test_create_research_job_prunes_oldest_cancelled_jobs(monkeypatch) -> None:
     assert client.post(f"/research/jobs/{second}/cancel").status_code == 200
 
     assert client.get(f"/research/jobs/{first}").status_code == 404
-    assert client.get(f"/research/jobs/{second}").json() == {
+    assert without_progress_fields(client.get(f"/research/jobs/{second}").json()) == {
         "job_id": second,
         "status": "cancelled",
         "created_at": "2026-04-27T15:00:02Z",

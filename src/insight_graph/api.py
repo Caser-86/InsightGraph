@@ -4,11 +4,12 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from html import escape as html_escape
 from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
@@ -119,6 +120,12 @@ class ResearchJobDetailResponse(BaseModel):
     started_at: str | SkipJsonSchema[None] = None
     finished_at: str | SkipJsonSchema[None] = None
     queue_position: int | SkipJsonSchema[None] = None
+    progress_stage: str | SkipJsonSchema[None] = None
+    progress_percent: int | SkipJsonSchema[None] = None
+    progress_steps: list[dict[str, str]] | SkipJsonSchema[None] = None
+    runtime_seconds: int | SkipJsonSchema[None] = None
+    tool_call_count: int | SkipJsonSchema[None] = None
+    llm_call_count: int | SkipJsonSchema[None] = None
     result: dict[str, Any] | SkipJsonSchema[None] = None
     error: str | SkipJsonSchema[None] = None
 
@@ -233,6 +240,22 @@ _RESEARCH_JOB_CANCEL_EXAMPLE = {
     "created_at": "2026-04-27T10:00:00Z",
     "finished_at": "2026-04-27T10:00:10Z",
 }
+_RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE = {
+    "description": "Research job report is not available.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Research job report is not available."}
+        }
+    },
+}
+_PROGRESS_STEP_LABELS = {
+    "planner": "Planner",
+    "collector": "Collector",
+    "analyst": "Analyst",
+    "critic": "Critic",
+    "reporter": "Reporter",
+}
+_PROGRESS_STEP_IDS = tuple(_PROGRESS_STEP_LABELS)
 
 
 @contextmanager
@@ -268,9 +291,75 @@ def _current_utc_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _parse_utc_timestamp(timestamp: str) -> datetime:
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
 def _add_seconds_to_timestamp(timestamp: str, seconds: int) -> str:
-    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    parsed = _parse_utc_timestamp(timestamp)
     return (parsed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+
+def _elapsed_seconds(started_at: str, finished_at: str) -> int:
+    elapsed = _parse_utc_timestamp(finished_at) - _parse_utc_timestamp(started_at)
+    return max(0, int(elapsed.total_seconds()))
+
+
+def _progress_steps(status_by_id: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {
+            "id": step_id,
+            "label": _PROGRESS_STEP_LABELS[step_id],
+            "status": status_by_id.get(step_id, "pending"),
+        }
+        for step_id in _PROGRESS_STEP_IDS
+    ]
+
+
+def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
+    status = job["status"]
+    result = job.get("result") or {}
+    if status == "queued":
+        progress_stage = "queued"
+        progress_percent = 0
+        step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+    elif status == "running":
+        progress_stage = "planner"
+        progress_percent = 20
+        step_statuses = {"planner": "active"}
+    elif status == "succeeded":
+        progress_stage = "completed"
+        progress_percent = 100
+        step_statuses = {step_id: "completed" for step_id in _PROGRESS_STEP_IDS}
+    elif status == "failed":
+        progress_stage = "failed"
+        progress_percent = 100
+        step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+        step_statuses["planner"] = "failed"
+    elif status == "cancelled":
+        progress_stage = "cancelled"
+        progress_percent = 100
+        step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+    else:
+        progress_stage = status
+        progress_percent = 0
+        step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+
+    runtime_start = job.get("started_at") or job.get("created_at")
+    runtime_end = job.get("finished_at")
+    runtime_seconds = _elapsed_seconds(runtime_start, runtime_end) if runtime_end else 0
+    return {
+        "progress_stage": progress_stage,
+        "progress_percent": progress_percent,
+        "progress_steps": _progress_steps(step_statuses),
+        "runtime_seconds": runtime_seconds,
+        "tool_call_count": len(result.get("tool_call_log") or []),
+        "llm_call_count": len(result.get("llm_call_log") or []),
+    }
+
+
+def _with_research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
+    return {**job, **_research_job_progress(job)}
 
 
 def _lease_expires_at(started_at: str) -> str:
@@ -491,6 +580,107 @@ def retry_research_job(job_id: str) -> dict[str, str]:
     return response
 
 
+def _research_job_report_markdown(job_id: str) -> str:
+    job = get_research_job_record(job_id)
+    result = job.get("result") or {}
+    report_markdown = result.get("report_markdown") if isinstance(result, dict) else None
+    if not isinstance(report_markdown, str) or not report_markdown.strip():
+        raise HTTPException(
+            status_code=409,
+            detail="Research job report is not available.",
+        )
+    return report_markdown
+
+
+def _markdown_report_to_html(markdown: str) -> str:
+    lines = markdown.splitlines()
+    html_lines = [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '  <meta charset="utf-8">',
+        "  <title>InsightGraph Research Report</title>",
+        "</head>",
+        "<body>",
+        "<article>",
+    ]
+    in_list = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            continue
+        if stripped.startswith("# "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h1>{html_escape(stripped[2:])}</h1>")
+        elif stripped.startswith("## "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h2>{html_escape(stripped[3:])}</h2>")
+        elif stripped.startswith("### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h3>{html_escape(stripped[4:])}</h3>")
+        elif stripped.startswith("- "):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            html_lines.append(f"<li>{html_escape(stripped[2:])}</li>")
+        else:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<p>{html_escape(stripped)}</p>")
+    if in_list:
+        html_lines.append("</ul>")
+    html_lines.extend(["</article>", "</body>", "</html>"])
+    return "\n".join(html_lines) + "\n"
+
+
+@router.get(
+    "/research/jobs/{job_id}/report.md",
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Download research job Markdown report",
+    description="Download the Markdown report for a succeeded research job.",
+    responses={
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE,
+    },
+)
+def download_research_job_markdown_report(job_id: str) -> PlainTextResponse:
+    return PlainTextResponse(
+        _research_job_report_markdown(job_id),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{job_id}.md"'},
+    )
+
+
+@router.get(
+    "/research/jobs/{job_id}/report.html",
+    response_class=HTMLResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Download research job HTML report",
+    description="Download an escaped HTML rendering for a succeeded research job report.",
+    responses={
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE,
+    },
+)
+def download_research_job_html_report(job_id: str) -> HTMLResponse:
+    return HTMLResponse(
+        _markdown_report_to_html(_research_job_report_markdown(job_id)),
+        headers={"Content-Disposition": f'attachment; filename="{job_id}.html"'},
+    )
+
+
 @router.get(
     "/research/jobs/{job_id}",
     response_model=ResearchJobDetailResponse,
@@ -508,7 +698,7 @@ def retry_research_job(job_id: str) -> dict[str, str]:
     },
 )
 def get_research_job(job_id: str) -> dict[str, Any]:
-    return get_research_job_record(job_id)
+    return _with_research_job_progress(get_research_job_record(job_id))
 
 
 def _run_research_job(job_id: str) -> None:

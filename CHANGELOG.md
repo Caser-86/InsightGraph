@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.12 - 2026-04-28
+
+- Added derived research job progress metadata for dashboard timelines.
+- Added protected Markdown and HTML report export endpoints for completed jobs.
+- Added dashboard timeline and authenticated report download controls.
+
 ## v0.1.11 - 2026-04-28
 
 - Added a static dark-mode dashboard at `GET /dashboard` for creating and polling research jobs.
