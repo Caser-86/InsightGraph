@@ -26,7 +26,7 @@
 - Backend-owned helpers include active-job counting, terminal-job pruning, snapshot/restore, job copy reads, explicit updates, seeding, clearing, and sequence tracking.
 - The backend boundary is an internal seam, not a public storage plugin API.
 - SQLite storage is optional and must preserve the same public repository contract as the in-memory backend.
-- SQLite does not add retry/resume, worker leasing, distributed locks, or public API changes.
+- SQLite adds internal worker leasing without public API response changes.
 - Runtime backend selection is explicit via `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND`; SQLite also requires `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH`.
 - API handlers and tests should prefer the public service helpers instead of mutating module globals directly.
 - Implementation links: [#2](https://github.com/Caser-86/InsightGraph/issues/2), [#3](https://github.com/Caser-86/InsightGraph/issues/3), [`c8d3853`](https://github.com/Caser-86/InsightGraph/commit/c8d385386b6b9f5ca0d7a8cf65d52d7a11a76f08), [`9985245`](https://github.com/Caser-86/InsightGraph/commit/99852450a22c65aa8dee7f419a61a3b1f0275866).
@@ -39,6 +39,19 @@
 - Retention currently prunes oldest terminal jobs only through backend pruning helpers.
 - `queued` and `running` jobs are not pruned by terminal-job retention.
 - The current implementation is single-process. Multi-process coordination is not part of the MVP contract.
+
+## SQLite worker leasing
+
+When the SQLite backend is selected, background execution uses internal worker leases.
+
+- Workers claim queued jobs before running workflows.
+- Claiming sets internal lease metadata and moves the job to `running`.
+- Expired `running` jobs are requeued on later claim attempts.
+- Heartbeats extend leases while workflows run.
+- Terminal writes are accepted only from the worker that owns the lease.
+- Lease metadata is internal and is not exposed by API responses.
+
+The in-memory backend keeps its existing single-process behavior and does not simulate leases.
 
 ## Persistence and rollback contract
 
@@ -61,9 +74,8 @@ Required backend capabilities:
 - Rollback or equivalent transactional behavior for create/cancel failures.
 - Safe error shaping at API boundaries.
 
-Out of scope until storage abstraction exists:
-- Job retry/resume.
-- Multi-process worker coordination.
-- Distributed locks.
+Out of scope:
+- Automatic job resume beyond SQLite expired-lease requeue.
+- Distributed locks outside SQLite row updates.
 - Per-user quotas or auth-aware rate limits.
-- SQLite/Postgres-backed storage.
+- Postgres-backed storage.

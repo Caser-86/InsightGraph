@@ -12,6 +12,7 @@
 - Done: rollback behavior documented for create/cancel/persist failures.
 - Done: storage interface design and plan saved under `docs/superpowers/`.
 - Done: implemented backend boundary documented with service/backend responsibilities and implementation links.
+- Done: SQLite worker leasing coordinates multi-process job execution and requeues expired running jobs.
 
 3. Keep API docs aligned with runtime behavior
 - Done: OpenAPI examples aligned with queued/running/terminal job states.
@@ -26,5 +27,4 @@
 ## Deferred work
 
 - Add job retry/resume semantics only after persistence contract is stable.
-- Add multi-process job coordination only after storage abstraction exists.
 - Add auth/rate limits only when API moves beyond local MVP usage.
