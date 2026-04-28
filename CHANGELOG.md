@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.7 - 2026-04-28
+
+- Added SQLite worker leasing for research jobs to coordinate multi-process execution.
+- Requeued expired running SQLite jobs for later workers to claim.
+- Added lease heartbeat and ownership-aware terminal writes so stale workers cannot overwrite newer attempts.
+- Documented internal SQLite leasing semantics and updated roadmap status.
+
 ## v0.1.6 - 2026-04-28
 
 - Added manual retry for failed or cancelled research jobs.
