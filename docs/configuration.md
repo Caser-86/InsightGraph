@@ -142,7 +142,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 Routing is deterministic and does not call a classifier model. Reporter uses the strong tier. Analyst uses the default tier unless the prompt exceeds the strong threshold. Default-purpose short prompts can use the fast tier.
 
-When routing is enabled, each live LLM call record includes safe router metadata in `llm_call_log`: `router`, `router_tier`, `router_reason`, and `router_message_chars`. The log stores only aggregate prompt character count, not prompt text or completions. `--show-llm-log` displays router, tier, and reason columns; JSON output includes all four fields.
+When routing is enabled, routed Analyst and Reporter LLM call records include safe router metadata in `llm_call_log`: `router`, `router_tier`, `router_reason`, and `router_message_chars`. The log stores only aggregate prompt character count, not prompt text or completions. `--show-llm-log` displays router, tier, and reason columns; JSON output includes all four fields.
 
 LiteLLM Proxy can be used without adding a Python dependency by pointing `INSIGHT_GRAPH_LLM_BASE_URL` at the proxy and using proxy model aliases as tier names:
 
@@ -191,7 +191,7 @@ Use `--show-llm-log` to append the in-memory LLM call metadata after the Markdow
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm --show-llm-log
 ```
 
-The appended table is opt-in and contains only stage, provider, model, wire API when available, success, duration, token counts when available, and sanitized error metadata.
+The appended table is opt-in and contains only stage, provider, model, router, tier, reason, wire API when available, success, duration, token counts when available, and sanitized error metadata.
 
 Use `--output-json` when scripts need a structured summary instead of Markdown:
 
