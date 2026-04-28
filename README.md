@@ -10,7 +10,7 @@
 |------|------|
 | LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
 | CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
-| API | 已实现 `GET /health`、同步 `POST /research`、异步 research jobs、手动 retry、可选 JSON/SQLite job metadata storage |
+| API | 已实现 `GET /health`、同步 `POST /research`、异步 research jobs、`GET /dashboard`、手动 retry、可选 JSON/SQLite job metadata storage |
 | 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider |
 | GitHub evidence | 默认 deterministic/offline；可 opt-in live GitHub repository search provider |
 | 文档 evidence | 支持 cwd 内 TXT/Markdown/HTML/PDF、本地 chunking、JSON lexical query ranking |
@@ -102,6 +102,15 @@ docs/demo.md
 python -m pip install "uvicorn[standard]"
 uvicorn insight_graph.api:app --reload
 ```
+
+Dashboard:
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+Dashboard 是一个静态本地 UI，用于创建、轮询和查看 research jobs。如果配置了
+`INSIGHT_GRAPH_API_KEY`，请先在 dashboard 的 API key 输入框填入同一个 key。
 
 ```bash
 curl -X POST http://127.0.0.1:8000/research \

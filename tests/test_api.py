@@ -223,6 +223,34 @@ def test_health_remains_public_when_api_key_is_configured(monkeypatch) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_dashboard_returns_html() -> None:
+    client = TestClient(api_module.app)
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "InsightGraph Dashboard" in response.text
+    assert "data-insightgraph-dashboard" in response.text
+    assert "id=\"dashboard-root\"" in response.text
+    assert "id=\"query-input\"" in response.text
+    assert "id=\"job-list\"" in response.text
+    assert "id=\"report-panel\"" in response.text
+    assert "'/research/jobs'" in response.text
+    assert "'/research/jobs/summary'" in response.text
+    assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text
+
+
+def test_dashboard_remains_public_when_api_key_is_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert "InsightGraph Dashboard" in response.text
+
+
 def test_research_allows_requests_when_api_key_is_unset(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_API_KEY", raising=False)
 
@@ -427,6 +455,7 @@ def test_create_app_returns_configured_fastapi_app() -> None:
 def test_module_level_app_remains_configured() -> None:
     route_paths = {route.path for route in api_module.app.routes}
 
+    assert "/dashboard" in route_paths
     assert "/health" in route_paths
     assert "/research/jobs" in route_paths
     assert "/research/jobs/{job_id}" in route_paths

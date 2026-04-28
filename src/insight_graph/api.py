@@ -8,6 +8,7 @@ from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
@@ -16,6 +17,7 @@ from insight_graph.cli import (
     ResearchPreset,
     _build_research_json_payload,
 )
+from insight_graph.dashboard import dashboard_html
 from insight_graph.graph import run_research
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
@@ -255,6 +257,11 @@ def _research_preset_environment(preset: ResearchPreset) -> Iterator[None]:
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard() -> HTMLResponse:
+    return HTMLResponse(dashboard_html())
 
 
 def _current_utc_timestamp() -> str:

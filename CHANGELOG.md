@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.11 - 2026-04-28
+
+- Added a static dark-mode dashboard at `GET /dashboard` for creating and polling research jobs.
+- Added dashboard views for job metrics, report output, findings, tool calls, LLM metadata, and raw job JSON.
+- Documented dashboard usage for local demos and API-key-protected servers.
+
 ## v0.1.10 - 2026-04-28
 
 - Added opt-in shared API key authentication with `INSIGHT_GRAPH_API_KEY`.

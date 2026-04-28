@@ -26,6 +26,26 @@ Use JSON output when you want to inspect the API-aligned payload shape:
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
 ```
 
+## Dashboard Demo
+
+Start the API server:
+
+```bash
+python -m pip install "uvicorn[standard]"
+uvicorn insight_graph.api:app --reload
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+Submit an offline query from the dashboard, then watch the job list, status cards,
+report, tool calls, and LLM metadata tabs update as the job completes. If
+`INSIGHT_GRAPH_API_KEY` is set, enter that key in the dashboard before using job
+actions.
+
 ## Live LLM Demo
 
 Configure an OpenAI-compatible endpoint first:
