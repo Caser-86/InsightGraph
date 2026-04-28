@@ -173,12 +173,13 @@ def _analyze_evidence_with_llm(
             build_llm_call_record(
                 stage="analyst",
                 provider="llm",
-                model=config.model,
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
                 success=False,
                 duration_ms=duration_ms,
                 wire_api=wire_api,
                 error=exc,
                 secrets=[config.api_key],
+                llm_client=llm_client,
             )
         )
         raise ValueError("LLM analyst failed.") from exc
@@ -200,7 +201,7 @@ def _analyze_evidence_with_llm(
             build_llm_call_record(
                 stage="analyst",
                 provider="llm",
-                model=config.model,
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
                 success=False,
                 duration_ms=duration_ms,
                 wire_api=wire_api,
@@ -209,6 +210,7 @@ def _analyze_evidence_with_llm(
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 total_tokens=result.total_tokens,
+                llm_client=llm_client,
             )
         )
         raise
@@ -217,7 +219,7 @@ def _analyze_evidence_with_llm(
         build_llm_call_record(
             stage="analyst",
             provider="llm",
-            model=config.model,
+            model=getattr(getattr(llm_client, "config", None), "model", config.model),
             success=True,
             duration_ms=duration_ms,
             wire_api=wire_api,
@@ -225,6 +227,7 @@ def _analyze_evidence_with_llm(
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             total_tokens=result.total_tokens,
+            llm_client=llm_client,
         )
     )
     return state
