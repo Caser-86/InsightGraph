@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.15 - 2026-04-28
 
 - Added `insight-graph-eval` for deterministic offline quality scoring.
 
