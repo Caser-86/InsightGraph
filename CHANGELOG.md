@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.8 - 2026-04-28
+
+- Added opt-in internal LLM rules router with user-defined fast/default/strong model tiers.
+- Routed analyst and reporter LLM client creation with purpose and prompt-size context.
+- Documented LiteLLM Proxy usage through the existing OpenAI-compatible base URL path.
+
 ## v0.1.7 - 2026-04-28
 
 - Added SQLite worker leasing for research jobs to coordinate multi-process execution.
