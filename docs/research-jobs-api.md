@@ -2,6 +2,8 @@
 
 The research jobs API is the non-blocking path for long-running research requests. It uses the repository contract documented in `docs/research-job-repository-contract.md` and supports in-memory storage by default, opt-in JSON metadata persistence, and opt-in SQLite storage with internal worker leasing.
 
+If `INSIGHT_GRAPH_API_KEY` is configured, all research job endpoints require `Authorization: Bearer <key>` or `X-API-Key: <key>`. `/health` remains public.
+
 ## Endpoints
 
 - `POST /research/jobs` creates a queued job and returns `202`.

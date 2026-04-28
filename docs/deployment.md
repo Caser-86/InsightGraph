@@ -13,9 +13,10 @@ Recommended MVP setup:
 - A reverse proxy or private network boundary in front of the API.
 
 Current security boundary:
-- `/health`, `/research`, and `/research/jobs/*` do not require built-in authentication yet.
-- Put the API behind a private network, VPN, reverse proxy auth, or API gateway before exposing it outside a trusted environment.
-- Do not pass API keys in request bodies or query strings. Configure providers through environment variables.
+- Set `INSIGHT_GRAPH_API_KEY` to require a shared API key for `/research` and `/research/jobs/*`.
+- `/health` remains public for health checks.
+- Keep reverse proxy, private network, VPN, or API gateway controls for any public demo server.
+- Do not pass provider API keys in request bodies or query strings. Configure providers through environment variables.
 
 ## Install
 
@@ -38,6 +39,32 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 python -m pip install "uvicorn[standard]"
 ```
+
+## Optional API Key Auth
+
+Set `INSIGHT_GRAPH_API_KEY` to protect all API endpoints except `/health`:
+
+```bash
+export INSIGHT_GRAPH_API_KEY="replace-with-shared-demo-key"
+```
+
+Clients can authenticate with either header:
+
+```bash
+curl -X POST http://127.0.0.1:8000/research \
+  -H "Authorization: Bearer replace-with-shared-demo-key" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/research/jobs \
+  -H "X-API-Key: replace-with-shared-demo-key" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot","preset":"offline"}'
+```
+
+When `INSIGHT_GRAPH_API_KEY` is unset or blank, local development remains unauthenticated.
 
 ## Offline API Smoke Test
 
@@ -161,6 +188,7 @@ Environment=INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite
 Environment=INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/var/lib/insightgraph/jobs.sqlite3
 Environment=INSIGHT_GRAPH_LLM_BASE_URL=https://your-provider.example/v1
 Environment=INSIGHT_GRAPH_LLM_MODEL=your-model
+EnvironmentFile=-/etc/insightgraph/auth.env
 EnvironmentFile=-/etc/insightgraph/secrets.env
 ExecStart=/opt/InsightGraph/.venv/bin/uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 Restart=on-failure
@@ -183,6 +211,12 @@ Example `secrets.env`:
 INSIGHT_GRAPH_LLM_API_KEY=replace-with-your-api-key
 ```
 
+Example `/etc/insightgraph/auth.env`:
+
+```ini
+INSIGHT_GRAPH_API_KEY=replace-with-shared-demo-key
+```
+
 Enable and start:
 
 ```bash
@@ -194,7 +228,7 @@ sudo systemctl status insightgraph
 
 ## Reverse Proxy Boundary
 
-Until built-in API authentication lands, expose the service only through a protected boundary. Minimum options:
+Built-in API key auth is a minimal shared-secret gate. For public demos, still expose the service through a protected boundary. Minimum options:
 
 - Bind uvicorn to `127.0.0.1` and access through SSH tunnel or VPN.
 - Put Nginx/Caddy in front with basic auth or gateway auth.
