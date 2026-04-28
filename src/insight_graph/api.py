@@ -330,8 +330,14 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 
 def require_api_key(
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
-    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+    authorization: Annotated[
+        str | None,
+        Header(alias="Authorization", include_in_schema=False),
+    ] = None,
+    x_api_key: Annotated[
+        str | None,
+        Header(alias="X-API-Key", include_in_schema=False),
+    ] = None,
 ) -> None:
     expected_api_key = _configured_api_key()
     if expected_api_key is None:
@@ -344,7 +350,10 @@ def require_api_key(
     raise HTTPException(status_code=401, detail=_API_KEY_AUTH_ERROR_DETAIL)
 
 
-@router.post("/research", dependencies=[Depends(require_api_key)])
+_API_KEY_DEPENDENCY = [Depends(require_api_key)]
+
+
+@router.post("/research", dependencies=_API_KEY_DEPENDENCY)
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
         with _RESEARCH_ENV_LOCK:
@@ -360,6 +369,7 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     status_code=202,
     response_model=ResearchJobCreateResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Create research job",
     description=(
@@ -386,6 +396,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     "/research/jobs",
     response_model=ResearchJobsListResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="List research jobs",
     description=(
@@ -407,6 +418,7 @@ def list_research_jobs(
     "/research/jobs/summary",
     response_model=ResearchJobsSummaryResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Summarize research jobs",
     description=(
@@ -426,6 +438,7 @@ def summarize_research_jobs() -> dict[str, Any]:
     "/research/jobs/{job_id}/cancel",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Cancel queued research job",
     description=(
@@ -450,6 +463,7 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
     status_code=202,
     response_model=ResearchJobCreateResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Retry failed or cancelled research job",
     description="Create a new queued job from a failed or cancelled research job.",
@@ -474,6 +488,7 @@ def retry_research_job(job_id: str) -> dict[str, str]:
     "/research/jobs/{job_id}",
     response_model=ResearchJobDetailResponse,
     response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Get research job",
     description=(

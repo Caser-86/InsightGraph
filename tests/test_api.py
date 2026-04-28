@@ -333,6 +333,87 @@ def test_research_accepts_matching_key_when_other_header_is_wrong(monkeypatch) -
     assert response.json()["user_request"] == "Compare AI coding agents"
 
 
+def test_research_jobs_create_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", FakeExecutor())
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research/jobs",
+        json={"query": "Compare AI coding agents", "preset": "offline"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_jobs_create_accepts_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research/jobs",
+        headers={"X-API-Key": "demo-key"},
+        json={"query": "Compare AI coding agents", "preset": "offline"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert len(fake_executor.submissions) == 1
+
+
+def test_research_jobs_list_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_jobs_summary_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/summary")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_job_detail_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.get("/research/jobs/job-123")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_job_cancel_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs/job-123/cancel")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
+def test_research_job_retry_rejects_missing_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    response = client.post("/research/jobs/job-123/retry")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key."}
+
+
 def test_create_app_returns_configured_fastapi_app() -> None:
     app = api_module.create_app()
     client = TestClient(app)
