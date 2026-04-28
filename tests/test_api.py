@@ -122,6 +122,36 @@ def test_api_research_jobs_startup_does_not_reimport_json_over_existing_sqlite(
     assert detail["job_id"] == created["job_id"]
 
 
+def test_sqlite_research_job_execution_hides_lease_metadata(monkeypatch, tmp_path) -> None:
+    clear_live_env(monkeypatch)
+    jobs_module.configure_research_jobs_sqlite_backend(tmp_path / "jobs.sqlite3")
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(
+        api_module,
+        "run_research",
+        lambda query: make_api_state(query),
+    )
+
+    try:
+        client = TestClient(api_module.app)
+        response = client.post(
+            "/research/jobs",
+            json={"query": "SQLite lease smoke", "preset": "offline"},
+        )
+        assert response.status_code == 202
+        detail_response = client.get(f"/research/jobs/{response.json()['job_id']}")
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["status"] == "succeeded"
+    assert "worker_id" not in detail
+    assert "lease_expires_at" not in detail
+    assert "heartbeat_at" not in detail
+    assert "attempt_count" not in detail
+
+
 def make_api_state(query: str) -> GraphState:
     return GraphState(
         user_request=query,

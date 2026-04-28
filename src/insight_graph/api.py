@@ -2,8 +2,8 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
-from threading import Lock
+from datetime import UTC, datetime, timedelta
+from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
@@ -17,12 +17,17 @@ from insight_graph.cli import (
 )
 from insight_graph.graph import run_research
 from insight_graph.research_jobs import (
+    RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
+    RESEARCH_JOB_LEASE_TTL_SECONDS,
     ResearchJobStatus,
     configure_research_jobs_backend_from_env,
+    heartbeat_research_job,
     initialize_research_jobs,
     mark_research_job_failed,
     mark_research_job_running,
     mark_research_job_succeeded,
+    research_jobs_worker_id,
+    using_sqlite_research_jobs_backend,
 )
 from insight_graph.research_jobs import (
     cancel_research_job as cancel_research_job_record,
@@ -253,6 +258,45 @@ def _current_utc_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _add_seconds_to_timestamp(timestamp: str, seconds: int) -> str:
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    return (parsed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+
+def _lease_expires_at(started_at: str) -> str:
+    return _add_seconds_to_timestamp(started_at, RESEARCH_JOB_LEASE_TTL_SECONDS)
+
+
+def _start_research_job_heartbeat(job_id: str, worker_id: str) -> tuple[Event, Thread | None]:
+    stop_event = Event()
+    if not using_sqlite_research_jobs_backend():
+        return stop_event, None
+
+    def heartbeat_loop() -> None:
+        while not stop_event.wait(RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS):
+            now = _current_utc_timestamp()
+            heartbeat_research_job(
+                job_id,
+                worker_id=worker_id,
+                now=now,
+                lease_expires_at=_lease_expires_at(now),
+            )
+
+    thread = Thread(
+        target=heartbeat_loop,
+        name=f"research-job-heartbeat-{job_id}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
+def _stop_research_job_heartbeat(stop_event: Event, thread: Thread | None) -> None:
+    stop_event.set()
+    if thread is not None:
+        thread.join(timeout=1)
+
+
 def _initialize_research_jobs_from_env() -> None:
     configure_research_jobs_backend_from_env()
     initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
@@ -407,32 +451,41 @@ def get_research_job(job_id: str) -> dict[str, Any]:
 
 
 def _run_research_job(job_id: str) -> None:
+    worker_id = research_jobs_worker_id()
     job = mark_research_job_running(
         job_id=job_id,
         started_at=_current_utc_timestamp,
         store_failure_finished_at=_current_utc_timestamp,
+        worker_id=worker_id,
+        lease_expires_at=_lease_expires_at,
     )
     if job is None:
         return
 
+    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
     try:
-        with _RESEARCH_ENV_LOCK:
-            with _research_preset_environment(job.preset):
-                state = run_research(job.query)
-        result = _build_research_json_payload(state)
-    except Exception:
-        mark_research_job_failed(
+        try:
+            with _RESEARCH_ENV_LOCK:
+                with _research_preset_environment(job.preset):
+                    state = run_research(job.query)
+            result = _build_research_json_payload(state)
+        except Exception:
+            mark_research_job_failed(
+                job,
+                finished_at=_current_utc_timestamp(),
+                error="Research workflow failed.",
+                worker_id=worker_id,
+            )
+            return
+
+        mark_research_job_succeeded(
             job,
             finished_at=_current_utc_timestamp(),
-            error="Research workflow failed.",
+            result=result,
+            worker_id=worker_id,
         )
-        return
-
-    mark_research_job_succeeded(
-        job,
-        finished_at=_current_utc_timestamp(),
-        result=result,
-    )
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
 
 
 app = create_app()
