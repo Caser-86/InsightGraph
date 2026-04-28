@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.10 - 2026-04-28
+
+- Added opt-in shared API key authentication with `INSIGHT_GRAPH_API_KEY`.
+- Protected `/research` and research job endpoints while keeping `/health` public.
+- Documented API key deployment usage, headers, and reverse proxy safety guidance.
+
 ## v0.1.9 - 2026-04-28
 
 - Added safe LLM router decision metadata to routed Analyst and Reporter LLM call logs.
