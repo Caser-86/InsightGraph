@@ -53,6 +53,15 @@ def test_sqlite_backend_initializes_lease_columns(tmp_path) -> None:
     }.issubset(sqlite_columns(db_path, "research_jobs"))
 
 
+def test_sqlite_backend_initializes_events_column(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+
+    assert "events_json" in sqlite_columns(db_path, "research_jobs")
+
+
 def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
     tmp_path,
 ) -> None:
@@ -89,6 +98,31 @@ def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
         "heartbeat_at",
         "attempt_count",
     }.issubset(sqlite_columns(db_path, "research_jobs"))
+    assert "events_json" in sqlite_columns(db_path, "research_jobs")
+
+
+def test_sqlite_backend_persists_job_events(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+    job = ResearchJob(
+        id="job-1",
+        query="Events",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        events=[{"type": "stage_started", "stage": "planner", "sequence": 1}],
+    )
+
+    backend.reset(jobs=[job], next_job_sequence=1)
+
+    stored = backend.get("job-1")
+    assert stored is not None
+    assert stored.events == [
+        {"type": "stage_started", "stage": "planner", "sequence": 1}
+    ]
+    row = sqlite_job_row(db_path, "job-1")
+    assert json.loads(row["events_json"]) == stored.events
 
 
 def sqlite_job_row(db_path, job_id: str):

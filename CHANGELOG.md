@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added safe node-level execution events for Planner, Collector, Analyst, Critic, and Reporter.
+- Extended WebSocket streams with stage, tool call, LLM call, and report-ready events.
+- Added a dashboard Live Events view for real-time agent execution traces.
+- Derived running job progress from cached stage events so snapshots show the active graph stage.
+- Persisted bounded safe job events in retained job records for replay and progress fallback.
+
 ## v0.1.13 - 2026-04-28
 
 - Added a WebSocket research job snapshot stream at `/research/jobs/{job_id}/stream`.

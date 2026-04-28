@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     finished_at TEXT,
     result_json TEXT,
     error TEXT,
+    events_json TEXT,
     worker_id TEXT,
     lease_expires_at TEXT,
     heartbeat_at TEXT,
@@ -62,6 +63,7 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "finished_at": job.finished_at,
         "result_json": json.dumps(job.result) if job.result is not None else None,
         "error": job.error,
+        "events_json": json.dumps(job.events),
         "worker_id": None,
         "lease_expires_at": None,
         "heartbeat_at": None,
@@ -82,6 +84,7 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         finished_at=row["finished_at"],
         result=json.loads(result_json) if result_json is not None else None,
         error=row["error"],
+        events=json.loads(row["events_json"]) if row["events_json"] is not None else [],
     )
 
 
@@ -90,6 +93,7 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
         row[1] for row in connection.execute("PRAGMA table_info(research_jobs)")
     }
     migrations = {
+        "events_json": "ALTER TABLE research_jobs ADD COLUMN events_json TEXT",
         "worker_id": "ALTER TABLE research_jobs ADD COLUMN worker_id TEXT",
         "lease_expires_at": "ALTER TABLE research_jobs ADD COLUMN lease_expires_at TEXT",
         "heartbeat_at": "ALTER TABLE research_jobs ADD COLUMN heartbeat_at TEXT",
@@ -157,11 +161,11 @@ class SQLiteResearchJobsBackend:
                 INSERT INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
-                    worker_id, lease_expires_at, heartbeat_at, attempt_count
+                    events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
-                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
+                    :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 [job_to_row(job) for job in jobs],
@@ -187,11 +191,11 @@ class SQLiteResearchJobsBackend:
                 INSERT OR REPLACE INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
-                    worker_id, lease_expires_at, heartbeat_at, attempt_count
+                    events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
-                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
+                    :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 [job_to_row(job) for job in jobs],
@@ -254,7 +258,8 @@ class SQLiteResearchJobsBackend:
                     started_at = :started_at,
                     finished_at = :finished_at,
                     result_json = :result_json,
-                    error = :error
+                    error = :error,
+                    events_json = :events_json
                 WHERE id = :id
                 """,
                 job_to_row(updated),
@@ -358,11 +363,11 @@ class SQLiteResearchJobsBackend:
                 INSERT INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
-                    worker_id, lease_expires_at, heartbeat_at, attempt_count
+                    events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
-                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
+                    :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 job_to_row(job),
@@ -567,6 +572,7 @@ class SQLiteResearchJobsBackend:
                 finished_at=item["finished_at"],
                 result=item["result"],
                 error=item["error"],
+                events=item.get("events") or [],
             )
             for item in loaded.jobs
         ]

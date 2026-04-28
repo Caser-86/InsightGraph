@@ -397,6 +397,25 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .markdown, .data-list, pre { color: #dff8fb; line-height: 1.62; }
 
+    .live-events { display: grid; gap: 10px; }
+
+    .live-event {
+      border: 1px solid rgba(117, 229, 232, 0.14);
+      border-radius: 16px;
+      background: rgba(2, 10, 16, 0.42);
+      padding: 12px;
+    }
+
+    .live-event span {
+      color: var(--cyan);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .live-event p { color: var(--muted); margin-top: 6px; }
+
     .markdown h1, .markdown h2, .markdown h3 { margin: 0.9em 0 0.45em; }
     .markdown p, .markdown ul, .markdown pre { margin: 0.7em 0; }
     .markdown a { color: var(--cyan); }
@@ -512,6 +531,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
               <button class="tab" data-tab="findings" type="button">Findings</button>
               <button class="tab" data-tab="tools" type="button">Tool Calls</button>
               <button class="tab" data-tab="llm" type="button">LLM Log</button>
+              <button class="tab" data-tab="events" type="button">Live Events</button>
               <button class="tab" data-tab="raw" type="button">Raw JSON</button>
             </nav>
             <div id="report-panel" class="panel-body tab-panel"></div>
@@ -533,6 +553,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       streamJobId: '',
       streamApiKey: '',
       streamTerminal: false,
+      liveEvents: [],
     };
 
     const els = {
@@ -630,6 +651,22 @@ _DASHBOARD_HTML = r"""<!doctype html>
       }).join('');
     }
 
+    function renderLiveEvent(event) {
+      const stage = event.stage ? ` - ${event.stage}` : '';
+      const record = event.record || {};
+      const summary = record.tool_name || record.model || record.stage || event.detail || 'received';
+      return `
+        <div class="live-event">
+          <span>${escapeHtml(event.type)}${escapeHtml(stage)}</span>
+          <p>${escapeHtml(summary)}</p>
+        </div>`;
+    }
+
+    function appendLiveEvent(event) {
+      state.liveEvents = [...state.liveEvents, event].slice(-80);
+      if (state.activeTab === 'events') renderDetail();
+    }
+
     function jobIsTerminal(status) {
       return ['succeeded', 'failed', 'cancelled'].includes(status);
     }
@@ -692,6 +729,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
         if (payload.type === 'error') {
           state.streamTerminal = true;
           setMessage(payload.detail || 'Stream failed.', 'error');
+        }
+        if (!['job_snapshot', 'error'].includes(payload.type)) {
+          appendLiveEvent(payload);
         }
       };
       socket.onerror = () => {
@@ -840,6 +880,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (state.activeTab === 'findings') els.reportPanel.innerHTML = renderFindings(result);
       if (state.activeTab === 'tools') els.reportPanel.innerHTML = jsonBlock(result.tool_call_log || []);
       if (state.activeTab === 'llm') els.reportPanel.innerHTML = jsonBlock(result.llm_call_log || []);
+      if (state.activeTab === 'events') {
+        els.reportPanel.innerHTML = state.liveEvents.length
+          ? `<div id="live-events" class="live-events">${state.liveEvents.map(renderLiveEvent).join('')}</div>`
+          : '<div id="live-events" class="empty">Live execution events will appear here while a job runs.</div>';
+      }
       if (state.activeTab === 'raw') els.reportPanel.innerHTML = jsonBlock(detail || {});
     }
 
@@ -890,6 +935,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         });
         state.selectedJobId = payload.job_id;
         closeJobStream();
+        state.liveEvents = [];
         setMessage(`Queued ${payload.job_id}.`, 'ok');
         await refresh();
       } catch (error) {
@@ -917,6 +963,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       });
       state.selectedJobId = payload.job_id;
       closeJobStream();
+      state.liveEvents = [];
       setMessage(`Retry queued ${payload.job_id}.`, 'ok');
       await refresh();
     }
@@ -935,6 +982,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (!card) return;
       state.selectedJobId = card.dataset.jobId;
       closeJobStream();
+      state.liveEvents = [];
       state.detail = null;
       renderJobList();
       renderDetail();

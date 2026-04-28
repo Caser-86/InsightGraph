@@ -1,4 +1,4 @@
-from insight_graph.graph import run_research
+from insight_graph.graph import run_research, run_research_with_events
 from insight_graph.state import GraphState
 
 
@@ -64,3 +64,50 @@ def test_run_research_stops_after_failed_retry(monkeypatch) -> None:
     assert "# InsightGraph Research Report" in result.report_markdown
     assert "Official sources establish baseline product positioning" not in result.report_markdown
     assert "Evidence, findings, or citation support are insufficient." in result.report_markdown
+
+
+def test_run_research_with_events_emits_stage_events(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    events: list[dict[str, object]] = []
+
+    result = run_research_with_events(
+        "Compare Cursor, OpenCode, and GitHub Copilot",
+        events.append,
+    )
+
+    assert result.report_markdown is not None
+    assert [
+        (event["type"], event.get("stage"))
+        for event in events
+        if event["type"] in {"stage_started", "stage_finished"}
+    ] == [
+        ("stage_started", "planner"),
+        ("stage_finished", "planner"),
+        ("stage_started", "collector"),
+        ("stage_finished", "collector"),
+        ("stage_started", "analyst"),
+        ("stage_finished", "analyst"),
+        ("stage_started", "critic"),
+        ("stage_finished", "critic"),
+        ("stage_started", "reporter"),
+        ("stage_finished", "reporter"),
+    ]
+
+
+def test_run_research_with_events_emits_tool_and_report_events(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    events: list[dict[str, object]] = []
+
+    result = run_research_with_events(
+        "Compare Cursor, OpenCode, and GitHub Copilot",
+        events.append,
+    )
+
+    tool_events = [event for event in events if event["type"] == "tool_call"]
+    report_events = [event for event in events if event["type"] == "report_ready"]
+    assert tool_events
+    assert tool_events[0]["record"]["tool_name"] == "mock_search"
+    assert report_events == [{"type": "report_ready"}]
+    assert result.report_markdown is not None

@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from threading import RLock
 from typing import Any, Literal
@@ -78,6 +78,7 @@ class ResearchJob:
     finished_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    events: list[dict[str, Any]] = field(default_factory=list)
 
 
 def reset_research_jobs_state(
@@ -231,6 +232,7 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
         finished_at=item["finished_at"],
         result=item["result"],
         error=item["error"],
+        events=item.get("events") or [],
     )
 
 
@@ -374,6 +376,8 @@ def _job_detail(job: ResearchJob, queued_positions: dict[str, int]) -> dict[str,
         response["result"] = job.result
     elif job.status == RESEARCH_JOB_STATUS_FAILED:
         response["error"] = job.error
+    if job.events:
+        response["events"] = job.events
     return response
 
 
@@ -615,6 +619,31 @@ def heartbeat_research_job(
             now=now,
             lease_expires_at=lease_expires_at,
         )
+
+
+def append_research_job_event(
+    job_id: str,
+    event: dict[str, Any],
+    *,
+    limit: int,
+) -> None:
+    with _JOBS_LOCK:
+        job = _get_research_job_locked(job_id)
+        if job is None:
+            return
+        events = [*job.events, event]
+        del events[:-limit]
+        if _using_sqlite_research_jobs_backend():
+            try:
+                _RESEARCH_JOBS_BACKEND.update(job_id, events=events)
+            except Exception:
+                pass
+            return
+        current = _JOBS.get(job_id)
+        if current is None:
+            return
+        current.events = events
+        _persist_research_jobs_best_effort_locked()
 
 
 def mark_research_job_failed(

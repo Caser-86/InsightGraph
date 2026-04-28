@@ -263,6 +263,9 @@ def test_dashboard_returns_html() -> None:
     assert "closeJobStream" in response.text
     assert "WebSocket" in response.text
     assert "/stream" in response.text
+    assert "live-events" in response.text
+    assert "renderLiveEvent" in response.text
+    assert "appendLiveEvent" in response.text
     assert "'/research/jobs'" in response.text
     assert "'/research/jobs/summary'" in response.text
     assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text
@@ -1191,6 +1194,47 @@ def test_get_research_job_includes_progress_metadata_for_running_job() -> None:
     }
 
 
+def test_get_research_job_derives_running_progress_from_stage_events() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="running-event-progress-job",
+        query="Running event progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        status="running",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_finished", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "collector"},
+    )
+
+    response = TestClient(api_module.app).get(f"/research/jobs/{job.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "collector"
+    assert payload["progress_percent"] == 40
+    assert payload["progress_steps"] == [
+        {"id": "planner", "label": "Planner", "status": "completed"},
+        {"id": "collector", "label": "Collector", "status": "active"},
+        {"id": "analyst", "label": "Analyst", "status": "pending"},
+        {"id": "critic", "label": "Critic", "status": "pending"},
+        {"id": "reporter", "label": "Reporter", "status": "pending"},
+    ]
+
+
 def test_get_research_job_includes_progress_metadata_for_succeeded_job() -> None:
     result = api_module._build_research_json_payload(make_api_state("Succeeded progress"))
     jobs_module.reset_research_jobs_state()
@@ -1242,6 +1286,49 @@ def test_get_research_job_includes_progress_metadata_for_failed_job() -> None:
     assert payload["progress_percent"] == 100
     assert payload["runtime_seconds"] == 3
     assert payload["progress_steps"][0]["status"] == "failed"
+
+
+def test_get_research_job_derives_failed_stage_from_stage_events() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="failed-event-progress-job",
+        query="Failed event progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        finished_at="2026-04-28T10:00:08Z",
+        status="failed",
+        error="Research workflow failed.",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_finished", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "analyst"},
+    )
+
+    response = TestClient(api_module.app).get(f"/research/jobs/{job.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "failed"
+    assert payload["progress_percent"] == 100
+    assert payload["progress_steps"] == [
+        {"id": "planner", "label": "Planner", "status": "completed"},
+        {"id": "collector", "label": "Collector", "status": "completed"},
+        {"id": "analyst", "label": "Analyst", "status": "failed"},
+        {"id": "critic", "label": "Critic", "status": "skipped"},
+        {"id": "reporter", "label": "Reporter", "status": "skipped"},
+    ]
 
 
 def test_get_research_job_includes_progress_metadata_for_cancelled_job() -> None:
@@ -1317,6 +1404,186 @@ def test_research_job_stream_accepts_api_key_query_param(monkeypatch) -> None:
 
     assert event["type"] == "job_snapshot"
     assert event["job"]["job_id"] == "protected-stream-job"
+
+
+def test_research_job_stream_replays_cached_events_after_snapshot() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="event-stream-job",
+        query="Event stream",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events("event-stream-job")
+    api_module._publish_research_job_event(
+        "event-stream-job",
+        {"type": "stage_started", "stage": "planner"},
+    )
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect("/research/jobs/event-stream-job/stream") as websocket:
+        snapshot = websocket.receive_json()
+        event = websocket.receive_json()
+
+    assert snapshot["type"] == "job_snapshot"
+    assert event["type"] == "stage_started"
+    assert event["stage"] == "planner"
+
+
+def test_research_job_stream_snapshot_uses_stage_event_progress() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="stream-event-progress-job",
+        query="Stream event progress",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        status="running",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_finished", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "critic"},
+    )
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect(f"/research/jobs/{job.id}/stream") as websocket:
+        snapshot = websocket.receive_json()
+
+    assert snapshot["type"] == "job_snapshot"
+    assert snapshot["job"]["progress_stage"] == "critic"
+    assert snapshot["job"]["progress_percent"] == 80
+    assert snapshot["job"]["progress_steps"][3] == {
+        "id": "critic",
+        "label": "Critic",
+        "status": "active",
+    }
+
+
+def test_publish_research_job_event_persists_job_detail_events() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="persisted-event-job",
+        query="Persist events",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+
+    response = TestClient(api_module.app).get(f"/research/jobs/{job.id}")
+
+    assert response.status_code == 200
+    assert response.json()["events"] == [
+        {"type": "stage_started", "stage": "planner", "sequence": 1}
+    ]
+
+
+def test_research_job_stream_replays_persisted_events_after_memory_clear() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="persisted-stream-event-job",
+        query="Persist stream events",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+    api_module._clear_research_job_events(job.id)
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect(f"/research/jobs/{job.id}/stream") as websocket:
+        snapshot = websocket.receive_json()
+        event = websocket.receive_json()
+
+    assert snapshot["type"] == "job_snapshot"
+    assert event == {"type": "stage_started", "stage": "planner", "sequence": 1}
+
+
+def test_get_research_job_derives_progress_from_persisted_events_after_memory_clear() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="persisted-progress-event-job",
+        query="Persist progress events",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        status="running",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_finished", "stage": "planner"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "collector"},
+    )
+    api_module._clear_research_job_events(job.id)
+
+    response = TestClient(api_module.app).get(f"/research/jobs/{job.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress_stage"] == "collector"
+    assert payload["progress_percent"] == 40
+
+
+def test_run_research_job_publishes_stage_events(monkeypatch) -> None:
+    fake_executor = FakeExecutor()
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-28T11:00:00Z",
+            "2026-04-28T11:00:01Z",
+            "2026-04-28T11:00:02Z",
+        ),
+    )
+    jobs_module.reset_research_jobs_state()
+    client = TestClient(api_module.app)
+
+    job_id = client.post("/research/jobs", json={"query": "Stream worker events"}).json()[
+        "job_id"
+    ]
+    api_module._clear_research_job_events(job_id)
+    fake_executor.run_next()
+
+    events = api_module._cached_research_job_events(job_id)
+    event_pairs = [(event["type"], event.get("stage")) for event in events]
+    assert ("stage_started", "planner") in event_pairs
+    assert ("stage_finished", "reporter") in event_pairs
+    assert any(event["type"] == "report_ready" for event in events)
 
 
 def test_research_job_includes_created_at_until_started(monkeypatch) -> None:

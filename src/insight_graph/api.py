@@ -1,11 +1,12 @@
 import asyncio
 import hmac
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html import escape as html_escape
+from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
@@ -31,11 +32,12 @@ from insight_graph.cli import (
     _build_research_json_payload,
 )
 from insight_graph.dashboard import dashboard_html
-from insight_graph.graph import run_research
+from insight_graph.graph import run_research, run_research_with_events
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
     RESEARCH_JOB_LEASE_TTL_SECONDS,
     ResearchJobStatus,
+    append_research_job_event,
     configure_research_jobs_backend_from_env,
     heartbeat_research_job,
     initialize_research_jobs,
@@ -63,6 +65,7 @@ from insight_graph.research_jobs import (
 from insight_graph.research_jobs import (
     summarize_research_jobs as summarize_research_jobs_state,
 )
+from insight_graph.state import GraphState
 
 router = APIRouter()
 
@@ -79,6 +82,11 @@ _API_KEY_ENV_VAR = "INSIGHT_GRAPH_API_KEY"
 _API_KEY_AUTH_ERROR_DETAIL = "Invalid or missing API key."
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 _RESEARCH_JOB_STREAM_INTERVAL_SECONDS = 1.0
+_RESEARCH_JOB_EVENT_LIMIT = 100
+_RESEARCH_JOB_EVENTS: dict[str, list[dict[str, Any]]] = {}
+_RESEARCH_JOB_EVENT_SUBSCRIBERS: dict[str, list[Queue[dict[str, Any]]]] = {}
+_RESEARCH_JOB_EVENT_LOCK = Lock()
+_DEFAULT_RUN_RESEARCH = run_research
 ResearchJobStatusQuery = Annotated[
     ResearchJobStatus | None,
     Query(description="Filter jobs by status. Omit to return all retained jobs."),
@@ -139,6 +147,7 @@ class ResearchJobDetailResponse(BaseModel):
     runtime_seconds: int | SkipJsonSchema[None] = None
     tool_call_count: int | SkipJsonSchema[None] = None
     llm_call_count: int | SkipJsonSchema[None] = None
+    events: list[dict[str, Any]] | SkipJsonSchema[None] = None
     result: dict[str, Any] | SkipJsonSchema[None] = None
     error: str | SkipJsonSchema[None] = None
 
@@ -269,6 +278,13 @@ _PROGRESS_STEP_LABELS = {
     "reporter": "Reporter",
 }
 _PROGRESS_STEP_IDS = tuple(_PROGRESS_STEP_LABELS)
+_PROGRESS_STAGE_PERCENT = {
+    "planner": 20,
+    "collector": 40,
+    "analyst": 60,
+    "critic": 80,
+    "reporter": 95,
+}
 
 
 @contextmanager
@@ -329,6 +345,80 @@ def _progress_steps(status_by_id: dict[str, str]) -> list[dict[str, str]]:
     ]
 
 
+def _stage_progress_from_events(
+    job_id: str | None,
+    status: str,
+) -> dict[str, Any] | None:
+    if job_id is None:
+        return None
+
+    active_stage: str | None = None
+    last_started_stage: str | None = None
+    finished_stages: set[str] = set()
+    for event in _cached_research_job_events(job_id):
+        stage = event.get("stage")
+        if stage not in _PROGRESS_STEP_IDS:
+            continue
+        if event.get("type") == "stage_started":
+            active_stage = stage
+            last_started_stage = stage
+        elif event.get("type") == "stage_finished":
+            finished_stages.add(stage)
+            if active_stage == stage:
+                active_stage = None
+
+    if last_started_stage is None:
+        return None
+
+    if status == "failed":
+        failed_stage = active_stage or last_started_stage
+        failed_index = _PROGRESS_STEP_IDS.index(failed_stage)
+        step_statuses = {
+            step_id: _failed_stage_step_status(index, failed_index)
+            for index, step_id in enumerate(_PROGRESS_STEP_IDS)
+        }
+        return {
+            "progress_stage": "failed",
+            "progress_percent": 100,
+            "progress_steps": _progress_steps(step_statuses),
+        }
+
+    current_stage = active_stage or _next_active_stage(finished_stages)
+    current_index = _PROGRESS_STEP_IDS.index(current_stage)
+    step_statuses = {
+        step_id: _running_stage_step_status(index, current_index)
+        for index, step_id in enumerate(_PROGRESS_STEP_IDS)
+    }
+    return {
+        "progress_stage": current_stage,
+        "progress_percent": _PROGRESS_STAGE_PERCENT[current_stage],
+        "progress_steps": _progress_steps(step_statuses),
+    }
+
+
+def _next_active_stage(finished_stages: set[str]) -> str:
+    for step_id in _PROGRESS_STEP_IDS:
+        if step_id not in finished_stages:
+            return step_id
+    return "reporter"
+
+
+def _running_stage_step_status(index: int, current_index: int) -> str:
+    if index < current_index:
+        return "completed"
+    if index == current_index:
+        return "active"
+    return "pending"
+
+
+def _failed_stage_step_status(index: int, failed_index: int) -> str:
+    if index < failed_index:
+        return "completed"
+    if index == failed_index:
+        return "failed"
+    return "skipped"
+
+
 def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
     status = job["status"]
     result = job.get("result") or {}
@@ -336,27 +426,43 @@ def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
         progress_stage = "queued"
         progress_percent = 0
         step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
     elif status == "running":
-        progress_stage = "planner"
-        progress_percent = 20
-        step_statuses = {"planner": "active"}
+        event_progress = _stage_progress_from_events(job.get("job_id"), status)
+        if event_progress is not None:
+            progress_stage = event_progress["progress_stage"]
+            progress_percent = event_progress["progress_percent"]
+            progress_steps = event_progress["progress_steps"]
+        else:
+            progress_stage = "planner"
+            progress_percent = 20
+            step_statuses = {"planner": "active"}
+            progress_steps = _progress_steps(step_statuses)
     elif status == "succeeded":
         progress_stage = "completed"
         progress_percent = 100
         step_statuses = {step_id: "completed" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
     elif status == "failed":
+        event_progress = _stage_progress_from_events(job.get("job_id"), status)
         progress_stage = "failed"
         progress_percent = 100
-        step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
-        step_statuses["planner"] = "failed"
+        if event_progress is not None:
+            progress_steps = event_progress["progress_steps"]
+        else:
+            step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+            step_statuses["planner"] = "failed"
+            progress_steps = _progress_steps(step_statuses)
     elif status == "cancelled":
         progress_stage = "cancelled"
         progress_percent = 100
         step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
     else:
         progress_stage = status
         progress_percent = 0
         step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
 
     runtime_start = job.get("started_at") or job.get("created_at")
     runtime_end = job.get("finished_at")
@@ -364,7 +470,7 @@ def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
     return {
         "progress_stage": progress_stage,
         "progress_percent": progress_percent,
-        "progress_steps": _progress_steps(step_statuses),
+        "progress_steps": progress_steps,
         "runtime_seconds": runtime_seconds,
         "tool_call_count": len(result.get("tool_call_log") or []),
         "llm_call_count": len(result.get("llm_call_log") or []),
@@ -373,6 +479,96 @@ def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
 
 def _with_research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
     return {**job, **_research_job_progress(job)}
+
+
+def _clear_research_job_events(job_id: str) -> None:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        _RESEARCH_JOB_EVENTS.pop(job_id, None)
+        for subscriber in _RESEARCH_JOB_EVENT_SUBSCRIBERS.pop(job_id, []):
+            subscriber.put({"type": "stream_closed"})
+
+
+def _publish_research_job_event(job_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        events = _RESEARCH_JOB_EVENTS.setdefault(job_id, [])
+        event_with_sequence = {**event, "sequence": _next_research_job_event_sequence(job_id)}
+        events.append(event_with_sequence)
+        del events[:-_RESEARCH_JOB_EVENT_LIMIT]
+        for subscriber in _RESEARCH_JOB_EVENT_SUBSCRIBERS.get(job_id, []):
+            subscriber.put(event_with_sequence)
+    append_research_job_event(
+        job_id,
+        event_with_sequence,
+        limit=_RESEARCH_JOB_EVENT_LIMIT,
+    )
+    return event_with_sequence
+
+
+def _next_research_job_event_sequence(job_id: str) -> int:
+    sequences = [
+        event.get("sequence")
+        for event in [
+            *_RESEARCH_JOB_EVENTS.get(job_id, []),
+            *_persisted_research_job_events(job_id),
+        ]
+    ]
+    return max((value for value in sequences if isinstance(value, int)), default=0) + 1
+
+
+def _persisted_research_job_events(job_id: str) -> list[dict[str, Any]]:
+    try:
+        job = get_research_job_record(job_id)
+    except HTTPException:
+        return []
+    events = job.get("events")
+    if not isinstance(events, list):
+        return []
+    return [dict(event) for event in events if isinstance(event, dict)]
+
+
+def _cached_research_job_events(job_id: str) -> list[dict[str, Any]]:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        events = [dict(event) for event in _RESEARCH_JOB_EVENTS.get(job_id, [])]
+    if events:
+        return events
+    return _persisted_research_job_events(job_id)
+
+
+def _subscribe_research_job_events(job_id: str) -> Queue[dict[str, Any]]:
+    queue: Queue[dict[str, Any]] = Queue()
+    with _RESEARCH_JOB_EVENT_LOCK:
+        _RESEARCH_JOB_EVENT_SUBSCRIBERS.setdefault(job_id, []).append(queue)
+    return queue
+
+
+def _unsubscribe_research_job_events(job_id: str, queue: Queue[dict[str, Any]]) -> None:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        subscribers = _RESEARCH_JOB_EVENT_SUBSCRIBERS.get(job_id)
+        if subscribers is None:
+            return
+        if queue in subscribers:
+            subscribers.remove(queue)
+        if not subscribers:
+            _RESEARCH_JOB_EVENT_SUBSCRIBERS.pop(job_id, None)
+
+
+def _next_research_job_event(
+    queue: Queue[dict[str, Any]],
+    timeout_seconds: float,
+) -> dict[str, Any] | None:
+    try:
+        return queue.get(timeout=timeout_seconds)
+    except Empty:
+        return None
+
+
+def _run_research_job_workflow(
+    query: str,
+    emit_event: Callable[[dict[str, Any]], None],
+) -> GraphState:
+    if run_research is not _DEFAULT_RUN_RESEARCH:
+        return run_research(query)
+    return run_research_with_events(query, emit_event)
 
 
 def _lease_expires_at(started_at: str) -> str:
@@ -707,6 +903,11 @@ async def _send_research_job_stream_event(websocket: WebSocket, job_id: str) -> 
     return job["status"] in {"succeeded", "failed", "cancelled"}
 
 
+async def _send_cached_research_job_events(websocket: WebSocket, job_id: str) -> None:
+    for event in _cached_research_job_events(job_id):
+        await websocket.send_json(event)
+
+
 @router.websocket("/research/jobs/{job_id}/stream")
 async def stream_research_job(
     websocket: WebSocket,
@@ -717,15 +918,30 @@ async def stream_research_job(
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     await websocket.accept()
+    terminal = await _send_research_job_stream_event(websocket, job_id)
+    await _send_cached_research_job_events(websocket, job_id)
+    if terminal:
+        await websocket.close()
+        return
+
+    event_queue = _subscribe_research_job_events(job_id)
     try:
         while True:
+            event = await asyncio.to_thread(
+                _next_research_job_event,
+                event_queue,
+                _RESEARCH_JOB_STREAM_INTERVAL_SECONDS,
+            )
+            if event is not None and event["type"] != "stream_closed":
+                await websocket.send_json(event)
             terminal = await _send_research_job_stream_event(websocket, job_id)
             if terminal:
                 await websocket.close()
                 return
-            await asyncio.sleep(_RESEARCH_JOB_STREAM_INTERVAL_SECONDS)
     except WebSocketDisconnect:
         return
+    finally:
+        _unsubscribe_research_job_events(job_id, event_queue)
 
 
 @router.get(
@@ -749,6 +965,7 @@ def get_research_job(job_id: str) -> dict[str, Any]:
 
 
 def _run_research_job(job_id: str) -> None:
+    _clear_research_job_events(job_id)
     worker_id = research_jobs_worker_id()
     job = mark_research_job_running(
         job_id=job_id,
@@ -765,7 +982,10 @@ def _run_research_job(job_id: str) -> None:
         try:
             with _RESEARCH_ENV_LOCK:
                 with _research_preset_environment(job.preset):
-                    state = run_research(job.query)
+                    state = _run_research_job_workflow(
+                        job.query,
+                        lambda event: _publish_research_job_event(job.id, event),
+                    )
             result = _build_research_json_payload(state)
         except Exception:
             mark_research_job_failed(

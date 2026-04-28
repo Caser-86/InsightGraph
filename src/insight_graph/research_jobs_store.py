@@ -20,7 +20,9 @@ _REQUIRED_JOB_FIELDS = {
     "finished_at",
     "result",
     "error",
+    "events",
 }
+_LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {"events"}
 _RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
 _RESEARCH_PRESETS = {"offline", "live-llm"}
 
@@ -71,6 +73,7 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
         "finished_at": job.finished_at,
         "result": job.result,
         "error": job.error,
+        "events": getattr(job, "events", None) or [],
     }
 
 
@@ -108,9 +111,13 @@ def load_research_jobs(path: Path, restart_timestamp: str) -> LoadedResearchJobs
 
 
 def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
-    if not isinstance(item, dict) or set(item) != _REQUIRED_JOB_FIELDS:
+    if not isinstance(item, dict):
+        raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
+    fields = set(item)
+    if fields != _REQUIRED_JOB_FIELDS and fields != _LEGACY_JOB_FIELDS:
         raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
     job = dict(item)
+    job.setdefault("events", [])
     _validate_job_values(job)
     if job["status"] in {"queued", "running"}:
         job["status"] = "failed"
@@ -140,6 +147,10 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         raise ResearchJobsStoreError("Research jobs store job result is invalid.")
     if job["error"] is not None and not isinstance(job["error"], str):
         raise ResearchJobsStoreError("Research jobs store job error is invalid.")
+    if not isinstance(job["events"], list) or not all(
+        isinstance(event, dict) for event in job["events"]
+    ):
+        raise ResearchJobsStoreError("Research jobs store job events are invalid.")
 
 
 def _is_int(value: object) -> bool:

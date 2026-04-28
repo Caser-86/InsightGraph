@@ -124,7 +124,18 @@ curl http://127.0.0.1:8000/research/jobs/job-123
 - `failed` includes safe `error` only.
 - `cancelled` includes `finished_at`.
 - Detail responses include derived progress metadata: `progress_stage`, `progress_percent`, `progress_steps`, `runtime_seconds`, `tool_call_count`, and `llm_call_count`.
-- Progress is derived from stored job state and result logs; it does not change the storage schema.
+- Detail responses include bounded safe `events` when available. Job list and summary responses omit events to keep those payloads compact.
+- Progress is derived from stored job state, result logs, and safe stage events.
+
+```json
+{
+  "job_id": "job-123",
+  "status": "running",
+  "events": [
+    {"type":"stage_started","stage":"planner","sequence":1}
+  ]
+}
+```
 
 Unknown jobs return `404`:
 
@@ -153,6 +164,26 @@ provider responses, headers, request bodies, or API keys.
   }
 }
 ```
+
+While a worker runs in the same process, the stream may also include safe execution
+events:
+
+```json
+{"type":"stage_started","stage":"planner","sequence":1}
+{"type":"stage_finished","stage":"collector","sequence":4}
+{"type":"tool_call","record":{"tool_name":"mock_search","success":true},"sequence":5}
+{"type":"llm_call","record":{"stage":"analyst","model":"...","success":true},"sequence":6}
+{"type":"report_ready","sequence":10}
+```
+
+Event history is bounded and persisted with retained job details. On process restart,
+or when connecting to a different process than the one executing the job, clients may
+still receive replayed persisted events, but not live cross-process pub/sub updates.
+When cached stage events are available in the same process, snapshot progress fields
+derive from those events, so `progress_stage`, `progress_percent`, and
+`progress_steps` show the active Planner, Collector, Analyst, Critic, or Reporter
+stage instead of the generic running fallback. If memory cache is empty, persisted
+stage events are used as a fallback.
 
 Unknown jobs send an error event and close:
 

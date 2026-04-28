@@ -27,6 +27,7 @@ class FakeJob:
     finished_at: str | None = None
     result: dict[str, object] | None = None
     error: str | None = None
+    events: list[dict[str, object]] | None = None
 
 
 class FakePreset:
@@ -57,6 +58,7 @@ def test_serialize_research_job_uses_public_fields() -> None:
         "finished_at": "2026-04-27T10:00:02Z",
         "result": {"report_markdown": "# Report"},
         "error": None,
+        "events": [],
     }
 
 
@@ -124,6 +126,65 @@ def test_save_and_load_research_jobs_round_trips_terminal_jobs(tmp_path) -> None
     raw = json.loads(path.read_text(encoding="utf-8"))
     assert raw["next_job_sequence"] == 3
     assert raw["jobs"][0]["id"] == "job-1"
+
+
+def test_save_and_load_research_jobs_round_trips_events(tmp_path) -> None:
+    path = tmp_path / "jobs.json"
+    job = FakeJob(
+        id="job-1",
+        query="Compare Cursor",
+        preset="offline",
+        created_order=3,
+        created_at="2026-04-27T10:00:00Z",
+        status="succeeded",
+        started_at="2026-04-27T10:00:01Z",
+        finished_at="2026-04-27T10:00:02Z",
+        result={"report_markdown": "# Report"},
+        events=[{"type": "stage_started", "stage": "planner", "sequence": 1}],
+    )
+
+    save_research_jobs(path=path, jobs=[job], next_job_sequence=3)
+    loaded = load_research_jobs(
+        path=path,
+        restart_timestamp="2026-04-27T11:00:00Z",
+    )
+
+    assert loaded.jobs[0]["events"] == [
+        {"type": "stage_started", "stage": "planner", "sequence": 1}
+    ]
+
+
+def test_load_research_jobs_accepts_legacy_jobs_without_events(tmp_path) -> None:
+    path = tmp_path / "jobs.json"
+    path.write_text(
+        json.dumps(
+            {
+                "next_job_sequence": 1,
+                "jobs": [
+                    {
+                        "id": "job-1",
+                        "query": "Legacy",
+                        "preset": "offline",
+                        "created_order": 1,
+                        "created_at": "2026-04-27T10:00:00Z",
+                        "status": "succeeded",
+                        "started_at": "2026-04-27T10:00:01Z",
+                        "finished_at": "2026-04-27T10:00:02Z",
+                        "result": {"report_markdown": "# Report"},
+                        "error": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_research_jobs(
+        path=path,
+        restart_timestamp="2026-04-27T11:00:00Z",
+    )
+
+    assert loaded.jobs[0]["events"] == []
 
 
 def test_load_research_jobs_marks_unfinished_jobs_failed(tmp_path) -> None:
