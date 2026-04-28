@@ -28,6 +28,7 @@ MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 C
 - [架构蓝图](docs/architecture.md)：目标项目结构、核心特性、技术架构、执行流程、agent 协作、工具和证据链。
 - [脚本说明](docs/scripts.md)：run、benchmark、validator、LLM metadata log 脚本用法。
 - [MVP Demo](docs/demo.md)：展示报告、offline/live LLM demo 命令和 observability 演示。
+- [部署说明](docs/deployment.md)：本地/API demo server、SQLite jobs、live LLM 和 systemd 部署边界。
 - [Research jobs API](docs/research-jobs-api.md)：异步 research jobs 端点、状态、限制、取消和持久化行为。
 - [Research job repository contract](docs/research-job-repository-contract.md)：research jobs 稳定契约、内存实现细节和未来存储后端要求。
 - [Roadmap](docs/roadmap.md)：近期工程优先级和延后事项。
