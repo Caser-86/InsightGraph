@@ -34,6 +34,63 @@ def test_sqlite_backend_initializes_schema_and_sequence(tmp_path) -> None:
     assert sequence == (0,)
 
 
+def sqlite_columns(db_path, table_name: str) -> set[str]:
+    with sqlite3.connect(db_path) as connection:
+        return {row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")}
+
+
+def test_sqlite_backend_initializes_lease_columns(tmp_path) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+
+    assert {
+        "worker_id",
+        "lease_expires_at",
+        "heartbeat_at",
+        "attempt_count",
+    }.issubset(sqlite_columns(db_path, "research_jobs"))
+
+
+def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "jobs.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE research_jobs (
+                id TEXT PRIMARY KEY,
+                query TEXT NOT NULL,
+                preset TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_order INTEGER NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                finished_at TEXT,
+                result_json TEXT,
+                error TEXT
+            );
+            CREATE TABLE research_job_meta (
+                key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            );
+            INSERT INTO research_job_meta (key, value) VALUES ('next_sequence', 0);
+            """
+        )
+
+    backend = SQLiteResearchJobsBackend(db_path)
+    backend.initialize()
+
+    assert {
+        "worker_id",
+        "lease_expires_at",
+        "heartbeat_at",
+        "attempt_count",
+    }.issubset(sqlite_columns(db_path, "research_jobs"))
+
+
 def test_sqlite_backend_serializes_job_rows(tmp_path) -> None:
     backend = SQLiteResearchJobsBackend(tmp_path / "jobs.sqlite3")
     backend.initialize()

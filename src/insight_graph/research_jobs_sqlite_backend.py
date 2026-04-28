@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     started_at TEXT,
     finished_at TEXT,
     result_json TEXT,
-    error TEXT
+    error TEXT,
+    worker_id TEXT,
+    lease_expires_at TEXT,
+    heartbeat_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS research_job_meta (
@@ -58,6 +62,10 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "finished_at": job.finished_at,
         "result_json": json.dumps(job.result) if job.result is not None else None,
         "error": job.error,
+        "worker_id": None,
+        "lease_expires_at": None,
+        "heartbeat_at": None,
+        "attempt_count": 0,
     }
 
 
@@ -75,6 +83,21 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         result=json.loads(result_json) if result_json is not None else None,
         error=row["error"],
     )
+
+
+def ensure_lease_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(research_jobs)")
+    }
+    migrations = {
+        "worker_id": "ALTER TABLE research_jobs ADD COLUMN worker_id TEXT",
+        "lease_expires_at": "ALTER TABLE research_jobs ADD COLUMN lease_expires_at TEXT",
+        "heartbeat_at": "ALTER TABLE research_jobs ADD COLUMN heartbeat_at TEXT",
+        "attempt_count": "ALTER TABLE research_jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+    }
+    for column_name, statement in migrations.items():
+        if column_name not in existing_columns:
+            connection.execute(statement)
 
 
 class SQLiteResearchJobsBackend:
@@ -97,6 +120,7 @@ class SQLiteResearchJobsBackend:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(SCHEMA)
+            ensure_lease_columns(connection)
             connection.execute(
                 """
                 INSERT OR IGNORE INTO research_job_meta (key, value)
@@ -129,10 +153,12 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
-                    started_at, finished_at, result_json, error
+                    started_at, finished_at, result_json, error,
+                    worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
-                    :started_at, :finished_at, :result_json, :error
+                    :started_at, :finished_at, :result_json, :error,
+                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 [job_to_row(job) for job in jobs],
@@ -157,10 +183,12 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT OR REPLACE INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
-                    started_at, finished_at, result_json, error
+                    started_at, finished_at, result_json, error,
+                    worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
-                    :started_at, :finished_at, :result_json, :error
+                    :started_at, :finished_at, :result_json, :error,
+                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 [job_to_row(job) for job in jobs],
@@ -326,10 +354,12 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT INTO research_jobs (
                     id, query, preset, status, created_order, created_at,
-                    started_at, finished_at, result_json, error
+                    started_at, finished_at, result_json, error,
+                    worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :status, :created_order, :created_at,
-                    :started_at, :finished_at, :result_json, :error
+                    :started_at, :finished_at, :result_json, :error,
+                    :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
                 job_to_row(job),
