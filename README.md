@@ -10,14 +10,14 @@
 |------|------|
 | LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
 | CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
-| API | 已实现 `GET /health`、同步 `POST /research`、单进程内存异步 jobs |
+| API | 已实现 `GET /health`、同步 `POST /research`、异步 research jobs、手动 retry、可选 JSON/SQLite job metadata storage |
 | 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider |
 | GitHub evidence | 默认 deterministic/offline；可 opt-in live GitHub repository search provider |
 | 文档 evidence | 支持 cwd 内 TXT/Markdown/HTML/PDF、本地 chunking、JSON lexical query ranking |
 | 文件工具 | 支持 cwd 内只读 `read_file` / `list_directory` 和 create-only `write_file` |
 | Analyst / Reporter | 默认 deterministic/offline；可 opt-in OpenAI-compatible LLM |
 | Critic | 已实现证据数量、分析结果、citation support 检查 |
-| 可观测性 | 已记录 tool call log、LLM metadata log、token usage metadata |
+| 可观测性 | 已记录 tool call log、LLM metadata log、token usage 和 LLM router decision metadata |
 | 测试 | 已实现 pytest 覆盖 state、agents、tools、graph、CLI、API、scripts |
 
 MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 CI。真实搜索、真实 LLM、GitHub API 等能力都必须显式 opt-in。
@@ -80,7 +80,7 @@ python scripts/validate_github_search.py --markdown
 
 ## API MVP
 
-当前 API 是单进程 MVP，不包含 WebSocket、auth、持久化或并行 workflow execution。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用内存 jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/summary` 获取状态数量和 queued/running 概览，`GET /research/jobs` 列出当前任务摘要，`GET /research/jobs/{job_id}` 轮询状态，`POST /research/jobs/{job_id}/cancel` 取消尚未执行的 queued job。jobs 存在进程内存中，服务重启后会丢失；后台执行仍通过单 worker 和 runtime preset lock 串行保护环境变量。job 响应包含 UTC 时间 metadata：`created_at` 总是存在，`started_at` 在进入 `running` 后出现，`finished_at` 在 `succeeded` / `failed` / `cancelled` 后出现；`queued` jobs 还包含 1-based `queue_position`，该值按当前内存 queued jobs 动态计算，`running` / terminal jobs 不返回。内存 store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs；`queued` / `running` jobs 不会被裁剪，但 `queued + running` 达到 active cap 后，新建 job 返回 `429 Too many active research jobs.`。summary 返回 `active_count` 和 `active_limit` 便于客户端显示当前负载。
+当前 API 是本地 MVP，不包含 WebSocket、auth 或强杀 running job。`/research` 会在应用 runtime preset 环境后同步串行执行 workflow。需要避免 HTTP 长请求阻塞时，可使用 research jobs：`POST /research/jobs` 创建后台任务，`GET /research/jobs/summary` 获取状态数量和 queued/running 概览，`GET /research/jobs` 列出当前任务摘要，`GET /research/jobs/{job_id}` 轮询状态，`POST /research/jobs/{job_id}/cancel` 取消尚未执行的 queued job，`POST /research/jobs/{job_id}/retry` 从 failed/cancelled source 创建新的 queued job。默认 jobs 存在进程内存中；可用 `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` 启用 JSON metadata persistence，或用 `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite` 和 `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` 启用 SQLite storage。SQLite backend 会使用内部 worker lease 协调多进程 claim/heartbeat/requeue，但不改变公开 API 响应形状。job 响应包含 UTC 时间 metadata：`created_at` 总是存在，`started_at` 在进入 `running` 后出现，`finished_at` 在 `succeeded` / `failed` / `cancelled` 后出现；`queued` jobs 还包含 1-based `queue_position`，该值按当前 queued jobs 动态计算，`running` / terminal jobs 不返回。store 只保留最近 100 个 `succeeded` / `failed` / `cancelled` jobs；`queued` / `running` jobs 不会被裁剪，但 `queued + running` 达到 active cap 后，新建 job 返回 `429 Too many active research jobs.`。summary 返回 `active_count` 和 `active_limit` 便于客户端显示当前负载。
 
 ```bash
 python -m pip install "uvicorn[standard]"
@@ -105,9 +105,11 @@ curl http://127.0.0.1:8000/research/jobs/summary
 curl http://127.0.0.1:8000/research/jobs/<job_id>
 
 curl -X POST http://127.0.0.1:8000/research/jobs/<job_id>/cancel
+
+curl -X POST http://127.0.0.1:8000/research/jobs/<job_id>/retry
 ```
 
-Job 状态包括 `queued`、`running`、`succeeded`、`failed` 和 `cancelled`。列表和 summary 只返回摘要，不包含 `result` 或错误细节；summary 额外返回各状态数量以及 queued/running 活跃任务概览。`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。取消接口只接受 `queued` jobs；`running` / `succeeded` / `failed` jobs 返回 `409`，不尝试强杀正在运行的 workflow。
+Job 状态包括 `queued`、`running`、`succeeded`、`failed` 和 `cancelled`。列表和 summary 只返回摘要，不包含 `result` 或错误细节；summary 额外返回各状态数量以及 queued/running 活跃任务概览。`succeeded` 详情响应包含 `result`，结构与同步 `/research` 一致；`failed` 详情只返回安全错误 `Research workflow failed.`，不暴露底层 provider payload、路径或异常细节。取消接口只接受 `queued` jobs；`running` / `succeeded` / `failed` jobs 返回 `409`，不尝试强杀正在运行的 workflow。retry 接口只接受 `failed` / `cancelled` source，并创建新的 queued job，不修改 source job。
 
 ### Research job repository helpers
 

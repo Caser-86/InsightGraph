@@ -1,6 +1,6 @@
 # Research Job Repository Contract
 
-`src/insight_graph/research_jobs.py` owns the service-facing research job repository contract for the current MVP. `src/insight_graph/research_jobs_backend.py` owns the in-memory backend used by that service layer. This document defines which behaviors are stable contract and which are implementation details.
+`src/insight_graph/research_jobs.py` owns the service-facing research job repository contract for the current MVP. `src/insight_graph/research_jobs_backend.py` owns the in-memory backend used by that service layer, and `src/insight_graph/research_jobs_sqlite_backend.py` owns the optional SQLite backend. This document defines which behaviors are stable contract and which are implementation details.
 
 ## Stable contract
 
@@ -63,7 +63,7 @@ The in-memory backend keeps its existing single-process behavior and does not si
 
 ## Future storage backend requirements
 
-Any SQLite/Postgres or external storage backend must preserve the stable contract above before replacing the in-memory implementation.
+Any future Postgres or external storage backend must preserve the stable contract above before replacing the in-memory or SQLite implementation.
 
 Required backend capabilities:
 - Atomic create with active-cap check.

@@ -26,5 +26,5 @@
 
 ## Deferred work
 
-- Add job retry/resume semantics only after persistence contract is stable.
+- Add automatic job resume semantics only after persistence contract is stable; manual retry is already implemented.
 - Add auth/rate limits only when API moves beyond local MVP usage.

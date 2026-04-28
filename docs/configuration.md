@@ -41,9 +41,11 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 
 ## Research Jobs Persistence
 
-`INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables an opt-in JSON store for API research job metadata. When unset, jobs remain process-local memory only. When set, the API loads job metadata from the configured JSON file at startup and writes job state changes back to that file with atomic replace semantics.
+`INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables an opt-in JSON store for API research job metadata. When unset, jobs remain process-local memory only unless SQLite storage is explicitly selected. When set, the API loads job metadata from the configured JSON file at startup and writes job state changes back to that file with atomic replace semantics.
 
-Queued or running jobs from a previous process are restored as failed with `Research job did not complete before server restart.` The API does not automatically resume or rerun unfinished jobs.
+For multi-process-safe job metadata storage, set `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite` and `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`. With SQLite selected, `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` is only an optional startup import source. SQLite worker lease metadata is internal and does not change public API responses.
+
+For JSON metadata persistence, queued or running jobs from a previous process are restored as failed with `Research job did not complete before server restart.` SQLite storage keeps queued jobs in the queue and requeues expired running jobs through worker lease claim. The API does not automatically resume interrupted workflow execution or rerun unfinished jobs without a later worker claim/retry.
 
 当前 Executor 是第一阶段实现：它会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用，尚未包含多轮 agentic tool loop、conversation compression 或收敛检测。
 
@@ -203,7 +205,7 @@ JSON output includes `user_request`, `report_markdown`, `findings`, `competitive
 
 ## 计划配置（后续路线图）
 
-默认 CLI 不需要环境变量；真实搜索、relevance、LLM Analyst 等能力通过上文列出的环境变量 opt-in。以下配置项用于后续接入数据库、预算控制和更多 provider 时落地。
+默认 CLI 不需要环境变量；真实搜索、relevance、LLM Analyst 等能力通过上文列出的环境变量 opt-in。以下配置项用于后续接入 PostgreSQL、预算控制和更多 provider 时落地。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|

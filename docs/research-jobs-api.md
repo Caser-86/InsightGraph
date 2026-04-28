@@ -1,6 +1,6 @@
 # Research Jobs API
 
-The research jobs API is the non-blocking path for long-running research requests. It is a single-process MVP backed by the in-process repository documented in `docs/research-job-repository-contract.md`.
+The research jobs API is the non-blocking path for long-running research requests. It uses the repository contract documented in `docs/research-job-repository-contract.md` and supports in-memory storage by default, opt-in JSON metadata persistence, and opt-in SQLite storage with internal worker leasing.
 
 ## Endpoints
 
@@ -184,8 +184,9 @@ If configured storage fails while creating the retry job, retry returns `500`:
 - The in-memory repository retains the latest 100 terminal jobs: `succeeded`, `failed`, and `cancelled`.
 - `queued` and `running` jobs are not pruned by terminal-job retention.
 - `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables opt-in JSON metadata persistence.
-- On restart, unfinished persisted jobs become `failed` with `Research job did not complete before server restart.`
-- Jobs are not automatically resumed or retried after restart.
+- With JSON metadata persistence, unfinished persisted jobs become `failed` with `Research job did not complete before server restart.`
+- With SQLite storage, queued jobs remain queued and expired running jobs are requeued through internal worker lease claim.
+- Workflow execution is not resumed in-place after restart, and jobs are not automatically retried after terminal failure.
 
 ## Runtime storage configuration
 
