@@ -9,7 +9,7 @@
 | 能力 | 状态 |
 |------|------|
 | LangGraph 工作流 | 已实现 Planner → Collector → Analyst → Critic → Reporter 的可运行状态图 |
-| CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` |
+| CLI | 已实现 `insight-graph research "..."` / `python -m insight_graph.cli research "..."` / `insight-graph-eval` |
 | API | 已实现 `GET /health`、同步 `POST /research`、异步 research jobs、`GET /dashboard`、手动 retry、可选 JSON/SQLite job metadata storage |
 | 证据链 | 已实现 deterministic `mock_search`、direct URL `fetch_url`、默认 mock `web_search -> pre_fetch -> fetch_url`，并支持 opt-in DuckDuckGo provider |
 | GitHub evidence | 默认 deterministic/offline；可 opt-in live GitHub repository search provider |
@@ -18,6 +18,7 @@
 | Analyst / Reporter | 默认 deterministic/offline；可 opt-in OpenAI-compatible LLM |
 | Critic | 已实现证据数量、分析结果、citation support 检查 |
 | 可观测性 | 已记录 tool call log、LLM metadata log、token usage 和 LLM router decision metadata |
+| Eval Bench | 已实现 deterministic offline eval scoring，用于结构质量和回归检查 |
 | 测试 | 已实现 pytest 覆盖 state、agents、tools、graph、CLI、API、scripts |
 
 MVP 默认使用 deterministic/offline 行为，适合本地开发、测试和 CI。真实搜索、真实 LLM、GitHub API 等能力都必须显式 opt-in。
@@ -73,6 +74,9 @@ python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
 
 # Offline benchmark
 python scripts/benchmark_research.py --markdown
+
+# Offline eval bench with quality score
+insight-graph-eval --markdown --output reports/eval.md
 
 # Offline validators
 python scripts/validate_sources.py report.md

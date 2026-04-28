@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added `insight-graph-eval` for deterministic offline quality scoring.
+
 ## v0.1.14 - 2026-04-28
 
 - Added safe node-level execution events for Planner, Collector, Analyst, Critic, and Reporter.

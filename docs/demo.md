@@ -88,6 +88,18 @@ python scripts/run_with_llm_log.py "Compare Cursor, OpenCode, and GitHub Copilot
 
 The LLM log includes stage, provider, selected model, wire API, token usage when available, and router metadata when rules routing is enabled. It does not store prompts, completions, raw responses, headers, request bodies, or API keys.
 
+## Eval Bench Demo
+
+Run deterministic offline evaluation to score report structure and citation coverage:
+
+```bash
+insight-graph-eval --markdown --output reports/eval.md
+```
+
+The eval bench clears live search and LLM opt-in environment variables while cases
+run. It reports per-case score, pass/fail status, failed rules, references,
+findings, matrix rows, tool calls, and LLM calls without using an LLM judge.
+
 ## Validate the Showcase Report
 
 Run the offline source validator:

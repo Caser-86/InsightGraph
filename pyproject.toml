@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 insight-graph = "insight_graph.cli:app"
+insight-graph-eval = "insight_graph.eval:main"
 
 [build-system]
 requires = ["hatchling"]
