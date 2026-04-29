@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `INSIGHT_GRAPH_LLM_PROVIDER=qwen` config sugar for DashScope's OpenAI-compatible endpoint.
 - Updated `run_with_llm_log.py` to write full LLM trace logs and token/call summaries by default.
 - Added opt-in full LLM JSONL trace logging for Analyst and Reporter calls.
 - Added snippet-level citation support metadata and tighter Reporter anti-hallucination prompts.

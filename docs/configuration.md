@@ -174,6 +174,12 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings；`competitive_matrix` 可由 LLM 提供，但每一行必须引用当前 verified evidence ID。缺少矩阵时会用 deterministic 矩阵补齐并保留有效 LLM findings；缺少 key/API、LLM 返回非 JSON、schema 不合法或矩阵引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
+### Qwen/DashScope Provider
+
+Set `INSIGHT_GRAPH_LLM_PROVIDER=qwen` to use DashScope's OpenAI-compatible endpoint. The provider supplies `https://dashscope.aliyuncs.com/compatible-mode/v1` and `qwen-plus` when `INSIGHT_GRAPH_LLM_BASE_URL` and `INSIGHT_GRAPH_LLM_MODEL` are unset. API key resolution is `INSIGHT_GRAPH_LLM_API_KEY`, then `DASHSCOPE_API_KEY`, then `OPENAI_API_KEY`.
+
+Explicit `resolve_llm_config(...)` arguments and `INSIGHT_GRAPH_LLM_*` environment variables override provider defaults. `OPENAI_BASE_URL` is not used as a Qwen endpoint fallback; set `INSIGHT_GRAPH_LLM_BASE_URL` if you need a DashScope-compatible relay. This does not change offline defaults; live LLM use still requires explicit provider/preset configuration.
+
 ## LLM Reporter 配置
 
 Reporter 默认使用 deterministic/offline provider，离线且不调用真实 LLM，适合本地开发、测试和 CLI smoke。需要 OpenAI-compatible LLM 生成更专业的报告正文时，可显式 opt-in：

@@ -19,7 +19,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
-| Qwen/Minimax providers | OpenAI-compatible provider exists | Need named provider adapters | Medium |
+| Qwen/Minimax providers | Qwen provider config is implemented; OpenAI-compatible provider exists | Need named Minimax provider adapter | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
 | Code execution | Restricted expression boundary | Need real sandbox only if approved | Low |
 | API parity | `/research/jobs` API exists | Need `/tasks` compatibility aliases if required | Medium |
@@ -43,7 +43,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ### Phase B: Provider And Long-Document Parity
 
-11. Named Qwen/DashScope LLM adapter.
+11. Named Qwen/DashScope LLM adapter. **Implemented.**
 12. Named Minimax LLM adapter.
 13. Stage-aware model routing policy.
 14. Persisted document vector index.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 11 starts with named Qwen/DashScope LLM adapter. The first implementation should add provider naming/config sugar on top of the existing OpenAI-compatible client without changing default deterministic behavior.
+Phase 12 starts with the named Minimax LLM adapter. The first implementation should add provider naming/config sugar on top of the existing OpenAI-compatible client without changing default deterministic behavior.
