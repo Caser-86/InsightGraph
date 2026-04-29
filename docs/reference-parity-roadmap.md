@@ -14,7 +14,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | LLM relevance filtering | Implemented and opt-in | Needs tighter integration with pre-fetch loop | Medium |
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
-| Reporter verified-only citations | URL revalidation implemented for live research | Need snippet-level citation tightening | High |
+| Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
 | Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
@@ -37,7 +37,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 5. Automatic conversation compression in long-running loops. **Implemented.**
 6. Pre-search fetch pipeline hardening. **Implemented.**
 7. Reporter URL revalidation. **Implemented.**
-8. Snippet-level citation support tightening.
+8. Snippet-level citation support tightening. **Implemented.**
 9. Opt-in full LLM trace writer.
 10. `run_with_llm_log` token/call summary script.
 
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 8 starts with snippet-level citation support tightening. The first implementation should strengthen claim-to-snippet validation while keeping Reporter references verified-only and preserving offline default tests.
+Phase 9 starts with opt-in full LLM trace writer. The first implementation should persist safe trace events only when explicitly enabled and keep prompt/completion payloads excluded by default.

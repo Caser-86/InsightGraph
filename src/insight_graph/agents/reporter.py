@@ -350,17 +350,19 @@ def _build_reporter_messages(
             f"User request: {state.user_request}",
             "Accepted findings with allowed citations:",
             "\n".join(finding_lines),
-            "Verified evidence references:",
+            "Verified evidence snippets:",
             "\n".join(evidence_lines),
             f"Critique reason: {critique_reason}",
+            "Evidence snippets are the only allowed factual basis.",
             (
                 "Return strict JSON only with this shape: "
                 '{"markdown": "# InsightGraph Research Report\\n..."}. '
                 "The markdown must include # InsightGraph Research Report and ## Key Findings. "
                 "Use ASCII-only punctuation and quotes. "
+                "Use only facts and numbers present in the verified evidence snippets. "
                 "Use only the allowed bracket citations, cite at least one source, and do not "
                 "include References or Sources sections because references will be appended "
-                "deterministically."
+                "deterministically. Do not invent facts, numbers, sources, or citations."
             ),
         ]
     )
@@ -583,7 +585,7 @@ def _build_citation_support_section(
     for item in state.citation_support:
         claim = str(item.get("claim", ""))
         status = str(item.get("status", "unknown"))
-        reason = str(item.get("reason", ""))
+        reason = _citation_support_reason(item)
         evidence_ids = item.get("evidence_ids", [])
         verified_ids = [
             evidence_id
@@ -615,6 +617,19 @@ def _build_citation_support_section(
         *rows,
         "",
     ]
+
+
+def _citation_support_reason(item: dict[str, object]) -> str:
+    parts = [str(item.get("reason", ""))]
+    support_score = item.get("support_score")
+    if isinstance(support_score, int | float):
+        parts.append(f"support_score={support_score}")
+    matched_terms = item.get("matched_terms")
+    if isinstance(matched_terms, list) and matched_terms:
+        terms = [term for term in matched_terms if isinstance(term, str)]
+        if terms:
+            parts.append(f"matched_terms={', '.join(terms)}")
+    return "; ".join(part for part in parts if part)
 
 
 def _build_references_section(

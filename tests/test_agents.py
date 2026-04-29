@@ -1561,6 +1561,29 @@ def test_llm_reporter_creates_client_with_routing_context(monkeypatch) -> None:
     assert "allowed_citations" in calls[0]["messages"][-1].content
 
 
+def test_llm_reporter_prompt_uses_verified_snippets_as_fact_boundary(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    calls: list[dict] = []
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        calls.append({"config": config, "purpose": purpose, "messages": messages})
+        return RecordingRouterClient(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor pricing is documented [1]."}'
+        )
+
+    monkeypatch.setattr("insight_graph.agents.reporter.get_llm_client", fake_get_llm_client)
+
+    write_report(make_reporter_state())
+
+    prompt = calls[0]["messages"][-1].content
+    assert "Evidence snippets are the only allowed factual basis." in prompt
+    assert "Verified evidence snippets:" in prompt
+    assert "Cursor lists Pro and Business pricing tiers." in prompt
+
+
 def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
@@ -2318,12 +2341,16 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
             "status": "supported",
             "evidence_ids": ["cursor-pricing", "unverified-source"],
             "reason": "verified snippet overlap",
+            "support_score": 0.67,
+            "matched_terms": ["cursor", "pricing"],
         },
         {
             "claim": "Unsupported claim",
             "status": "unsupported",
             "evidence_ids": [],
             "reason": "missing verified evidence",
+            "support_score": 0.0,
+            "matched_terms": [],
         },
     ]
 
@@ -2333,10 +2360,10 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
     assert "| Claim | Status | Evidence | Reason |" in updated.report_markdown
     assert (
         "| Pricing and packaging differ | supported | cursor-pricing | "
-        "verified snippet overlap |"
+        "verified snippet overlap; support_score=0.67; matched_terms=cursor, pricing |"
     ) in updated.report_markdown
     assert (
-        "| Unsupported claim | unsupported |  | missing verified evidence |"
+        "| Unsupported claim | unsupported |  | missing verified evidence; support_score=0.0 |"
     ) in updated.report_markdown
     support_section = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
     assert "unverified-source" not in support_section

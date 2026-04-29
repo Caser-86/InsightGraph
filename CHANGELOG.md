@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added snippet-level citation support metadata and tighter Reporter anti-hallucination prompts.
 - Added live Reporter URL revalidation for final references.
 - Hardened the pre-fetch pipeline with fetch-budget caps, per-result failure isolation, and retrieval-query propagation.
 - Added opt-in Executor conversation compression summaries for long-running collection loops.

@@ -124,6 +124,10 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 
 Reporter URL revalidation 默认关闭；`--preset live-research` 会启用它。也可显式设置 `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`。启用后，Reporter 在最终 References 前用 bounded HTTP fetch 验证 verified evidence URLs，将结果写入 `GraphState.url_validation`，并在 References 中标注 `(URL validated)` 或 `(URL validation failed: ...)`。验证失败不会生成替代 URL，也不会伪造引用。
 
+## Snippet-Level Citation Support
+
+Critic 会把 finding 的 verified evidence snippets 写入 `GraphState.citation_support`，并记录 `supporting_snippets`、`matched_terms`、`missing_terms` 和 `support_score`。LLM Reporter 的 prompt 只把 verified evidence snippets 作为允许事实依据，并禁止编造 facts、numbers、sources 或 citations。该边界默认离线 deterministic；LLM Reporter 仍需显式 opt-in。
+
 ```bash
 INSIGHT_GRAPH_RELEVANCE_FILTER=1 \
 INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible \
