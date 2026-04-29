@@ -28,7 +28,7 @@ jobs:
         run: python -m pytest
 
       - name: Validate Deployment Smoke Script
-        run: python scripts/smoke_deployment.py --help
+        run: insight-graph-smoke --help
 
       - name: Generate Eval Reports
         run: |

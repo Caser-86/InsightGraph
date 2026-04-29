@@ -384,7 +384,7 @@ If it stays on polling, review the proxy WebSocket upgrade configuration.
 You can also run the deployment smoke test script against the public URL:
 
 ```bash
-INSIGHT_GRAPH_API_KEY=change-me python scripts/smoke_deployment.py https://insightgraph.example.com
+INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com
 ```
 
 The script checks `/health`, `/dashboard`, and `/research/jobs/summary`. It exits `0`
@@ -421,7 +421,7 @@ headers, raw provider payloads, or API keys.
 Deployment smoke test:
 
 ```bash
-INSIGHT_GRAPH_API_KEY=change-me python scripts/smoke_deployment.py http://127.0.0.1:8000
+INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke http://127.0.0.1:8000
 ```
 
 Health:

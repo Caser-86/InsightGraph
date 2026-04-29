@@ -10,7 +10,7 @@
 | `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
 | `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown/HTML/PDF `document_reader` 行为、长文档 bounded snippets 和 JSON query ranking，默认 JSON 输出，`--markdown` 输出表格；PDF OCR、页级分页与向量语义检索验证属于后续路线图 |
 | `scripts/validate_github_search.py` | 当前可用 | 离线验证默认 deterministic `github_search` 和 fake live GitHub provider 映射，默认 JSON 输出，`--markdown` 输出表格；不读取 token、不请求 GitHub API |
-| `scripts/smoke_deployment.py` | 当前可用 | 对已运行的 API 部署执行 smoke test：检查 `/health`、`/dashboard` 和 `/research/jobs/summary`；默认从 `INSIGHT_GRAPH_API_KEY` 读取 API key，输出 JSON |
+| `insight-graph-smoke` / `scripts/smoke_deployment.py` | 当前可用 | 对已运行的 API 部署执行 smoke test：检查 `/health`、`/dashboard` 和 `/research/jobs/summary`；默认从 `INSIGHT_GRAPH_API_KEY` 读取 API key，输出 JSON |
 
 ## run_research.py
 
@@ -83,14 +83,17 @@ python scripts/validate_github_search.py --markdown
 
 该脚本验证默认 offline `github_search` 以及 `INSIGHT_GRAPH_GITHUB_PROVIDER=live` 的 fake GitHub API 映射路径；不读取 `GITHUB_TOKEN`、不请求真实 GitHub API，也不调用 LLM。
 
-## smoke_deployment.py
+## insight-graph-smoke
 
 ```bash
-python scripts/smoke_deployment.py http://127.0.0.1:8000
-INSIGHT_GRAPH_API_KEY=change-me python scripts/smoke_deployment.py https://insightgraph.example.com
-python scripts/smoke_deployment.py https://insightgraph.example.com --timeout 10
+insight-graph-smoke http://127.0.0.1:8000
+INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com
+insight-graph-smoke https://insightgraph.example.com --timeout 10
 ```
 
 该脚本会对已运行的 API 或 reverse proxy 边界执行部署 smoke test。它检查 `/health` 可访问、`/dashboard` 返回 dashboard HTML、`/research/jobs/summary` 返回 JSON；当设置 `INSIGHT_GRAPH_API_KEY` 或传入 `--api-key` 时，会用 `Authorization: Bearer <key>` 请求受保护的 jobs summary endpoint。
 
 退出码：全部通过为 `0`，任一 endpoint 检查失败为 `1`，CLI 参数错误为 `2`。脚本输出 JSON，不打印 API key、请求 body 或响应 body。
+
+`scripts/smoke_deployment.py` remains as a repository-local compatibility wrapper around
+the packaged `insight-graph-smoke` command.

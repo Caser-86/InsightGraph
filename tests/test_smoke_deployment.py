@@ -1,7 +1,16 @@
 import io
 import json
+from pathlib import Path
 
-import scripts.smoke_deployment as smoke_module
+import insight_graph.smoke as smoke_module
+
+
+def test_pyproject_registers_smoke_console_script() -> None:
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+
+    assert 'insight-graph-smoke = "insight_graph.smoke:main"' in pyproject.read_text(
+        encoding="utf-8"
+    )
 
 
 class FakeResponse:

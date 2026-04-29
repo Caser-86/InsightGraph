@@ -33,4 +33,4 @@ def test_ci_validates_deployment_smoke_script_without_network() -> None:
     )
 
     assert "Validate Deployment Smoke Script" in workflow
-    assert "python scripts/smoke_deployment.py --help" in workflow
+    assert "insight-graph-smoke --help" in workflow
