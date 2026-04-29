@@ -31,6 +31,71 @@ def test_resolve_llm_config_falls_back_to_openai_env(monkeypatch) -> None:
     assert config.model == "gpt-4o-mini"
 
 
+def test_resolve_llm_config_defaults_to_openai_compatible_provider(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_PROVIDER", raising=False)
+
+    config = resolve_llm_config()
+
+    assert config.provider == "openai_compatible"
+
+
+def test_resolve_llm_config_qwen_provider_sets_dashscope_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    config = resolve_llm_config()
+
+    assert config.provider == "qwen"
+    assert config.api_key == "dashscope-key"
+    assert config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert config.model == "qwen-plus"
+
+
+def test_resolve_llm_config_qwen_provider_allows_explicit_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "https://relay.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "custom-qwen")
+
+    config = resolve_llm_config(
+        api_key="explicit-key",
+        base_url="https://explicit.example/v1",
+        model="explicit-model",
+    )
+
+    assert config.provider == "qwen"
+    assert config.api_key == "explicit-key"
+    assert config.base_url == "https://explicit.example/v1"
+    assert config.model == "explicit-model"
+
+
+def test_resolve_llm_config_qwen_provider_env_overrides_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "insight-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "https://relay.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "qwen-max")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
+
+    config = resolve_llm_config()
+
+    assert config.provider == "qwen"
+    assert config.api_key == "insight-key"
+    assert config.base_url == "https://relay.example/v1"
+    assert config.model == "qwen-max"
+
+
+def test_resolve_llm_config_rejects_unknown_provider(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "not-real")
+
+    with pytest.raises(ValueError, match="provider"):
+        resolve_llm_config()
+
+
 def test_resolve_llm_config_defaults_to_chat_completions(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_LLM_WIRE_API", raising=False)
 
