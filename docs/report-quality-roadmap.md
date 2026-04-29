@@ -472,8 +472,9 @@ These rules are mandatory for future work:
 6. Use opt-in live providers only; do not make network or LLM calls the default path.
 7. Use TDD for behavior changes.
 8. Run verification before claiming completion.
-9. Update this roadmap only after user approval.
-10. If a task does not map to this roadmap, stop and ask before proceeding.
+9. In git worktrees, run module/CLI verification against the current checkout by reinstalling the editable install from that worktree or by setting `PYTHONPATH=src`; otherwise `python -m insight_graph...` can load a stale editable install from another workspace.
+10. Update this roadmap only after user approval.
+11. If a task does not map to this roadmap, stop and ask before proceeding.
 
 ## Next Required Step
 
