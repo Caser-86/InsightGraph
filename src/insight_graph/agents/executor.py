@@ -2,7 +2,7 @@ from insight_graph.agents.relevance import (
     filter_relevant_evidence,
     is_relevance_filter_enabled,
 )
-from insight_graph.report_quality.evidence_scoring import score_evidence_pool
+from insight_graph.report_quality.evidence_scoring import score_evidence
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
 
@@ -34,13 +34,14 @@ def execute_subtasks(state: GraphState) -> GraphState:
             records.extend(new_records)
 
     deduped = _deduplicate_evidence(collected)
-    state.evidence_pool = deduped
-    state.global_evidence_pool = deduped
+    ordered_evidence, evidence_scores = _order_evidence_by_score(deduped)
+    state.evidence_pool = ordered_evidence
+    state.global_evidence_pool = ordered_evidence
     state.tool_call_log = records
-    state.evidence_scores = score_evidence_pool(deduped)
+    state.evidence_scores = evidence_scores
     state.section_collection_status = _build_section_collection_status(
         state.section_research_plan,
-        deduped,
+        ordered_evidence,
     )
     return state
 
@@ -182,3 +183,11 @@ def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def _order_evidence_by_score(
+    evidence: list[Evidence],
+) -> tuple[list[Evidence], list[dict[str, object]]]:
+    scored = [(score_evidence(item), index, item) for index, item in enumerate(evidence)]
+    scored.sort(key=lambda item: (-int(item[0]["overall_score"]), item[1]))
+    return [item for _, _, item in scored], [score for score, _, _ in scored]

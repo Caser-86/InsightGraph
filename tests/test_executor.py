@@ -74,6 +74,43 @@ def test_executor_records_evidence_scores() -> None:
     assert updated.evidence_scores[0]["overall_score"] > 0
 
 
+def test_executor_orders_evidence_pool_by_overall_score(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    weak = Evidence(
+        id="weak",
+        subtask_id="collect",
+        title="Weak Evidence",
+        source_url="https://example.com/weak",
+        snippet="Short.",
+        source_type="unknown",
+        verified=True,
+    )
+    official = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [weak, official]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["official", "weak"]
+    assert [item["evidence_id"] for item in updated.evidence_scores] == ["official", "weak"]
+
+
 def test_executor_deduplicates_evidence(monkeypatch) -> None:
     registry_module = importlib.import_module("insight_graph.agents.executor")
 

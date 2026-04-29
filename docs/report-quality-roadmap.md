@@ -458,6 +458,8 @@ Remote PDF responses fetched through `fetch_url` now retain response bytes, extr
 
 Live HTTP fetches now reject oversized `Content-Length` responses before body reads and oversized response bodies before decoding or extraction, keeping HTML/PDF evidence generation bounded in addition to the existing evidence chunk limits.
 
+Collected evidence is now ordered by deterministic evidence scores before downstream analysis and reporting, so official/docs/filings sources are preferred when evidence competes for attention.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.

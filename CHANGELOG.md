@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Ordered collected evidence by deterministic evidence scores before analysis/reporting.
 - Suppressed noisy pypdf logs during remote PDF evidence extraction.
 - Added Content-Length preflight rejection for oversized live URL responses.
 - Aligned architecture and README documentation with implemented Phase 10 live evidence features.
