@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Dashboard Eval artifact guidance tab.
+
 ## v0.1.22 - 2026-04-29
 
 - Added file-based Eval Bench trend history artifacts.

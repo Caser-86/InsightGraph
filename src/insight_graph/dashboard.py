@@ -532,6 +532,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
               <button class="tab" data-tab="tools" type="button">Tool Calls</button>
               <button class="tab" data-tab="llm" type="button">LLM Log</button>
               <button class="tab" data-tab="events" type="button">Live Events</button>
+              <button class="tab" data-tab="eval" type="button">Eval</button>
               <button class="tab" data-tab="raw" type="button">Raw JSON</button>
             </nav>
             <div id="report-panel" class="panel-body tab-panel"></div>
@@ -864,6 +865,22 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </div>`;
     }
 
+    function renderEvalOps() {
+      return `
+        <div class="data-list">
+          <h2>Eval Ops</h2>
+          <p><strong>Default case file</strong><br>docs/evals/default.json</p>
+          <p><strong>CI gate</strong><br>insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure</p>
+          <p><strong>GitHub Actions artifact</strong><br>eval-reports</p>
+          <p><strong>Full reports</strong><br>reports/eval.json<br>reports/eval.md</p>
+          <p><strong>Summary reports</strong><br>reports/eval-summary.json<br>reports/eval-summary.md</p>
+          <p><strong>History reports</strong><br>reports/eval-history.json<br>reports/eval-history.md</p>
+          <p><strong>Local summary command</strong><br>python scripts/summarize_eval_report.py reports/eval.json --markdown</p>
+          <p><strong>Local history command</strong><br>python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z</p>
+          <p class="subtitle">Dashboard does not fetch GitHub Actions artifacts automatically. Download the eval-reports artifact from the CI run to inspect generated files.</p>
+        </div>`;
+    }
+
     function renderDetail() {
       const detail = state.detail;
       const result = detail?.result || {};
@@ -886,6 +903,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
           ? `<div id="live-events" class="live-events">${state.liveEvents.map(renderLiveEvent).join('')}</div>`
           : '<div id="live-events" class="empty">Live execution events will appear here while a job runs.</div>';
       }
+      if (state.activeTab === 'eval') els.reportPanel.innerHTML = renderEvalOps();
       if (state.activeTab === 'raw') els.reportPanel.innerHTML = jsonBlock(detail || {});
     }
 

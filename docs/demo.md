@@ -121,8 +121,9 @@ Append a local eval history row:
 python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z
 ```
 
-The Dashboard Overview tab also shows the active Eval Gate case file, threshold,
-artifact name, and report paths for quick operator reference.
+The Dashboard Overview tab shows the active Eval Gate case file, threshold,
+artifact name, and report paths. The Dashboard Eval tab lists the `eval-reports`
+artifact files and local summary/history commands for quick operator reference.
 
 The eval bench clears live search and LLM opt-in environment variables while cases
 run. It reports per-case score, pass/fail status, failed rules, references,

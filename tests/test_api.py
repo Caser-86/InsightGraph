@@ -272,6 +272,11 @@ def test_dashboard_returns_html() -> None:
     assert "eval-reports" in response.text
     assert "reports/eval.json" in response.text
     assert "reports/eval.md" in response.text
+    assert 'data-tab="eval"' in response.text
+    assert "Eval Ops" in response.text
+    assert "reports/eval-summary.md" in response.text
+    assert "reports/eval-history.md" in response.text
+    assert "Dashboard does not fetch GitHub Actions artifacts" in response.text
     assert "'/research/jobs'" in response.text
     assert "'/research/jobs/summary'" in response.text
     assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text
