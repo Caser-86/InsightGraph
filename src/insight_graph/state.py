@@ -28,6 +28,7 @@ class Evidence(BaseModel):
     chunk_index: int | None = None
     document_page: int | None = None
     section_heading: str | None = None
+    section_id: str | None = None
 
     @property
     def source_domain(self) -> str:

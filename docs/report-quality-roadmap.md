@@ -464,6 +464,8 @@ Section collection status now records required, covered, and missing source type
 
 Retry collection now consumes Critic `replan_requests`: on the retry pass, Executor preserves prior evidence and builds a deterministic follow-up query from the original request, missing section ID, missing source types, and missing evidence count.
 
+Collected evidence now carries optional `section_id` attribution. Executor assigns evidence to the best matching planned section before scoring and section status calculation, so section sufficiency is based on per-section evidence rather than the same global pool for every section.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
@@ -476,8 +478,8 @@ Deferred items:
 Next work queue:
 
 1. Done: replan-driven follow-up collection consumes `replan_requests` to issue targeted follow-up queries for missing section/source evidence before the existing one retry returns to analysis.
-2. Next: section evidence attribution attaches evidence to likely section IDs using source requirements, query terms, entity mentions, and source types instead of treating every section as covered by the same global pool.
-3. Collection budgets and caps: enforce per-run/per-tool/per-section evidence caps so live multi-source collection remains bounded as more providers are added.
+2. Done: section evidence attribution attaches evidence to likely section IDs using source requirements, query terms, entity mentions, and source types instead of treating every section as covered by the same global pool.
+3. Next: collection budgets and caps enforce per-run/per-tool/per-section evidence caps so live multi-source collection remains bounded as more providers are added.
 4. Section-aware query generation: build deterministic queries from `section_research_plan`, resolved entities, and missing source types so each source receives narrower prompts.
 5. Report template tightening: map domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
 6. Long-document retrieval v2: improve local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.

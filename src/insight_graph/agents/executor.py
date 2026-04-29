@@ -1,3 +1,5 @@
+import re
+
 from insight_graph.agents.relevance import (
     filter_relevant_evidence,
     is_relevance_filter_enabled,
@@ -34,7 +36,10 @@ def execute_subtasks(state: GraphState) -> GraphState:
             collected.extend(kept_results)
             records.extend(new_records)
 
-    deduped = _deduplicate_evidence(collected)
+    deduped = _assign_section_ids(
+        _deduplicate_evidence(collected),
+        state.section_research_plan,
+    )
     ordered_evidence, evidence_scores = _order_evidence_by_score(deduped)
     state.evidence_pool = ordered_evidence
     state.global_evidence_pool = ordered_evidence
@@ -86,12 +91,14 @@ def _build_section_collection_status(
     evidence: list[Evidence],
 ) -> list[dict[str, object]]:
     statuses: list[dict[str, object]] = []
-    evidence_count = len(evidence)
     for section in section_plan:
+        section_id = str(section.get("section_id", ""))
+        section_evidence = [item for item in evidence if item.section_id == section_id]
+        evidence_count = len(section_evidence)
         min_evidence = int(section.get("min_evidence", 1))
         missing_evidence = max(0, min_evidence - evidence_count)
         required_source_types = _required_source_types(section)
-        covered_source_types = _covered_source_types(required_source_types, evidence)
+        covered_source_types = _covered_source_types(required_source_types, section_evidence)
         missing_source_types = [
             source_type
             for source_type in required_source_types
@@ -99,7 +106,7 @@ def _build_section_collection_status(
         ]
         statuses.append(
             {
-                "section_id": str(section.get("section_id", "")),
+                "section_id": section_id,
                 "round": 1,
                 "evidence_count": evidence_count,
                 "min_evidence": min_evidence,
@@ -111,6 +118,60 @@ def _build_section_collection_status(
             }
         )
     return statuses
+
+
+def _assign_section_ids(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    if not section_plan:
+        return evidence
+    return [
+        item.model_copy(update={"section_id": _section_id_for_evidence(item, section_plan)})
+        for item in evidence
+    ]
+
+
+def _section_id_for_evidence(
+    evidence: Evidence,
+    section_plan: list[dict[str, object]],
+) -> str | None:
+    scored_sections = [
+        (_section_match_score(evidence, section), index, section)
+        for index, section in enumerate(section_plan)
+    ]
+    scored_sections.sort(key=lambda item: (-item[0], item[1]))
+    best = scored_sections[0][2]
+    section_id = best.get("section_id")
+    return section_id if isinstance(section_id, str) and section_id else None
+
+
+def _section_match_score(evidence: Evidence, section: dict[str, object]) -> int:
+    score = 0
+    if evidence.source_type in _required_source_types(section):
+        score += 10
+    haystack = " ".join([evidence.title, evidence.source_url, evidence.snippet]).lower()
+    section_terms = _section_terms(section)
+    score += sum(1 for term in section_terms if term in haystack)
+    return score
+
+
+def _section_terms(section: dict[str, object]) -> list[str]:
+    raw_values: list[object] = [
+        section.get("section_id", ""),
+        section.get("title", ""),
+        *_object_list(section.get("questions", [])),
+    ]
+    terms: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            continue
+        terms.extend(token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 4)
+    return list(dict.fromkeys(terms))
+
+
+def _object_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
 
 
 def _required_source_types(section: dict[str, object]) -> list[str]:

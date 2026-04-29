@@ -168,6 +168,123 @@ def test_executor_uses_replan_requests_for_retry_follow_up_query(monkeypatch) ->
     assert updated.tool_call_log[0].query == observed["query"]
 
 
+def test_executor_assigns_evidence_to_matching_sections(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    pricing = Evidence(
+        id="pricing",
+        subtask_id="collect",
+        title="Official Pricing",
+        source_url="https://example.com/pricing",
+        snippet="Official pricing evidence for enterprise plans.",
+        source_type="official_site",
+        verified=True,
+    )
+    news = Evidence(
+        id="launch-news",
+        subtask_id="collect",
+        title="Launch News",
+        source_url="https://example.com/news",
+        snippet="Market launch news evidence.",
+        source_type="news",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [pricing, news]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        section_research_plan=[
+            {
+                "section_id": "pricing",
+                "title": "Pricing",
+                "questions": ["What pricing model is used?"],
+                "required_source_types": ["official_site"],
+                "min_evidence": 1,
+            },
+            {
+                "section_id": "market-signals",
+                "title": "Market Signals",
+                "questions": ["What market launch news exists?"],
+                "required_source_types": ["news"],
+                "min_evidence": 1,
+            },
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    section_ids = {item.id: item.section_id for item in updated.evidence_pool}
+    assert section_ids == {"pricing": "pricing", "launch-news": "market-signals"}
+
+
+def test_executor_counts_section_status_from_assigned_evidence(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    pricing = Evidence(
+        id="pricing",
+        subtask_id="collect",
+        title="Official Pricing",
+        source_url="https://example.com/pricing",
+        snippet="Official pricing evidence for enterprise plans.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [pricing]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        section_research_plan=[
+            {
+                "section_id": "pricing",
+                "title": "Pricing",
+                "required_source_types": ["official_site"],
+                "min_evidence": 1,
+            },
+            {
+                "section_id": "market-signals",
+                "title": "Market Signals",
+                "required_source_types": ["news"],
+                "min_evidence": 1,
+            },
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.section_collection_status == [
+        {
+            "section_id": "pricing",
+            "round": 1,
+            "evidence_count": 1,
+            "min_evidence": 1,
+            "required_source_types": ["official_site"],
+            "covered_source_types": ["official_site"],
+            "missing_source_types": [],
+            "sufficient": True,
+            "missing_evidence": 0,
+        },
+        {
+            "section_id": "market-signals",
+            "round": 1,
+            "evidence_count": 0,
+            "min_evidence": 1,
+            "required_source_types": ["news"],
+            "covered_source_types": [],
+            "missing_source_types": ["news"],
+            "sufficient": False,
+            "missing_evidence": 1,
+        },
+    ]
+
+
 def test_executor_records_evidence_scores() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
