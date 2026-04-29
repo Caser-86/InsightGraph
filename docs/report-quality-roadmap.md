@@ -1,0 +1,480 @@
+# Report Quality Roadmap
+
+This document is the canonical execution route for InsightGraph after `v0.1.32`.
+Future work must follow this route unless the user explicitly approves a route change.
+
+## Route Status
+
+| Item | Decision |
+|------|----------|
+| Primary goal | Generate high-quality, evidence-grounded deep research reports comparable to `wenyi-research-agent`. |
+| Route priority | This roadmap supersedes deployment, dashboard, eval artifact, and smoke-test feature work as the main direction. |
+| Allowed exceptions | Bug fixes, security fixes, CI failures, broken releases, and changes that directly support report quality. |
+| Forbidden drift | Do not add unrelated deployment, dashboard, auth, storage, or eval convenience features without user approval. |
+| Execution rule | Every future task must state which phase in this roadmap it implements before code changes begin. |
+
+## Target Quality
+
+InsightGraph should produce reports with the same practical quality profile as a mature deep-research agent:
+
+- Clear section structure: Executive Summary, Background, Market or Company Analysis, Competitive Landscape, Risks, Outlook, and References.
+- Claims grounded in verified evidence snippets, not unsupported model memory.
+- Multiple source types where appropriate: official sites, docs, GitHub, news, filings, local documents, and high-authority domain sources.
+- Domain-aware research strategy instead of one generic query path.
+- Multi-round evidence collection with follow-up queries when evidence is weak.
+- Critic-driven replan that asks for specific missing evidence.
+- Reporter that only writes from allowed claims and verified references.
+- Eval metrics that measure report depth, source diversity, citation support, and unsupported claims.
+
+## Current Gap
+
+| Area | Current InsightGraph | Target Quality Route |
+|------|----------------------|----------------------|
+| Planner | Fixed `scope / collect / analyze / report` subtasks. | Domain-aware, section-based research plan. |
+| Queries | Mostly original user request. | Entity-aware targeted queries per section. |
+| Collection | Mostly one tool pass per suggested tool. | Multi-round search, fetch, extract, filter, converge. |
+| Evidence | Lightweight `Evidence` with title, URL, snippet, type, verified. | Scored snippets with authority, relevance, recency, section, entity, and duplicate metadata. |
+| Relevance | Optional filter; deterministic default checks field completeness. | Core relevance gate with deterministic baseline and opt-in LLM judge. |
+| Domain logic | Blueprint only. | Domain profiles drive source policy and report sections. |
+| Citation validation | Basic citation support and reference rebuilding. | Claim-level snippet support validation. |
+| Critic | Structure and citation checks, limited replan. | Missing-evidence replan by section/source/entity. |
+| Reporter | Deterministic or opt-in LLM report from findings/evidence. | Section drafts to final report with strict allowed citations. |
+| Memory/checkpoint | Job metadata JSON/SQLite. | Deferred until quality route is stable. |
+
+## Target Project Shape
+
+The route should grow the existing package without replacing working API, dashboard, eval, or deployment foundations.
+
+```text
+src/insight_graph/
+├── agents/
+│   ├── planner.py              # route will evolve to section-aware planning
+│   ├── collector.py            # route will evolve to multi-round collection
+│   ├── executor.py             # route will host budgeted acquisition orchestration
+│   ├── analyst.py              # route will emit section drafts and grounded claims
+│   ├── critic.py               # route will emit missing-evidence replan requests
+│   └── reporter.py             # route will write only from verified section drafts
+├── report_quality/
+│   ├── domain_profiles.py      # domain detection and source policy
+│   ├── entity_resolver.py      # canonical entities, aliases, official domains
+│   ├── research_plan.py        # section-aware plan models
+│   ├── evidence_scoring.py     # authority, relevance, recency, duplicate scoring
+│   ├── citation_support.py     # claim-to-snippet validation
+│   └── report_templates.py     # domain-specific report skeletons
+├── tools/
+│   ├── web_search.py
+│   ├── pre_fetch.py
+│   ├── fetch_url.py
+│   ├── content_extract.py
+│   ├── github_search.py
+│   └── document_reader.py
+└── eval.py                     # route will add report-quality metrics
+```
+
+The exact module names may change during implementation if a smaller edit is better, but the boundaries must remain: domain/profile logic, entity resolution, research planning, evidence scoring, citation support, and report templates should not be tangled into one large file.
+
+## Core Features
+
+| Feature | Purpose |
+|---------|---------|
+| Domain Profile | Select report template, source priorities, required sections, and evidence minimums. |
+| Entity Resolver | Convert user text into canonical entities, aliases, and source hints. |
+| Section Research Plan | Turn the request into report sections with questions, budgets, and required source types. |
+| Multi-Round Collector | Search, fetch, extract, rank, and follow up until section evidence is sufficient or budget is exhausted. |
+| Evidence Scoring | Prefer authoritative, relevant, recent, diverse sources and remove duplicates. |
+| Citation Support Validator | Verify that each claim is supported by a specific snippet. |
+| Critic Replan v2 | Generate precise missing-evidence tasks instead of generic retry. |
+| Reporter v2 | Produce long-form reports from section drafts and allowed citations only. |
+| Eval Quality Metrics | Gate improvements with measurable report-quality signals. |
+
+## Target Architecture
+
+```text
+┌───────────────────────────────────────────────────────────────────────┐
+│                       API / CLI / Dashboard                            │
+│       Existing job execution, WebSocket events, exports, eval gates     │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                         LangGraph Research Flow                        │
+│                                                                       │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐ │
+│  │   Planner   │─▶│  Collector   │─▶│   Analyst    │─▶│   Critic   │ │
+│  │ domain plan │  │ multi-round  │  │ section      │  │ replan     │ │
+│  └──────┬──────┘  └──────┬───────┘  │ drafts       │  └─────┬──────┘ │
+│         ▲                │          └──────────────┘        │        │
+│         └──────── missing-evidence replan ◀─────────────────┘        │
+│                                                                      │
+│                         ┌──────────────┐                             │
+│                         │  Reporter    │                             │
+│                         │ verified-only│                             │
+│                         └──────────────┘                             │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                         Evidence Grounding Layer                       │
+│ Domain Profile │ Entity Resolver │ Source Policy │ Evidence Scoring   │
+│ Citation Support Validator │ Report Templates │ Eval Quality Metrics  │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+## Execution Flow
+
+```mermaid
+flowchart TB
+    A[User request] --> B[Domain Profile]
+    B --> C[Entity Resolver]
+    C --> D[Section Research Plan]
+    D --> E[Multi-Round Collector]
+    E --> F[Evidence Scoring and Dedup]
+    F --> G[Analyst Section Drafts]
+    G --> H[Citation Support Validator]
+    H --> I[Critic]
+    I -->|missing evidence| E
+    I -->|passed| J[Reporter v2]
+    J --> K[Final Report]
+    K --> L[Eval Quality Metrics]
+```
+
+## Agent Collaboration
+
+```mermaid
+flowchart LR
+    subgraph Planner
+        P1[Detect domain] --> P2[Resolve entities]
+        P2 --> P3[Select report template]
+        P3 --> P4[Create section research plan]
+    end
+
+    subgraph Collector
+        C1[Generate targeted queries] --> C2[Search]
+        C2 --> C3[Pre-fetch top URLs]
+        C3 --> C4[Extract snippets]
+        C4 --> C5[Score and dedupe]
+        C5 --> C6{Evidence sufficient?}
+        C6 -->|no| C1
+    end
+
+    subgraph Analyst
+        A1[Read section evidence] --> A2[Create grounded claims]
+        A2 --> A3[Build matrices and comparisons]
+        A3 --> A4[Record risks and unknowns]
+    end
+
+    subgraph Critic
+        K1[Check section coverage] --> K2[Check evidence minimums]
+        K2 --> K3[Check claim support]
+        K3 --> K4{Passed?}
+        K4 -->|no| K5[Specific replan request]
+    end
+
+    subgraph Reporter
+        R1[Read approved claims] --> R2[Use allowed citations only]
+        R2 --> R3[Write final report]
+        R3 --> R4[Rebuild References]
+    end
+
+    Planner --> Collector
+    Collector --> Analyst
+    Analyst --> Critic
+    Critic -->|replan| Collector
+    Critic --> Reporter
+```
+
+## Evidence Chain
+
+```mermaid
+flowchart TB
+    Q[Targeted Query] --> S[Search Provider]
+    S --> SC[SourceCandidate]
+    SC --> PF[Pre-fetch]
+    PF --> FD[FetchedDocument]
+    FD --> EX[Content Extract]
+    EX --> SN[EvidenceSnippet]
+    SN --> ES[Evidence Scoring]
+    ES --> DE[Deduped Evidence Pool]
+    DE --> CL[Grounded Claim]
+    CL --> CV[Citation Support Validator]
+    CV --> VR[VerifiedCitation]
+    VR --> RP[Report References]
+```
+
+## Data Models
+
+The implementation should add fields incrementally and preserve existing public API shapes unless a phase explicitly designs a migration.
+
+```json
+{
+  "SourceCandidate": {
+    "url": "https://example.com/pricing",
+    "title": "Pricing",
+    "source_type": "official_site",
+    "section_id": "pricing",
+    "entity_ids": ["github-copilot"]
+  },
+  "EvidenceSnippet": {
+    "id": "github-copilot-pricing-snippet-1",
+    "source_url": "https://example.com/pricing",
+    "canonical_url": "https://example.com/pricing",
+    "title": "Pricing",
+    "snippet": "...",
+    "source_type": "official_site",
+    "section_id": "pricing",
+    "entity_ids": ["github-copilot"],
+    "authority_score": 0.9,
+    "relevance_score": 0.8,
+    "recency_score": 0.7,
+    "verified": true
+  },
+  "GroundedClaim": {
+    "section_id": "pricing",
+    "claim": "GitHub Copilot has individual and business pricing tiers.",
+    "evidence_ids": ["github-copilot-pricing-snippet-1"],
+    "support_status": "supported",
+    "confidence": "high"
+  }
+}
+```
+
+## Phase Plan
+
+### Phase 0: Baseline and Guardrails
+
+Goal: lock the new route as the only main route.
+
+Required outputs:
+
+- This roadmap exists and is linked from `docs/roadmap.md`.
+- Future work states its phase before implementation.
+- Changelog and docs changes support this route only.
+
+Acceptance criteria:
+
+- No unrelated deployment, dashboard, smoke, or eval convenience work is started without user approval.
+
+### Phase 1: Report Quality Baseline
+
+Goal: define measurable report quality before changing the research chain.
+
+Required outputs:
+
+- Target report rubric with section coverage, evidence density, source diversity, and unsupported claim metrics.
+- Eval Bench extensions for report quality.
+- A showcase query set that represents competitive intelligence and technology trend reports.
+
+Acceptance criteria:
+
+- Eval can fail when a report has weak sections, low source diversity, missing citations, or unsupported claims.
+
+### Phase 2: Domain Profile v1
+
+Goal: make research strategy domain-aware.
+
+Required domains:
+
+- `competitive_intel`
+- `technology_trends`
+- `market_research`
+- `company_profile`
+- `generic`
+
+Each profile defines:
+
+- Report sections.
+- Required questions.
+- Priority source types.
+- Minimum evidence per section.
+- Expected matrices or tables.
+
+Acceptance criteria:
+
+- Planner can select a deterministic profile for a request.
+- Tests cover at least competitive intelligence, technology trends, and generic fallback.
+
+### Phase 3: Entity Resolver v1
+
+Goal: improve query precision by resolving entities before collection.
+
+Required outputs:
+
+- Canonical entity name.
+- Aliases.
+- Entity type.
+- Optional official domain hints.
+- Query expansion terms.
+
+Acceptance criteria:
+
+- The same product/company is not collected under multiple unrelated names.
+- Expanded queries remain deterministic in tests.
+
+### Phase 4: Section-Based Research Plan
+
+Goal: replace fixed subtasks with section-aware research planning.
+
+Required outputs per section:
+
+- `section_id`
+- `title`
+- `questions`
+- `required_source_types`
+- `min_evidence`
+- `budget`
+
+Acceptance criteria:
+
+- The plan maps directly to final report sections.
+- Collector receives targeted work instead of only the raw user request.
+
+### Phase 5: Multi-Round Collector v1
+
+Goal: collect enough evidence per section before analysis.
+
+Loop shape:
+
+```text
+section questions
+→ targeted queries
+→ search
+→ pre-fetch top URLs
+→ fetch_url
+→ content_extract
+→ evidence snippets
+→ score and dedupe
+→ follow-up query if evidence is insufficient
+```
+
+Budgets:
+
+- Max rounds per section.
+- Max queries per section.
+- Max fetched URLs per section.
+- Max evidence snippets per section.
+- Convergence stop when no new useful evidence appears.
+
+Acceptance criteria:
+
+- Collector can run multiple rounds in deterministic tests.
+- Collector records why it stopped: sufficient evidence, exhausted budget, or no new evidence.
+
+### Phase 6: Evidence Scoring v1
+
+Goal: keep better evidence, not just more evidence.
+
+Scores:
+
+- Authority score.
+- Relevance score.
+- Recency score.
+- Duplicate penalty.
+- Source diversity contribution.
+
+Acceptance criteria:
+
+- Official/docs/filings outrank weak blogs for factual claims.
+- Duplicate or near-duplicate URLs collapse into one preferred source.
+
+### Phase 7: Citation Support Validator v1
+
+Goal: validate claim-to-snippet grounding before the final report.
+
+Checks:
+
+- Claim has at least one evidence ID.
+- Evidence is verified.
+- Snippet has lexical or judged support for the claim.
+- Unsupported claims are removed or marked as uncertainty.
+
+Acceptance criteria:
+
+- Reporter does not receive unsupported claims as authoritative facts.
+- Eval can identify unsupported findings.
+
+### Phase 8: Critic Replan v2
+
+Goal: make Critic drive targeted evidence collection.
+
+Critic outputs:
+
+- Missing section.
+- Missing entity.
+- Missing source type.
+- Missing evidence reason.
+- Suggested follow-up query.
+
+Acceptance criteria:
+
+- Replan goes back to Collector with specific missing-evidence tasks.
+- Repeated failed strategies are blacklisted for the same section.
+
+### Phase 9: Reporter v2
+
+Goal: produce long-form reports from approved section drafts and verified citations.
+
+Rules:
+
+- Reporter must not introduce new facts.
+- Every key factual claim must cite an allowed reference.
+- Weakly supported claims must be written as uncertainty or omitted.
+- References are rebuilt from verified citations only.
+
+Acceptance criteria:
+
+- Reports contain stable sections from the selected domain profile.
+- Reports include grounded comparisons, risks, outlook, and references.
+- Output quality is measured by Eval Bench.
+
+### Phase 10: Advanced Research Capabilities
+
+Goal: add heavier capabilities only after phases 1-9 are stable.
+
+Deferred items:
+
+- Long-document RAG with TOC/page-aware retrieval.
+- SEC, filings, and financial tools.
+- Playwright-rendered pages.
+- PostgreSQL checkpoint resume.
+- pgvector long-term memory.
+- Conversation compression for very long live runs.
+
+Acceptance criteria:
+
+- These items must not be started before the route has a stable quality baseline and grounded report pipeline.
+
+## Eval Gates
+
+Report-quality work must expand Eval Bench instead of relying only on manual inspection.
+
+Required future metrics:
+
+- Section coverage score.
+- Evidence per section.
+- Source diversity score.
+- Official-source coverage where required.
+- Citation support score.
+- Unsupported claim count.
+- Duplicate source rate.
+- Report depth score.
+
+The route should keep deterministic offline evals as the default. Live evals may exist later but must be opt-in.
+
+## Strict Execution Protocol
+
+These rules are mandatory for future work:
+
+1. State the roadmap phase before starting implementation.
+2. Do not work on unrelated deployment, dashboard, smoke, auth, storage, or release convenience items unless the work directly supports report quality or the user explicitly approves a route change.
+3. Do not jump to PostgreSQL, pgvector, SEC, Playwright, or memory before phases 1-9 unless the user explicitly changes the route.
+4. Prefer the smallest correct change that advances the active phase.
+5. Preserve deterministic offline behavior and tests.
+6. Use opt-in live providers only; do not make network or LLM calls the default path.
+7. Use TDD for behavior changes.
+8. Run verification before claiming completion.
+9. Update this roadmap only after user approval.
+10. If a task does not map to this roadmap, stop and ask before proceeding.
+
+## Next Required Step
+
+The next implementation plan must be for **Phase 1: Report Quality Baseline**.
+
+Phase 1 should design and implement the report-quality rubric and Eval Bench metrics before modifying Planner, Collector, Analyst, Critic, or Reporter behavior.

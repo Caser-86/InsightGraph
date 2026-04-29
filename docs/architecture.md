@@ -1,6 +1,6 @@
 # InsightGraph Architecture
 
-This document keeps the project blueprint and execution model. The root README is intentionally short and links here for deeper architecture details.
+This document keeps the project blueprint and execution model. The root README provides the project overview, while this document keeps deeper architecture details.
 
 ## 目标项目结构（蓝图）
 
@@ -217,7 +217,7 @@ flowchart LR
     R --> M
 ```
 
-当前 MVP 中部分蓝图能力仍是目标态：Long-term Memory、PostgreSQL checkpoint、conversation compression、domain profiles、WebSocket 和 Reporter 主动 URL 网络校验尚未实现。已实现路径仍保留相同数据边界：工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support，API/CLI JSON 输出不 dump `evidence_pool` 或 `global_evidence_pool`。
+当前 MVP 中部分蓝图能力仍是目标态：Long-term Memory、PostgreSQL checkpoint、conversation compression、domain profiles 和 Reporter 主动 URL 网络校验尚未实现。已实现路径仍保留相同数据边界：工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support，API/CLI JSON 输出不 dump `evidence_pool` 或 `global_evidence_pool`。
 
 ## 技术栈
 

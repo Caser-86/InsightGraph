@@ -1,5 +1,11 @@
 # Roadmap
 
+## Canonical Route
+
+The active project route is now `docs/report-quality-roadmap.md`.
+
+Future work must follow that document unless the user explicitly approves a route change. The previous near-term engineering work is considered complete enough for the next phase. Do not continue adding deployment, dashboard, smoke-test, auth, storage, or eval convenience features unless they directly support the report-quality route or fix a bug/security/CI failure.
+
 ## Near-term priorities
 
 1. Strengthen research job repository tests
