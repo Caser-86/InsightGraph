@@ -9,6 +9,10 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from insight_graph.report_quality.document_index import (
+    DocumentIndexChunk,
+    rank_document_chunks,
+)
 from insight_graph.state import Evidence
 
 SUPPORTED_SUFFIXES = {".txt", ".md", ".markdown", ".html", ".htm", ".pdf"}
@@ -147,27 +151,18 @@ def _rank_snippets(
     candidates: list[DocumentChunk],
     retrieval_query: str,
 ) -> list[DocumentChunk]:
-    query_tokens = set(_tokenize(retrieval_query))
-    if not query_tokens:
-        return []
-
-    scored = []
-    for chunk in candidates:
-        tokens = _tokenize(chunk.snippet)
-        heading_tokens = _tokenize(chunk.section_heading or "")
-        score = sum(1 for token in tokens if token in query_tokens)
-        score += 100 * sum(1 for token in heading_tokens if token in query_tokens)
-        distinct_matches = len({token for token in tokens if token in query_tokens})
-        distinct_matches += len({token for token in heading_tokens if token in query_tokens})
-        if score > 0:
-            scored.append((score, distinct_matches, -chunk.index, chunk))
-
-    scored.sort(reverse=True)
-    return [chunk for _, _, _, chunk in scored]
-
-
-def _tokenize(value: str) -> list[str]:
-    return [token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 3]
+    indexed_chunks = [
+        DocumentIndexChunk(
+            text=chunk.snippet,
+            index=chunk.index,
+            page=chunk.page,
+            section_heading=chunk.section_heading,
+        )
+        for chunk in candidates
+    ]
+    ranked = rank_document_chunks(indexed_chunks, retrieval_query)
+    chunks_by_index = {chunk.index: chunk for chunk in candidates}
+    return [chunks_by_index[chunk.index] for chunk in ranked]
 
 
 def _build_evidence(

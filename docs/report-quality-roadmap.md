@@ -545,9 +545,11 @@ Phases 1-10 are implemented. The next approved direction is the reference-qualit
 - Critic records section replan `strategy_key` values in `tried_strategies` and skips duplicate section follow-up strategies.
 - Research budgets now centralize tool-call, step, fetch, and per-run evidence caps; Executor enforces tool-call and evidence caps.
 - Conversation compression now has deterministic evidence-preserving summaries, ready for later long-running agent loops.
+- Long-document retrieval now has a deterministic document index layer and an opt-in vector retrieval boundary.
 - Default offline behavior remains one collection round; `live-research` opts into deeper collection.
 
 - PostgreSQL checkpoint resume requires explicit resume semantics, migration tests, and operational design.
 - pgvector memory requires opt-in embeddings, privacy/deletion controls, and eval proof that memory improves grounded reports.
+- Vector retrieval still needs a concrete embedding backend and persisted index before becoming production RAG.
 - Conversation compression still needs long-run trace integration after the deterministic summary helper.
 - Eval Bench should be expanded before infrastructure work if report-quality regression detection is the priority.

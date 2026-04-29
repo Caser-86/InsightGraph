@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a deterministic document index layer with an opt-in vector retrieval boundary.
 - Added centralized research budgets for tool calls, steps, fetches, and per-run evidence caps.
 - Added deterministic conversation compression summaries that preserve evidence IDs, sources, tool-call counts, and findings.
 - Added Critic tried-strategy metadata to avoid repeating identical section replan requests.
