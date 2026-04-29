@@ -56,6 +56,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_MAX_STEPS` | 预留的 workflow step budget，供后续 agent loop/checkpoint 使用 | `10` |
 | `INSIGHT_GRAPH_MAX_FETCHES` | 预留的 fetch budget，供后续 fetch/pre-fetch 集中管控使用 | `10` |
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | 单次研究最终保留的 evidence 数上限 | `20` |
+| `INSIGHT_GRAPH_MAX_TOKENS` | 单次研究已记录 LLM total token 上限；耗尽后 Analyst/Reporter 回退 deterministic，OpenAI relevance judge 保守拒绝新 LLM 判断 | `50000` |
 
 ## Research Jobs Persistence
 

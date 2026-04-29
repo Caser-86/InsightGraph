@@ -18,6 +18,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.report_quality.budgeting import can_start_llm_call_from_records
 from insight_graph.state import Evidence, LLMCallRecord, Subtask
 
 
@@ -107,6 +108,14 @@ class OpenAICompatibleRelevanceJudge:
                 evidence_id=evidence.id,
                 relevant=False,
                 reason="OpenAI-compatible relevance judge is missing an API key.",
+            )
+        if self._llm_call_log is not None and not can_start_llm_call_from_records(
+            self._llm_call_log
+        ):
+            return EvidenceRelevanceDecision(
+                evidence_id=evidence.id,
+                relevant=False,
+                reason="LLM token budget exhausted.",
             )
 
         started = time.perf_counter()

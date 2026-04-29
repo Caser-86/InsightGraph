@@ -287,6 +287,42 @@ def test_openai_compatible_judge_keeps_relevant_json_response() -> None:
     assert "Cursor Pricing" in client.messages[1].content
 
 
+def test_openai_compatible_judge_skips_llm_when_token_budget_exhausted(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "10")
+    client = FakeChatCompletionClient(
+        '{"relevant": true, "reason": "Would have accepted."}'
+    )
+    records = [
+        LLMCallRecord(
+            stage="previous",
+            provider="llm",
+            model="model",
+            success=True,
+            duration_ms=1,
+            total_tokens=10,
+        )
+    ]
+    judge = OpenAICompatibleRelevanceJudge(
+        client=client,
+        api_key="test-key",
+        llm_call_log=records,
+    )
+
+    decision = judge.judge(
+        "Compare AI coding agents",
+        Subtask(id="collect", description="Collect pricing evidence"),
+        make_evidence(id="budgeted"),
+    )
+
+    assert decision == EvidenceRelevanceDecision(
+        evidence_id="budgeted",
+        relevant=False,
+        reason="LLM token budget exhausted.",
+    )
+    assert client.messages == []
+    assert len(records) == 1
+
+
 def test_openai_compatible_judge_records_successful_llm_call() -> None:
     records: list[LLMCallRecord] = []
     client = FakeChatCompletionClient(

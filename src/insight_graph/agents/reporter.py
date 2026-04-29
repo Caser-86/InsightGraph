@@ -9,6 +9,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.report_quality.budgeting import can_start_llm_call
 from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
@@ -54,6 +55,8 @@ def write_report(
 ) -> GraphState:
     provider = get_reporter_provider()
     if provider == "deterministic":
+        return _write_report_deterministic(state)
+    if not can_start_llm_call(state):
         return _write_report_deterministic(state)
 
     try:

@@ -543,7 +543,7 @@ Phases 1-10 are implemented. The next approved direction is the reference-qualit
 
 - Research Depth v1 adds section follow-up collection rounds, no-new-evidence stopping, max-round stopping, and collection-depth eval output.
 - Critic records section replan `strategy_key` values in `tried_strategies` and skips duplicate section follow-up strategies.
-- Research budgets now centralize tool-call, step, fetch, and per-run evidence caps; Executor enforces tool-call and evidence caps.
+- Research budgets now centralize tool-call, step, fetch, per-run evidence, and token caps; Executor enforces tool/evidence caps and LLM paths enforce token caps.
 - Conversation compression now has deterministic evidence-preserving summaries, ready for later long-running agent loops.
 - Long-document retrieval now has a deterministic document index layer and an opt-in vector retrieval boundary.
 - Checkpoint persistence now has memory and opt-in PostgreSQL store adapters for GraphState payloads.

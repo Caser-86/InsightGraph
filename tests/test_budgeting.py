@@ -1,4 +1,10 @@
-from insight_graph.report_quality.budgeting import ResearchBudgets, get_research_budgets
+from insight_graph.report_quality.budgeting import (
+    ResearchBudgets,
+    can_start_llm_call,
+    get_research_budgets,
+    used_llm_tokens,
+)
+from insight_graph.state import GraphState, LLMCallRecord
 
 
 def test_get_research_budgets_uses_defaults(monkeypatch) -> None:
@@ -7,6 +13,7 @@ def test_get_research_budgets_uses_defaults(monkeypatch) -> None:
         "INSIGHT_GRAPH_MAX_STEPS",
         "INSIGHT_GRAPH_MAX_FETCHES",
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+        "INSIGHT_GRAPH_MAX_TOKENS",
     ]:
         monkeypatch.delenv(name, raising=False)
 
@@ -15,6 +22,7 @@ def test_get_research_budgets_uses_defaults(monkeypatch) -> None:
         max_steps=10,
         max_fetches=10,
         max_evidence_per_run=20,
+        max_tokens=50_000,
     )
 
 
@@ -23,12 +31,14 @@ def test_get_research_budgets_reads_positive_env_values(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_STEPS", "8")
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_FETCHES", "9")
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN", "11")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "123")
 
     assert get_research_budgets() == ResearchBudgets(
         max_tool_calls=7,
         max_steps=8,
         max_fetches=9,
         max_evidence_per_run=11,
+        max_tokens=123,
     )
 
 
@@ -37,10 +47,68 @@ def test_get_research_budgets_ignores_invalid_env_values(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_STEPS", "-1")
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_FETCHES", "invalid")
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN", "")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "0")
 
     assert get_research_budgets() == ResearchBudgets(
         max_tool_calls=20,
         max_steps=10,
         max_fetches=10,
         max_evidence_per_run=20,
+        max_tokens=50_000,
     )
+
+
+def test_used_llm_tokens_sums_known_total_tokens() -> None:
+    state = GraphState(
+        user_request="q",
+        llm_call_log=[
+            LLMCallRecord(
+                stage="analyst",
+                provider="p",
+                model="m",
+                success=True,
+                duration_ms=1,
+                total_tokens=7,
+            ),
+            LLMCallRecord(
+                stage="reporter",
+                provider="p",
+                model="m",
+                success=True,
+                duration_ms=1,
+                total_tokens=None,
+            ),
+            LLMCallRecord(
+                stage="critic",
+                provider="p",
+                model="m",
+                success=True,
+                duration_ms=1,
+                total_tokens=5,
+            ),
+        ],
+    )
+
+    assert used_llm_tokens(state) == 12
+
+
+def test_can_start_llm_call_respects_token_budget(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "10")
+    state = GraphState(
+        user_request="q",
+        llm_call_log=[
+            LLMCallRecord(
+                stage="analyst",
+                provider="p",
+                model="m",
+                success=True,
+                duration_ms=1,
+                total_tokens=10,
+            )
+        ],
+    )
+
+    assert can_start_llm_call(state) is False
+
+    state.llm_call_log[0].total_tokens = 9
+    assert can_start_llm_call(state) is True

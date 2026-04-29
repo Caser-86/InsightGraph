@@ -69,14 +69,14 @@ src/insight_graph/
 | **SEC financials** | `sec_filings` 发现近期 filings；`sec_financials` 可从 SEC companyfacts 生成 revenue / net income / assets evidence，不做完整财务模型 |
 | **Citation 安全** | LLM Reporter 不能保留未知引用；References 由系统重建；Critic 记录 claim-level citation support metadata |
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
-| **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
+| **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM，并受 `INSIGHT_GRAPH_MAX_TOKENS` 约束 |
 | **可选实时数据源** | DuckDuckGo web search、GitHub REST Search、SEC filings 和 direct URL/PDF fetch 均为显式 opt-in；默认测试不访问公网 |
 | **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch、deterministic relevance filtering、全局 tool/evidence budgets 和最多 3 轮 section follow-up collection |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：完整 LangGraph 自动 resume、真实 embedding/vector RAG 和 token budget。PostgreSQL checkpoint store 目前是 opt-in persistence adapter；pgvector memory 目前是 opt-in storage/search adapter，尚未接入 embeddings pipeline；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
+未实现或未默认启用的高级能力：完整 LangGraph 自动 resume 和真实 embedding/vector RAG。PostgreSQL checkpoint store 目前是 opt-in persistence adapter；pgvector memory 目前是 opt-in storage/search adapter，尚未接入 embeddings pipeline；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
 
 ---
 

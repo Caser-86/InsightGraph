@@ -7,7 +7,14 @@ from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import get_reporter_provider, write_report
 from insight_graph.llm import ChatCompletionResult, ChatMessage
 from insight_graph.llm.router import LLMRouterDecision
-from insight_graph.state import CompetitiveMatrixRow, Critique, Evidence, Finding, GraphState
+from insight_graph.state import (
+    CompetitiveMatrixRow,
+    Critique,
+    Evidence,
+    Finding,
+    GraphState,
+    LLMCallRecord,
+)
 
 
 class FakeLLMClient:
@@ -863,6 +870,31 @@ def test_analyze_evidence_records_llm_token_usage(monkeypatch) -> None:
     assert updated.llm_call_log[0].total_tokens == 15
 
 
+def test_analyze_evidence_uses_deterministic_fallback_when_token_budget_exhausted(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "10")
+    client = FakeLLMClient(content='{"findings": []}')
+    state = make_analyst_state()
+    state.llm_call_log = [
+        LLMCallRecord(
+            stage="previous",
+            provider="llm",
+            model="model",
+            success=True,
+            duration_ms=1,
+            total_tokens=10,
+        )
+    ]
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert client.messages == []
+    assert updated.findings
+    assert len(updated.llm_call_log) == 1
+
+
 def test_analyze_evidence_records_tokens_for_parse_failure(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
     client = UsageLLMClient(
@@ -1697,6 +1729,31 @@ def test_write_report_records_llm_token_usage(monkeypatch) -> None:
     assert updated.llm_call_log[0].input_tokens == 20
     assert updated.llm_call_log[0].output_tokens == 8
     assert updated.llm_call_log[0].total_tokens == 28
+
+
+def test_write_report_uses_deterministic_fallback_when_token_budget_exhausted(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "10")
+    client = FakeLLMClient(content='{"markdown": "# Should Not Run"}')
+    state = make_reporter_state()
+    state.llm_call_log = [
+        LLMCallRecord(
+            stage="previous",
+            provider="llm",
+            model="model",
+            success=True,
+            duration_ms=1,
+            total_tokens=10,
+        )
+    ]
+
+    updated = write_report(state, llm_client=client)
+
+    assert client.messages == []
+    assert "# InsightGraph Research Report" in (updated.report_markdown or "")
+    assert len(updated.llm_call_log) == 1
 
 
 def test_write_report_records_failed_llm_call_without_prompt_or_response(
