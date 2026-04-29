@@ -56,6 +56,7 @@ def test_graph_state_starts_with_empty_collections() -> None:
     assert state.findings == []
     assert state.competitive_matrix == []
     assert state.report_markdown is None
+    assert state.memory_context == []
 
 
 def test_competitive_matrix_row_stores_evidence_backed_fields() -> None:

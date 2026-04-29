@@ -17,7 +17,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Reporter verified-only citations | Implemented | Need final URL revalidation and snippet-level citation tightening | High |
 | Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
-| pgvector memory | Store/search/delete + deterministic embeddings | Need Planner memory injection and eval proof | High |
+| pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Safe metadata + trace boundary | Need opt-in trace writer and CLI summary | High |
 | Qwen/Minimax providers | OpenAI-compatible provider exists | Need named provider adapters | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
@@ -31,8 +31,8 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 ### Phase A: Report Quality And Control Loop
 
 1. File-backed domain profiles. **Implemented.**
-2. Planner memory context injection.
-3. Planner consumption of memory context and tried strategies.
+2. Planner memory context injection. **Implemented.**
+3. Planner consumption of memory context and tried strategies. **Implemented.**
 4. Generic per-subtask multi-round tool loop.
 5. Automatic conversation compression in long-running loops.
 6. Pre-search fetch pipeline hardening.

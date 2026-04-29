@@ -256,6 +256,56 @@ def test_planner_sets_competitive_domain_profile() -> None:
     updated = plan_research(state)
 
     assert updated.domain_profile == "competitive_intel"
+
+
+def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_MEMORY_CONTEXT", "1")
+    import insight_graph.agents.planner as planner_module
+
+    class FakeMemoryStore:
+        def search(self, embedding, *, limit=5):
+            assert limit == 3
+            return [
+                planner_module.ResearchMemoryRecord(
+                    memory_id="m1",
+                    text="Prior report found enterprise pricing risk.",
+                    embedding=[1.0],
+                    metadata={"run_id": "old-run"},
+                )
+            ]
+
+    monkeypatch.setattr(planner_module, "get_research_memory_store", lambda: FakeMemoryStore())
+    state = GraphState(user_request="Compare Cursor enterprise pricing")
+
+    updated = plan_research(state)
+
+    assert updated.memory_context == [
+        {
+            "memory_id": "m1",
+            "text": "Prior report found enterprise pricing risk.",
+            "metadata": {"run_id": "old-run"},
+        }
+    ]
+
+
+def test_planner_uses_memory_context_and_tried_strategies_in_collection_plan() -> None:
+    state = GraphState(
+        user_request="Compare Cursor enterprise pricing",
+        memory_context=[
+            {
+                "memory_id": "m1",
+                "text": "Prior report found enterprise pricing risk.",
+                "metadata": {"run_id": "old-run"},
+            }
+        ],
+        tried_strategies=["missing_section_evidence:pricing:news"],
+    )
+
+    updated = plan_research(state)
+    collect = next(task for task in updated.subtasks if task.id == "collect")
+
+    assert "Use 1 retrieved memory context item" in collect.description
+    assert "Avoid tried strategies: missing_section_evidence:pricing:news" in collect.description
     assert len(updated.subtasks) == 4
 
 

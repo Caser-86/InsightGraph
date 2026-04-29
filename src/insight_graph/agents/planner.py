@@ -1,5 +1,7 @@
 import os
 
+from insight_graph.memory.embeddings import deterministic_text_embedding
+from insight_graph.memory.store import ResearchMemoryRecord, get_research_memory_store
 from insight_graph.report_quality.domain_profiles import detect_domain_profile, get_domain_profile
 from insight_graph.report_quality.entity_resolver import resolve_entities
 from insight_graph.report_quality.research_plan import build_section_research_plan
@@ -8,6 +10,7 @@ from insight_graph.tools.sec_filings import has_sec_filing_target
 
 
 def plan_research(state: GraphState) -> GraphState:
+    state.memory_context = state.memory_context or _memory_context_for_request(state.user_request)
     state.domain_profile = detect_domain_profile(state.user_request).id
     state.resolved_entities = [
         entity.to_payload() for entity in resolve_entities(state.user_request)
@@ -27,9 +30,7 @@ def plan_research(state: GraphState) -> GraphState:
         ),
         Subtask(
             id="collect",
-            description=(
-                "Collect evidence about product positioning, features, pricing, and sources"
-            ),
+            description=_collection_description(state),
             subtask_type="research",
             dependencies=["scope"],
             suggested_tools=_collection_tool_names(state.user_request),
@@ -48,6 +49,33 @@ def plan_research(state: GraphState) -> GraphState:
         ),
     ]
     return state
+
+
+def _memory_context_for_request(user_request: str) -> list[dict[str, object]]:
+    if not _is_truthy_env("INSIGHT_GRAPH_USE_MEMORY_CONTEXT"):
+        return []
+    store = get_research_memory_store()
+    records = store.search(deterministic_text_embedding(user_request), limit=3)
+    return [_memory_record_payload(record) for record in records]
+
+
+def _memory_record_payload(record: ResearchMemoryRecord) -> dict[str, object]:
+    return {
+        "memory_id": record.memory_id,
+        "text": record.text,
+        "metadata": dict(record.metadata),
+    }
+
+
+def _collection_description(state: GraphState) -> str:
+    parts = ["Collect evidence about product positioning, features, pricing, and sources"]
+    if state.memory_context:
+        count = len(state.memory_context)
+        suffix = "item" if count == 1 else "items"
+        parts.append(f"Use {count} retrieved memory context {suffix} to guide collection")
+    if state.tried_strategies:
+        parts.append(f"Avoid tried strategies: {', '.join(state.tried_strategies)}")
+    return ". ".join(parts)
 
 
 def _collection_tool_names(user_request: str) -> list[str]:

@@ -88,6 +88,7 @@ class GraphState(BaseModel):
     user_request: str
     domain_profile: str | None = None
     resolved_entities: list[dict[str, object]] = Field(default_factory=list)
+    memory_context: list[dict[str, object]] = Field(default_factory=list)
     section_research_plan: list[dict[str, object]] = Field(default_factory=list)
     section_collection_status: list[dict[str, object]] = Field(default_factory=list)
     evidence_scores: list[dict[str, object]] = Field(default_factory=list)

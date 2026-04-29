@@ -64,7 +64,7 @@ src/insight_graph/
 | 特性 | 说明 |
 |------|------|
 | **多智能体编排** | Planner → Collector → Analyst → Critic → Reporter，支持 Critic 触发一次 replan 闭环 |
-| **报告质量链路** | Phase 1-9 已落地：domain profile、Markdown-backed domain configs、entity resolver、section plan、evidence status、scoring、citation support、replan/tried-strategy metadata、Reporter support summary |
+| **报告质量链路** | Phase 1-9 已落地：domain profile、Markdown-backed domain configs、memory context hints、entity resolver、section plan、evidence status、scoring、citation support、replan/tried-strategy metadata、Reporter support summary |
 | **证据溯源链** | Evidence 从 search / fetch / GitHub / news / local document 进入 pool，Reporter 仅引用 verified evidence；文档、远程 PDF 和长网页 evidence 带 chunk/page/section metadata、deterministic document index ranking，并可归因到 planned section |
 | **Rendered fetch** | 默认关闭；`INSIGHT_GRAPH_FETCH_RENDERED=1` 时 `fetch_url` 可尝试 optional Playwright rendering，并在失败时回退 bounded HTTP fetch |
 | **SEC financials** | `sec_filings` 发现近期 filings；`sec_financials` 可从 SEC companyfacts 生成 revenue / net income / assets evidence，不做完整财务模型 |
