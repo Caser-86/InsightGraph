@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.21 - 2026-04-29
+
 - Added Eval Bench trend history design.
 
 ## v0.1.20 - 2026-04-29
