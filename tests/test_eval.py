@@ -23,6 +23,7 @@ def make_eval_state(query: str) -> GraphState:
                 snippet="Cursor pricing evidence.",
                 source_type="official_site",
                 verified=True,
+                section_id="pricing-and-packaging",
             ),
             Evidence(
                 id="copilot-docs",
@@ -32,7 +33,24 @@ def make_eval_state(query: str) -> GraphState:
                 snippet="Copilot documentation evidence.",
                 source_type="docs",
                 verified=True,
+                section_id="product-positioning",
             ),
+        ],
+        section_research_plan=[
+            {"section_id": "pricing-and-packaging", "title": "Pricing and Packaging"},
+            {"section_id": "product-positioning", "title": "Product Positioning"},
+        ],
+        section_collection_status=[
+            {
+                "section_id": "pricing-and-packaging",
+                "required_source_types": ["official_site"],
+                "covered_source_types": ["official_site"],
+            },
+            {
+                "section_id": "product-positioning",
+                "required_source_types": ["docs", "news"],
+                "covered_source_types": ["docs"],
+            },
         ],
         findings=[
             Finding(
@@ -125,6 +143,12 @@ def test_build_eval_payload_includes_report_quality_metrics(monkeypatch) -> None
     assert quality["unique_source_type_count"] == 2
     assert quality["source_diversity_score"] == 67
     assert quality["verified_evidence_count"] == 2
+    assert quality["evidence_per_section"] == {
+        "pricing-and-packaging": 1,
+        "product-positioning": 1,
+    }
+    assert quality["average_evidence_per_section"] == 1
+    assert quality["official_source_coverage_score"] == 67
     assert quality["unsupported_finding_count"] == 0
     assert quality["unsupported_matrix_row_count"] == 0
     assert quality["unsupported_claim_count"] == 0
@@ -146,6 +170,8 @@ def test_eval_summary_includes_report_quality_aggregates(monkeypatch) -> None:
         "report_depth_score"
     ]
     assert summary["average_source_diversity_score"] == 67
+    assert summary["average_evidence_per_section"] == 1
+    assert summary["average_official_source_coverage_score"] == 67
     assert summary["average_citation_support_score"] == 100
     assert summary["total_unsupported_claims"] == 0
     assert summary["average_duplicate_source_rate"] == 0
@@ -246,6 +272,12 @@ def test_format_markdown_includes_eval_score_columns() -> None:
                     "unique_source_type_count": 2,
                     "source_diversity_score": 67,
                     "verified_evidence_count": 2,
+                    "evidence_per_section": {
+                        "pricing-and-packaging": 1,
+                        "product-positioning": 1,
+                    },
+                    "average_evidence_per_section": 1,
+                    "official_source_coverage_score": 67,
                     "unsupported_finding_count": 0,
                     "unsupported_matrix_row_count": 0,
                     "unsupported_claim_count": 0,
@@ -270,6 +302,8 @@ def test_format_markdown_includes_eval_score_columns() -> None:
             "average_section_coverage_score": 100,
             "average_report_depth_score": 17,
             "average_source_diversity_score": 67,
+            "average_evidence_per_section": 1,
+            "average_official_source_coverage_score": 67,
             "average_citation_support_score": 100,
             "total_unsupported_claims": 0,
             "average_duplicate_source_rate": 0,
@@ -285,13 +319,15 @@ def test_format_markdown_includes_eval_score_columns() -> None:
     assert "## Report Quality" in markdown
     assert (
         "| Query | Section coverage | Report depth | Source diversity | Citation support "
-        "| Unsupported claims | Duplicate source rate |"
+        "| Evidence/section | Official source coverage | Unsupported claims "
+        "| Duplicate source rate |"
     ) in markdown
-    assert "| Compare Cursor | 100 | 17 | 67 | 100 | 0 | 0 |" in markdown
+    assert "| Compare Cursor | 100 | 17 | 67 | 100 | 1 | 67 | 0 | 0 |" in markdown
     assert "## Report Quality Summary" in markdown
     assert (
         "| Avg section coverage | Avg report depth | Avg source diversity "
-        "| Avg citation support | Unsupported claims | Avg duplicate source rate |"
+        "| Avg citation support | Avg evidence/section | Avg official source coverage "
+        "| Unsupported claims | Avg duplicate source rate |"
     ) in markdown
 
 

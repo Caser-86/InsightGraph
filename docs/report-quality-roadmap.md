@@ -506,12 +506,14 @@ Acceptance criteria:
 
 Report-quality work must expand Eval Bench instead of relying only on manual inspection.
 
+Initial post-Phase 10 expansion adds evidence-per-section and official-source coverage metrics to Eval Bench case quality, summary aggregates, and Markdown reports. These metrics use `Evidence.section_id`, `section_research_plan`, and `section_collection_status` so eval output can detect sparse section grounding and missing required source types.
+
 Required future metrics:
 
 - Section coverage score.
-- Evidence per section.
+- Evidence per section. (implemented)
 - Source diversity score.
-- Official-source coverage where required.
+- Official-source coverage where required. (implemented)
 - Citation support score.
 - Unsupported claim count.
 - Duplicate source rate.
