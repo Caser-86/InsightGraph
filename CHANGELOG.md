@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Improved long-document chunk ranking for local documents and fetched pages.
 - Tightened deterministic report templates to follow planned domain sections.
 - Added section-aware per-tool collection queries.
 - Added Executor evidence caps per tool, per section budget, and per run.

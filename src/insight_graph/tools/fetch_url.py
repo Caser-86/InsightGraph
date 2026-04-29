@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -28,16 +29,24 @@ class FetchedChunk:
     page: int | None = None
 
 
+@dataclass(frozen=True)
+class FetchUrlQuery:
+    url: str
+    retrieval_query: str | None = None
+
+
 def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
-    page = fetch_text(url)
+    parsed_query = _parse_fetch_url_query(url)
+    page = fetch_text(parsed_query.url)
     if _is_pdf_response(page.content_type, page.url):
-        return _pdf_evidence(page, subtask_id)
+        return _pdf_evidence(page, subtask_id, parsed_query.retrieval_query)
 
     content = extract_page_content(page.text, page.url)
     if not content.text:
         return []
     chunks = _chunk_text(content.text)
     headings = _extract_html_section_headings(page.text, content.text)
+    chunks = _rank_chunks(chunks, parsed_query.retrieval_query, headings)
     source_type = infer_source_type(page.url)
     base_id = _evidence_id(page.url)
     return [
@@ -54,6 +63,22 @@ def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
         )
         for index, chunk in enumerate(chunks[:MAX_FETCHED_EVIDENCE])
     ]
+
+
+def _parse_fetch_url_query(query: str) -> FetchUrlQuery:
+    try:
+        parsed = json.loads(query)
+    except json.JSONDecodeError:
+        return FetchUrlQuery(url=query)
+    if not isinstance(parsed, dict):
+        return FetchUrlQuery(url=query)
+    url = parsed.get("url")
+    if not isinstance(url, str) or not url.strip():
+        return FetchUrlQuery(url=query)
+    retrieval_query = parsed.get("query")
+    if not isinstance(retrieval_query, str) or not retrieval_query.strip():
+        retrieval_query = None
+    return FetchUrlQuery(url=url.strip(), retrieval_query=retrieval_query)
 
 
 def infer_source_type(url: str) -> SourceType:
@@ -74,12 +99,20 @@ def _evidence_id(url: str) -> str:
     return slug or "fetched-url"
 
 
-def _pdf_evidence(page, subtask_id: str) -> list[Evidence]:
+def _pdf_evidence(
+    page,
+    subtask_id: str,
+    retrieval_query: str | None = None,
+) -> list[Evidence]:
     document = _extract_pdf_text(page.body)
     if document is None or not document[0]:
         return []
     text, page_starts = document
-    chunks = _chunk_text(text, page_starts=page_starts)
+    chunks = _rank_chunks(
+        _chunk_text(text, page_starts=page_starts),
+        retrieval_query,
+        headings=[],
+    )
     base_id = _evidence_id(page.url)
     title = _pdf_title(page.url)
     return [
@@ -152,6 +185,36 @@ def _chunk_text(
         for start in range(0, len(text), step)
         if text[start : start + MAX_SNIPPET_CHARS]
     ]
+
+
+def _rank_chunks(
+    chunks: list[FetchedChunk],
+    retrieval_query: str | None,
+    headings: list[tuple[int, str]],
+) -> list[FetchedChunk]:
+    if not retrieval_query:
+        return chunks
+    query_tokens = set(_tokenize(retrieval_query))
+    if not query_tokens:
+        return chunks
+    scored = []
+    for index, chunk in enumerate(chunks):
+        tokens = _tokenize(chunk.snippet)
+        heading_tokens = _tokenize(_section_for_start(chunk.start, headings) or "")
+        score = sum(1 for token in tokens if token in query_tokens)
+        score += 100 * sum(1 for token in heading_tokens if token in query_tokens)
+        distinct_matches = len({token for token in tokens if token in query_tokens})
+        distinct_matches += len({token for token in heading_tokens if token in query_tokens})
+        if score > 0:
+            scored.append((score, distinct_matches, -index, chunk))
+    if not scored:
+        return chunks
+    scored.sort(reverse=True)
+    return [chunk for _, _, _, chunk in scored]
+
+
+def _tokenize(value: str) -> list[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 3]
 
 
 def _page_for_start(start: int, page_starts: list[tuple[int, int]]) -> int | None:

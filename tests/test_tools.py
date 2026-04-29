@@ -551,6 +551,25 @@ def test_document_reader_records_section_heading_for_ranked_markdown(
     assert evidence[0].chunk_index >= 1
 
 
+def test_document_reader_ranks_heading_matches(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "strategy.md"
+    document.write_text(
+        "pricing " * 90
+        + "\n# Pricing Strategy\n"
+        + "roadmap details " * 80,
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader(
+        '{"path":"strategy.md","query":"pricing strategy"}',
+        "s1",
+    )
+
+    assert evidence[0].section_heading == "Pricing Strategy"
+    assert "roadmap details" in evidence[0].snippet
+
+
 def test_document_reader_json_query_falls_back_when_no_terms_match(
     tmp_path, monkeypatch
 ) -> None:

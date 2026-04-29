@@ -104,6 +104,35 @@ def test_fetch_url_chunks_long_html_with_section_metadata(monkeypatch) -> None:
     assert {item.verified for item in evidence} == {True}
 
 
+def test_fetch_url_ranks_chunks_from_json_query(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        assert url == "https://example.com/report"
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text=(
+                "<html><head><title>Long Report</title></head><body><main>"
+                + "<h1>Overview</h1>"
+                + "pricing " * 90
+                + "<h2>Pricing Strategy</h2>"
+                + "roadmap details " * 80
+                + "</main></body></html>"
+            ),
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url(
+        '{"url":"https://example.com/report","query":"pricing strategy"}',
+        "s1",
+    )
+
+    assert evidence[0].section_heading == "Pricing Strategy"
+    assert "roadmap details" in evidence[0].snippet
+
+
 def test_fetch_url_reads_remote_pdf_with_page_metadata(monkeypatch) -> None:
     pdf_bytes = write_minimal_pdf_bytes("Remote PDF evidence text.")
 

@@ -154,8 +154,11 @@ def _rank_snippets(
     scored = []
     for chunk in candidates:
         tokens = _tokenize(chunk.snippet)
+        heading_tokens = _tokenize(chunk.section_heading or "")
         score = sum(1 for token in tokens if token in query_tokens)
+        score += 100 * sum(1 for token in heading_tokens if token in query_tokens)
         distinct_matches = len({token for token in tokens if token in query_tokens})
+        distinct_matches += len({token for token in heading_tokens if token in query_tokens})
         if score > 0:
             scored.append((score, distinct_matches, -chunk.index, chunk))
 
