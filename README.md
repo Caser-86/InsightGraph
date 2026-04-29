@@ -84,7 +84,10 @@ insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-
 # Summarize an eval JSON report
 python scripts/summarize_eval_report.py reports/eval.json --markdown
 
-# CI uploads eval-reports with full and summary eval JSON/Markdown reports.
+# Append a CI eval history row
+python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z
+
+# CI uploads eval-reports with full, summary, and history eval JSON/Markdown reports.
 
 # Offline validators
 python scripts/validate_sources.py report.md

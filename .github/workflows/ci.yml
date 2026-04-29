@@ -34,6 +34,8 @@ jobs:
           insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
           python scripts/summarize_eval_report.py reports/eval.json > reports/eval-summary.json
           python scripts/summarize_eval_report.py reports/eval.json --markdown > reports/eval-summary.md
+          created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id "$GITHUB_RUN_ID" --head-sha "$GITHUB_SHA" --created-at "$created_at" --limit 50
 
       - name: Eval Gate
         run: insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
@@ -48,3 +50,5 @@ jobs:
             reports/eval.md
             reports/eval-summary.json
             reports/eval-summary.md
+            reports/eval-history.json
+            reports/eval-history.md

@@ -106,13 +106,19 @@ Use `docs/evals/default.json` for the checked-in default case set, or pass
 `--case-file path/to/cases.json` to run a custom JSON case set.
 
 GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`,
-`reports/eval.md`, `reports/eval-summary.json`, and `reports/eval-summary.md`
-for each CI run.
+`reports/eval.md`, `reports/eval-summary.json`, `reports/eval-summary.md`,
+`reports/eval-history.json`, and `reports/eval-history.md` for each CI run.
 
 Summarize a downloaded or local eval JSON report:
 
 ```bash
 python scripts/summarize_eval_report.py reports/eval.json --markdown
+```
+
+Append a local eval history row:
+
+```bash
+python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z
 ```
 
 The Dashboard Overview tab also shows the active Eval Gate case file, threshold,

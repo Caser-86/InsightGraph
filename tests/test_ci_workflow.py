@@ -19,3 +19,9 @@ def test_ci_uploads_eval_summary_artifacts() -> None:
     assert "reports/eval.md" in workflow
     assert "reports/eval-summary.json" in workflow
     assert "reports/eval-summary.md" in workflow
+    assert "created_at=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" in workflow
+    assert "python scripts/append_eval_history.py --summary reports/eval-summary.json" in workflow
+    assert "--history reports/eval-history.json" in workflow
+    assert "--markdown reports/eval-history.md" in workflow
+    assert "reports/eval-history.json" in workflow
+    assert "reports/eval-history.md" in workflow
