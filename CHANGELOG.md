@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic offline embeddings for research memory records.
 - Added memory deletion controls by memory ID and metadata key/value.
 - Added event-runner checkpoint save and resume hooks for persisted `GraphState` runs.
 - Added `INSIGHT_GRAPH_MAX_TOKENS` accounting for LLM analyst, reporter, and relevance calls.
