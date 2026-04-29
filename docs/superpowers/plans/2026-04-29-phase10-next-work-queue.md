@@ -8,8 +8,8 @@
 1. Done: replan-driven follow-up collection.
 2. Done: section evidence attribution.
 3. Done: collection budgets and caps.
-4. Next: section-aware query generation.
-5. Report template tightening.
+4. Done: section-aware query generation.
+5. Next: report template tightening.
 6. Long-document retrieval v2.
 7. Opt-in rendered-page fetch.
 8. Financial analysis tools beyond recent filing discovery.

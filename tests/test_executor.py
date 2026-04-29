@@ -378,6 +378,66 @@ def test_executor_caps_total_evidence_per_run(monkeypatch) -> None:
     assert len(updated.evidence_pool) == 20
 
 
+def test_executor_builds_section_aware_queries_per_tool(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    observed_queries: dict[str, str] = {}
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed_queries[name] = query
+            return [
+                Evidence(
+                    id=name,
+                    subtask_id=subtask_id,
+                    title=f"{name} Evidence",
+                    source_url=f"https://example.com/{name}",
+                    snippet=f"{name} evidence has enough words for scoring.",
+                    source_type="github" if name == "github_search" else "news",
+                    verified=True,
+                )
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        resolved_entities=[{"name": "Cursor"}, {"name": "GitHub Copilot"}],
+        section_research_plan=[
+            {
+                "section_id": "developer-ecosystem",
+                "title": "Developer Ecosystem",
+                "questions": ["What repository and developer activity exists?"],
+                "required_source_types": ["github"],
+                "min_evidence": 1,
+            },
+            {
+                "section_id": "market-news",
+                "title": "Market News",
+                "questions": ["What launch or market news exists?"],
+                "required_source_types": ["news"],
+                "min_evidence": 1,
+            },
+        ],
+        subtasks=[
+            Subtask(
+                id="collect",
+                description="Collect",
+                suggested_tools=["github_search", "news_search"],
+            )
+        ],
+    )
+
+    execute_subtasks(state)
+
+    assert "Compare AI coding agents" in observed_queries["github_search"]
+    assert "Cursor" in observed_queries["github_search"]
+    assert "developer-ecosystem" in observed_queries["github_search"]
+    assert "repository and developer activity" in observed_queries["github_search"]
+    assert "market-news" not in observed_queries["github_search"]
+    assert "market-news" in observed_queries["news_search"]
+    assert "launch or market news" in observed_queries["news_search"]
+    assert "developer-ecosystem" not in observed_queries["news_search"]
+
+
 def test_executor_records_evidence_scores() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",

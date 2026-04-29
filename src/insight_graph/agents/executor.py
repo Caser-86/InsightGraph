@@ -16,6 +16,13 @@ WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
 WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 MAX_EVIDENCE_PER_TOOL = 5
 MAX_EVIDENCE_PER_RUN = 20
+TOOL_SOURCE_TYPES = {
+    "github_search": {"github"},
+    "news_search": {"news"},
+    "sec_filings": {"official_site"},
+    "document_reader": {"docs"},
+    "web_search": {"official_site", "docs", "news", "blog", "unknown"},
+}
 
 
 def execute_subtasks(state: GraphState) -> GraphState:
@@ -23,10 +30,10 @@ def execute_subtasks(state: GraphState) -> GraphState:
     collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
-    query = _collection_query(state)
 
     for subtask in state.subtasks:
         for tool_name in subtask.suggested_tools:
+            query = _collection_query(state, tool_name)
             kept_results, new_records = _run_tool_with_fallback(
                 registry,
                 tool_name,
@@ -63,11 +70,12 @@ def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
     return [Evidence.model_validate(item) for item in existing]
 
 
-def _collection_query(state: GraphState) -> str:
+def _collection_query(state: GraphState, tool_name: str) -> str:
+    base_query = _section_aware_query(state, tool_name)
     if state.iterations <= 0 or not state.replan_requests:
-        return state.user_request
+        return base_query
 
-    parts = [state.user_request]
+    parts = [base_query]
     for request in state.replan_requests:
         if request.get("type") != "missing_section_evidence":
             continue
@@ -82,6 +90,61 @@ def _collection_query(state: GraphState) -> str:
             parts.append(f"missing evidence: {missing_evidence}")
         break
     return " | ".join(parts)
+
+
+def _section_aware_query(state: GraphState, tool_name: str) -> str:
+    parts = [state.user_request]
+    entity_names = _resolved_entity_names(state.resolved_entities)
+    if entity_names:
+        parts.append(f"entities: {', '.join(entity_names)}")
+    matching_sections = _matching_sections_for_tool(state.section_research_plan, tool_name)
+    for section in matching_sections[:2]:
+        section_id = str(section.get("section_id", "")).strip()
+        title = str(section.get("title", "")).strip()
+        question = _first_question(section)
+        section_parts = []
+        if section_id:
+            section_parts.append(section_id)
+        if title:
+            section_parts.append(title)
+        if question:
+            section_parts.append(question)
+        if section_parts:
+            parts.append("section: " + " | ".join(section_parts))
+    return " | ".join(parts)
+
+
+def _resolved_entity_names(entities: list[dict[str, object]]) -> list[str]:
+    names = []
+    for entity in entities:
+        name = entity.get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def _matching_sections_for_tool(
+    section_plan: list[dict[str, object]],
+    tool_name: str,
+) -> list[dict[str, object]]:
+    source_types = TOOL_SOURCE_TYPES.get(tool_name)
+    if not source_types:
+        return section_plan
+    matching = [
+        section
+        for section in section_plan
+        if source_types.intersection(_required_source_types(section))
+    ]
+    return matching or section_plan
+
+
+def _first_question(section: dict[str, object]) -> str:
+    questions = section.get("questions", [])
+    if isinstance(questions, list):
+        for question in questions:
+            if isinstance(question, str) and question:
+                return question
+    return ""
 
 
 def _string_list(values: object) -> list[str]:

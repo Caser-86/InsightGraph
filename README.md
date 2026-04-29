@@ -296,7 +296,7 @@ flowchart TB
 
 ### 2. Collector / Executor
 
-- **工具执行**：执行 Planner 指定工具，生成 verified evidence。
+- **工具执行**：执行 Planner 指定工具；每个工具收到基于 source type、section plan 和 resolved entities 的 deterministic query，生成 verified evidence。
 - **证据管理**：维护 `evidence_pool` 和 `global_evidence_pool`，执行基础去重，按 deterministic evidence score 排序，并应用 per-tool / per-section / per-run caps。
 - **质量 metadata**：写入 `section_collection_status`（按 evidence `section_id` 统计 required/covered/missing source types）和 `evidence_scores`。
 - **边界**：当前不是完整 agentic 多轮工具循环；Critic retry 会把 replan metadata 转为一次 deterministic follow-up query。

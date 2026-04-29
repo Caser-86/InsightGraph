@@ -468,6 +468,8 @@ Collected evidence now carries optional `section_id` attribution. Executor assig
 
 Executor now enforces deterministic evidence caps: at most five retained records per tool call, at most each section's positive `budget`, and at most twenty retained records per run. Tool call logs keep the original evidence count and include cap removals in `filtered_count`.
 
+Executor now builds section-aware per-tool collection queries. Tool queries include the original request, resolved entity names, and up to two matching planned sections based on the tool's source type coverage, while retry queries still include replan hints.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
@@ -482,8 +484,8 @@ Next work queue:
 1. Done: replan-driven follow-up collection consumes `replan_requests` to issue targeted follow-up queries for missing section/source evidence before the existing one retry returns to analysis.
 2. Done: section evidence attribution attaches evidence to likely section IDs using source requirements, query terms, entity mentions, and source types instead of treating every section as covered by the same global pool.
 3. Done: collection budgets and caps enforce per-run/per-tool/per-section evidence caps so live multi-source collection remains bounded as more providers are added.
-4. Next: section-aware query generation builds deterministic queries from `section_research_plan`, resolved entities, and missing source types so each source receives narrower prompts.
-5. Report template tightening: map domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
+4. Done: section-aware query generation builds deterministic queries from `section_research_plan`, resolved entities, and missing source types so each source receives narrower prompts.
+5. Next: report template tightening maps domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
 6. Long-document retrieval v2: improve local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
 7. Rendered-page fetch: add opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
 8. Financial analysis tools: extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
