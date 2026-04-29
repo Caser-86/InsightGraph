@@ -1,3 +1,10 @@
 .worktrees/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
+reports/eval.json
+reports/eval.md
+reports/eval-summary.json
+reports/eval-summary.md
+reports/eval-history.json
+reports/eval-history.md

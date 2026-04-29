@@ -34,3 +34,15 @@ def test_ci_validates_deployment_smoke_script_without_network() -> None:
 
     assert "Validate Deployment Smoke Script" in workflow
     assert "insight-graph-smoke --help" in workflow
+
+
+def test_ci_uses_least_privilege_permissions_and_concurrency() -> None:
+    workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "permissions:" in workflow
+    assert "contents: read" in workflow
+    assert "concurrency:" in workflow
+    assert "group: ${{ github.workflow }}-${{ github.ref }}" in workflow
+    assert "cancel-in-progress: true" in workflow
