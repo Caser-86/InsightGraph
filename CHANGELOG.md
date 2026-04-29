@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.22 - 2026-04-29
+
 - Added file-based Eval Bench trend history artifacts.
 
 ## v0.1.21 - 2026-04-29
