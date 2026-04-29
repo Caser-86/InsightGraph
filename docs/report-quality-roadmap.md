@@ -543,9 +543,11 @@ Phases 1-10 are implemented. The next approved direction is the reference-qualit
 
 - Research Depth v1 adds section follow-up collection rounds, no-new-evidence stopping, max-round stopping, and collection-depth eval output.
 - Critic records section replan `strategy_key` values in `tried_strategies` and skips duplicate section follow-up strategies.
+- Research budgets now centralize tool-call, step, fetch, and per-run evidence caps; Executor enforces tool-call and evidence caps.
+- Conversation compression now has deterministic evidence-preserving summaries, ready for later long-running agent loops.
 - Default offline behavior remains one collection round; `live-research` opts into deeper collection.
 
 - PostgreSQL checkpoint resume requires explicit resume semantics, migration tests, and operational design.
 - pgvector memory requires opt-in embeddings, privacy/deletion controls, and eval proof that memory improves grounded reports.
-- Conversation compression requires long-run trace tests and evidence-preservation rules.
+- Conversation compression still needs long-run trace integration after the deterministic summary helper.
 - Eval Bench should be expanded before infrastructure work if report-quality regression detection is the priority.

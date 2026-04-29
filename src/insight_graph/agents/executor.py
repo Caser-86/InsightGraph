@@ -5,6 +5,7 @@ from insight_graph.agents.relevance import (
     filter_relevant_evidence,
     is_relevance_filter_enabled,
 )
+from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.report_quality.evidence_scoring import score_evidence
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
@@ -16,7 +17,6 @@ WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
 )
 WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 MAX_EVIDENCE_PER_TOOL = 5
-MAX_EVIDENCE_PER_RUN = 20
 MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
 TOOL_SOURCE_TYPES = {
     "github_search": {"github"},
@@ -41,6 +41,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
     collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
+    budgets = get_research_budgets()
     max_rounds = _max_collection_rounds()
     previous_evidence_keys: set[tuple[str, str]] = set()
     round_summaries: list[dict[str, object]] = []
@@ -50,6 +51,9 @@ def execute_subtasks(state: GraphState) -> GraphState:
         section_focus = _section_focus_for_round(state, round_index)
         for subtask in state.subtasks:
             for tool_name in subtask.suggested_tools:
+                if len(records) >= budgets.max_tool_calls:
+                    stop_reason = "tool_budget_exhausted"
+                    break
                 query = _collection_query(state, tool_name, section_focus)
                 section_id = _focused_section_id(section_focus)
                 kept_results, new_records = _run_tool_with_fallback(
@@ -64,6 +68,19 @@ def execute_subtasks(state: GraphState) -> GraphState:
                 )
                 collected.extend(kept_results)
                 records.extend(new_records)
+            if stop_reason == "tool_budget_exhausted":
+                break
+        if stop_reason == "tool_budget_exhausted":
+            state = _finalize_collected_evidence(state, collected, records)
+            round_summaries.append(
+                {
+                    "round": round_index,
+                    "new_evidence_count": 0,
+                    "total_evidence_count": len(state.evidence_pool),
+                    "sufficient": _all_sections_sufficient(state.section_collection_status),
+                }
+            )
+            break
 
         state = _finalize_collected_evidence(state, collected, records)
         current_evidence_keys = {(item.id, item.source_url) for item in state.evidence_pool}
@@ -515,7 +532,8 @@ def _cap_evidence_pool(
     section_plan: list[dict[str, object]],
 ) -> list[Evidence]:
     section_capped = _cap_evidence_by_section_budget(evidence, section_plan)
-    return section_capped[:MAX_EVIDENCE_PER_RUN]
+    evidence_budget = get_research_budgets().max_evidence_per_run
+    return section_capped[:evidence_budget]
 
 
 def _cap_evidence_by_section_budget(

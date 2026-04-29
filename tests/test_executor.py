@@ -439,6 +439,51 @@ def test_executor_caps_evidence_per_tool(monkeypatch) -> None:
     assert updated.tool_call_log[0].filtered_count == 2
 
 
+def test_executor_stops_before_exceeding_tool_call_budget(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOOL_CALLS", "1")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return make_numbered_evidence(name, 1)
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[
+            Subtask(
+                id="collect",
+                description="Collect",
+                suggested_tools=["tool-a", "tool-b"],
+            )
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [record.tool_name for record in updated.tool_call_log] == ["tool-a"]
+    assert updated.collection_stop_reason == "tool_budget_exhausted"
+
+
+def test_executor_uses_configured_evidence_per_run_budget(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN", "3")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return make_numbered_evidence(name, 5)
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.evidence_pool) == 3
+
+
 def test_executor_caps_evidence_per_section_budget(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
 

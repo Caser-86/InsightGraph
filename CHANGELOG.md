@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added centralized research budgets for tool calls, steps, fetches, and per-run evidence caps.
+- Added deterministic conversation compression summaries that preserve evidence IDs, sources, tool-call counts, and findings.
 - Added Critic tried-strategy metadata to avoid repeating identical section replan requests.
 - Added bounded multi-round collection depth for `live-research` and Eval Bench collection-depth metrics.
 - Added opt-in Eval Bench gates for source diversity, report depth, evidence density, and duplicate source rate.

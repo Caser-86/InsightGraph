@@ -67,12 +67,12 @@ src/insight_graph/
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
 | **可选实时数据源** | DuckDuckGo web search、GitHub REST Search、SEC filings 和 direct URL/PDF fetch 均为显式 opt-in；默认测试不访问公网 |
-| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch、deterministic relevance filtering 和最多 3 轮 section follow-up collection |
+| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch、deterministic relevance filtering、全局 tool/evidence budgets 和最多 3 轮 section follow-up collection |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG、conversation compression、全局 token/step/tool-call budget、MCP 工具接入和沙箱代码执行。这些属于后续 reference-quality phases，必须单独设计和验证。
+未实现或未默认启用的高级能力：pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG、token budget、MCP 工具接入和沙箱代码执行。Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。
 
 ---
 
