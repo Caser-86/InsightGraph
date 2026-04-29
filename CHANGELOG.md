@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.18 - 2026-04-29
+
 - Added Dashboard Eval Gate visibility.
 
 ## v0.1.17 - 2026-04-29
