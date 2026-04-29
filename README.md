@@ -31,6 +31,7 @@ src/insight_graph/
 │   ├── content_extract.py          # HTML title/text/snippet 提取
 │   ├── github_search.py            # deterministic 或 opt-in GitHub repository search
 │   ├── news_search.py              # deterministic news/product announcement evidence
+│   ├── sec_filings.py              # opt-in SEC EDGAR recent filings evidence
 │   ├── document_reader.py          # cwd 内 TXT/Markdown/HTML/PDF evidence reader
 │   └── file_tools.py               # cwd 内安全 read/list/create-only write
 ├── llm/                            # OpenAI-compatible LLM 与 router
@@ -61,13 +62,13 @@ src/insight_graph/
 | **Citation 安全** | LLM Reporter 不能保留未知引用；References 由系统重建；Critic 记录 claim-level citation support metadata |
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
-| **可选实时数据源** | DuckDuckGo web search 和 GitHub REST Search 均为显式 opt-in；默认测试不访问公网 |
+| **可选实时数据源** | DuckDuckGo web search、GitHub REST Search、SEC filings 和 direct URL/PDF fetch 均为显式 opt-in；默认测试不访问公网 |
 | **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch 和 deterministic relevance filtering |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：SEC/filings 工具、Playwright 渲染、pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG。这些属于 Phase 10 deferred items，后续按需推进。
+未实现或未默认启用的高级能力：Playwright 渲染、pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG、SEC 财务分析工具。这些属于 Phase 10 deferred items，后续按需推进。
 
 ---
 
@@ -105,7 +106,8 @@ src/insight_graph/
 ┌───────────────────────────────▼───────────────────────────────────────┐
 │                              Tools                                     │
 │ mock_search │ web_search │ pre_fetch │ fetch_url │ github_search       │
-│ news_search │ document_reader │ read_file │ list_directory │ write_file │
+│ news_search │ sec_filings │ document_reader │ read_file │ list_directory │
+│ write_file │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -215,7 +217,8 @@ flowchart TB
         T3 --> T4[content_extract]
         T5[github_search] --> T8[Evidence]
         T6[news_search] --> T8
-        T7[document_reader / file tools] --> T8
+        T7[sec_filings] --> T8
+        T9[document_reader / file tools] --> T8
         T4 --> T8
     end
 
@@ -289,7 +292,7 @@ flowchart TB
 - **输入**：`user_request` 和当前 `GraphState`。
 - **输出**：`subtasks`，包括 scope、collect、analyze、report 等阶段。
 - **报告质量增强**：写入 `domain_profile`、`resolved_entities`、`section_research_plan`。
-- **工具选择**：根据环境变量选择 `mock_search`、`web_search`、`github_search`、`news_search`、`document_reader` 或本地文件工具。
+- **工具选择**：根据环境变量选择 `mock_search`、`web_search`、`github_search`、`news_search`、`sec_filings`、`document_reader` 或本地文件工具；`live-research` 使用多源采集。
 
 ### 2. Collector / Executor
 

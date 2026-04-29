@@ -506,6 +506,9 @@ These rules are mandatory for future work:
 
 ## Next Required Step
 
-The next implementation plan must be for **Phase 1: Report Quality Baseline**.
+Phases 1-9 are implemented and Phase 10 is active. Next work should continue the cheapest Phase 10 improvements that strengthen grounded live research before heavier deferred items:
 
-Phase 1 should design and implement the report-quality rubric and Eval Bench metrics before modifying Planner, Collector, Analyst, Critic, or Reporter behavior.
+- Keep docs aligned with implemented live/document/filings behavior.
+- Add safety and quality bounds around live fetches.
+- Use evidence scores and section source requirements more directly during collection.
+- Defer Playwright, pgvector, PostgreSQL checkpoint resume, and long-term memory until the bounded evidence path is stable.

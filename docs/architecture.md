@@ -36,8 +36,8 @@ src/insight_graph/
 │   ├── anthropic.py
 │   └── router.py
 ├── api/                       # FastAPI REST + WebSocket
-├── memory/                    # pgvector 长期记忆
-├── persistence/               # PostgreSQL checkpoint 持久化
+├── memory/                    # 目标态：pgvector 长期记忆
+├── persistence/               # 目标态：PostgreSQL checkpoint 持久化
 ├── budget/                    # Token / 步数 / 工具调用预算控制
 ├── observability/             # LLM 调用日志与执行链路追踪
 └── settings.py                # 全局配置
@@ -82,6 +82,7 @@ src/insight_graph/
 │ Tool Registry     │ Long-term Memory      │ Postgres Checkpoint       │
 │ web_search        │ pgvector 向量检索      │ 任务中断/恢复              │
 │ news_search       │ 历史研究摘要            │ thread_id 持久化           │
+│ sec_filings       │                       │                           │
 │ github_search     │ 实体画像与证据片段      │ 状态快照                   │
 │ fetch_url         │                       │                           │
 │ document_reader   │                       │                           │
@@ -191,7 +192,7 @@ flowchart LR
     P --> T[ToolRegistry]
     T --> T1[mock_search]
     T --> T2[web_search / fetch_url]
-    T --> T3[github_search / news_search]
+    T --> T3[github_search / news_search / sec_filings]
     T --> T4[document_reader]
     T --> T5[read_file / list_directory]
     T --> T6[write_file]
@@ -217,7 +218,7 @@ flowchart LR
     R --> M
 ```
 
-当前 MVP 中部分蓝图能力仍是目标态：Long-term Memory、PostgreSQL checkpoint、conversation compression、domain profiles 和 Reporter 主动 URL 网络校验尚未实现。已实现路径仍保留相同数据边界：工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support，API/CLI JSON 输出不 dump `evidence_pool` 或 `global_evidence_pool`。
+当前 MVP 中部分蓝图能力仍是目标态：Long-term Memory、PostgreSQL checkpoint、conversation compression、Playwright 渲染和 Reporter 主动 URL 网络校验尚未实现。已实现路径已包含 domain profiles、entity resolver、section plan、multi-source live collection、SEC recent filings、HTML/PDF evidence chunk metadata，并保留相同数据边界：工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support，API/CLI JSON 输出不 dump `evidence_pool` 或 `global_evidence_pool`。
 
 ## 技术栈
 
@@ -226,10 +227,10 @@ flowchart LR
 | **编排** | LangGraph, LangChain |
 | **LLM** | OpenAI, Anthropic, Qwen, OpenAI-compatible API |
 | **结构化输出** | Pydantic, LangChain OutputParser |
-| **向量检索** | pgvector, PostgreSQL, text embeddings |
-| **存储** | PostgreSQL + asyncpg, SQLAlchemy 2.0 |
-| **工具** | DuckDuckGo / Tavily / SerpAPI, httpx, curl-cffi, Playwright |
-| **文档处理** | PyMuPDF, Trafilatura, BeautifulSoup, Markdown parser |
+| **向量检索** | 目标态：pgvector, PostgreSQL, text embeddings |
+| **存储** | 当前：memory / JSON / SQLite job metadata；目标态：PostgreSQL checkpoint |
+| **工具** | 当前：DuckDuckGo via `ddgs`, GitHub REST Search, SEC submissions JSON, urllib fetch；目标态：Playwright / more search providers |
+| **文档处理** | 当前：BeautifulSoup, pypdf；目标态：TOC-aware / vector retrieval |
 | **API** | FastAPI, WebSocket 流式输出 |
 | **可观测** | LLM 调用日志、工具调用日志、Graph state snapshot |
 
@@ -242,6 +243,7 @@ flowchart LR
 | `fetch_url` | 抓取 direct HTTP/HTTPS URL，并从 HTML 页面生成 verified Evidence |
 | `content_extract` | 从 HTML 中提取标题、正文和 evidence snippet |
 | `github_search` | 检索 GitHub 仓库、README、Release、Issue 和 Star 趋势 |
+| `sec_filings` | opt-in SEC EDGAR recent filings evidence，支持 known ticker/company name |
 | `document_reader` | 当前读取 cwd 内本地 `.txt`、`.md`、`.markdown`、`.html`、`.htm`、`.pdf` 文件；长文档最多返回 5 条 bounded snippets；JSON 输入可按检索词进行 deterministic lexical ranking |
 | `read_file` / `list_directory` / `write_file` | 当前支持 cwd 内只读安全文本读取、一层目录列表，以及 create-only 安全文本写入 |
 
@@ -258,8 +260,8 @@ flowchart LR
 
 ### 2. Collector
 
-- **多轮循环（目标态）**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用；当前 MVP 每个 collect subtask 按 opt-in 优先级选择一个主工具执行
-- **多源采集**：支持 web_search、news_search、github_search、fetch_url、document_reader、read_file、list_directory；`write_file` 作为 create-only 本地文本写入工具单独 opt-in。当前 Planner collect subtask 按 opt-in 优先级选择一个主工具
+- **多轮循环（目标态）**：每个 subtask 最多 `MAX_TOOL_ROUNDS=5` 轮工具调用；当前 MVP 支持一次 collect pass，`live-research` 可启用多源采集
+- **多源采集**：支持 web_search、news_search、github_search、sec_filings、fetch_url、document_reader、read_file、list_directory；`write_file` 作为 create-only 本地文本写入工具单独 opt-in。非 multi-source 模式按 opt-in 优先级选择一个主工具
 - **可信度初筛**：按官网、官方文档、GitHub、权威媒体、第三方博客等来源等级排序
 - **上下文控制（目标态）**：超过 `MAX_CONVERSATION_CHARS` 后触发对话压缩，保留最近关键证据；当前 MVP 尚未实现 conversation compression
 - **跨 subtask 共享**：`global_evidence_pool` 供后续 Agent 复用已采集证据

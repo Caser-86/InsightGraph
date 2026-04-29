@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Aligned architecture and README documentation with implemented Phase 10 live evidence features.
 - Added a default response size guard for live URL fetching.
 - Added remote PDF extraction with page metadata for fetched URL evidence.
 - Improved SEC filings target detection for public-company names and Planner source selection.
