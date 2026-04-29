@@ -318,6 +318,8 @@ Acceptance criteria:
 
 Goal: replace fixed subtasks with section-aware research planning.
 
+Initial implementation lives in `src/insight_graph/report_quality/research_plan.py`, derives section-level questions/source requirements/budgets from the selected domain profile, and stores serializable payloads on `GraphState.section_research_plan`. The existing LangGraph subtask sequence remains unchanged until Collector phases consume this plan.
+
 Required outputs per section:
 
 - `section_id`

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic section research plans to Planner state.
 - Added deterministic entity resolution for Planner state.
 - Added deterministic domain profile selection for Planner state.
 - Added deterministic report-quality metrics to Eval Bench outputs.

@@ -289,6 +289,17 @@ def test_planner_leaves_generic_request_without_entities() -> None:
     assert updated.resolved_entities == []
 
 
+def test_planner_builds_section_research_plan() -> None:
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot")
+
+    updated = plan_research(state)
+
+    assert updated.section_research_plan
+    assert updated.section_research_plan[0]["section_id"] == "executive-summary"
+    assert updated.section_research_plan[0]["entity_ids"] == ["cursor", "github-copilot"]
+    assert updated.section_research_plan[0]["min_evidence"] == 2
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")

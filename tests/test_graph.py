@@ -46,6 +46,7 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
         "opencode",
         "github-copilot",
     ]
+    assert result.section_research_plan
     assert result.competitive_matrix
     assert result.llm_call_log == []
 
