@@ -494,6 +494,76 @@ def test_main_returns_one_when_any_case_fails(monkeypatch, capsys) -> None:
     assert "Eval gate failed: 1 case(s) failed" in captured.err
 
 
+def test_main_returns_one_when_quality_metric_below_minimum(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 0,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+            "average_section_coverage_score": 67,
+            "average_citation_support_score": 75,
+            "average_official_source_coverage_score": 50,
+            "total_unsupported_claims": 0,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(
+        [
+            "--min-section-coverage",
+            "80",
+            "--min-citation-support",
+            "90",
+            "--min-official-source-coverage",
+            "75",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: average section coverage 67 < 80" in captured.err
+    assert "Eval gate failed: average citation support 75 < 90" in captured.err
+    assert "Eval gate failed: average official source coverage 50 < 75" in captured.err
+
+
+def test_main_returns_one_when_unsupported_claims_exceed_maximum(monkeypatch, capsys) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 0,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+            "total_unsupported_claims": 2,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--max-unsupported-claims", "0"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: unsupported claims 2 > 0" in captured.err
+
+
 def test_main_writes_output_before_gate_failure(monkeypatch, tmp_path) -> None:
     payload = {
         "cases": [],

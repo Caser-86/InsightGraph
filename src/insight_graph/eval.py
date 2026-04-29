@@ -610,6 +610,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Fail when average score is below this value.",
     )
     parser.add_argument(
+        "--min-section-coverage",
+        type=float,
+        help="Fail when average section coverage is below this value.",
+    )
+    parser.add_argument(
+        "--min-citation-support",
+        type=float,
+        help="Fail when average citation support is below this value.",
+    )
+    parser.add_argument(
+        "--min-official-source-coverage",
+        type=float,
+        help="Fail when average official source coverage is below this value.",
+    )
+    parser.add_argument(
+        "--max-unsupported-claims",
+        type=int,
+        help="Fail when unsupported claims exceed this value.",
+    )
+    parser.add_argument(
         "--fail-on-case-failure",
         action="store_true",
         help="Fail when any eval case fails.",
@@ -635,6 +655,10 @@ def main(argv: list[str] | None = None) -> int:
     gate_failures = _gate_failures(
         payload,
         min_score=args.min_score,
+        min_section_coverage=args.min_section_coverage,
+        min_citation_support=args.min_citation_support,
+        min_official_source_coverage=args.min_official_source_coverage,
+        max_unsupported_claims=args.max_unsupported_claims,
         fail_on_case_failure=args.fail_on_case_failure,
     )
     for failure in gate_failures:
@@ -646,6 +670,10 @@ def _gate_failures(
     payload: dict[str, Any],
     *,
     min_score: float | None,
+    min_section_coverage: float | None,
+    min_citation_support: float | None,
+    min_official_source_coverage: float | None,
+    max_unsupported_claims: int | None,
     fail_on_case_failure: bool,
 ) -> list[str]:
     failures: list[str] = []
@@ -657,10 +685,55 @@ def _gate_failures(
         failures.append(
             f"Eval gate failed: average score {average} < {threshold}"
         )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_section_coverage_score",
+        label="average section coverage",
+        threshold=min_section_coverage,
+    )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_citation_support_score",
+        label="average citation support",
+        threshold=min_citation_support,
+    )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_official_source_coverage_score",
+        label="average official source coverage",
+        threshold=min_official_source_coverage,
+    )
+    if max_unsupported_claims is not None:
+        unsupported_claims = int(summary.get("total_unsupported_claims", 0))
+        if unsupported_claims > max_unsupported_claims:
+            failures.append(
+                "Eval gate failed: "
+                f"unsupported claims {unsupported_claims} > {max_unsupported_claims}"
+            )
     failed_count = int(summary["failed_count"])
     if fail_on_case_failure and failed_count > 0:
         failures.append(f"Eval gate failed: {failed_count} case(s) failed")
     return failures
+
+
+def _add_minimum_gate_failure(
+    failures: list[str],
+    summary: dict[str, Any],
+    *,
+    key: str,
+    label: str,
+    threshold: float | None,
+) -> None:
+    if threshold is None:
+        return
+    actual = float(summary.get(key, 0))
+    if actual < threshold:
+        failures.append(
+            f"Eval gate failed: {label} {_format_number(actual)} < {_format_number(threshold)}"
+        )
 
 
 def _format_number(value: float) -> str:

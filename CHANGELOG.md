@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in Eval Bench gates for section coverage, citation support, official-source coverage, and unsupported claims.
 - Added Eval Bench metrics for evidence per section and official-source coverage.
 - Aligned the roadmap with the completed Phase 10 work queue.
 - Closed the Phase 10 queue by documenting PostgreSQL/pgvector deferral criteria.
