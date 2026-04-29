@@ -143,6 +143,77 @@ def test_executor_stops_tool_rounds_without_section_plan_when_no_new_evidence(
     assert updated.collection_stop_reason == "no_new_evidence"
 
 
+def test_executor_records_conversation_summary_when_compression_enabled(
+    monkeypatch,
+) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_CONVERSATION_COMPRESSION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOOL_ROUNDS", "2")
+    first = Evidence(
+        id="first",
+        subtask_id="collect",
+        title="First Evidence",
+        source_url="https://example.com/first",
+        snippet="First evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+    second = Evidence(
+        id="second",
+        subtask_id="collect",
+        title="Second Evidence",
+        source_url="https://example.com/second",
+        snippet="Second evidence has enough words for relevance.",
+        source_type="news",
+        verified=True,
+    )
+    calls = 0
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            nonlocal calls
+            calls += 1
+            return [first] if calls == 1 else [second]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.conversation_summary is not None
+    assert updated.conversation_summary["evidence_count"] == 2
+    assert [item["id"] for item in updated.conversation_summary["recent_evidence"]] == [
+        "first",
+        "second",
+    ]
+    assert [record["tool_name"] for record in updated.conversation_summary["tool_calls"]] == [
+        "fake",
+        "fake",
+    ]
+
+
+def test_executor_leaves_conversation_summary_empty_by_default(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.delenv("INSIGHT_GRAPH_CONVERSATION_COMPRESSION", raising=False)
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return []
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.conversation_summary is None
+
+
 def test_executor_records_section_collection_status() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",

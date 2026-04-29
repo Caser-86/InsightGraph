@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in Executor conversation compression summaries for long-running collection loops.
 - Added configurable per-subtask tool rounds via `INSIGHT_GRAPH_MAX_TOOL_ROUNDS`.
 - Added opt-in planner memory context injection and planning hints for tried strategies.
 - Added file-backed Markdown domain profiles with keyword-based detection.

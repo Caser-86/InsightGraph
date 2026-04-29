@@ -64,7 +64,7 @@ src/insight_graph/
 | 特性 | 说明 |
 |------|------|
 | **多智能体编排** | Planner → Collector → Analyst → Critic → Reporter，支持 Critic 触发一次 replan 闭环 |
-| **报告质量链路** | Phase 1-9 已落地：domain profile、Markdown-backed domain configs、memory context hints、entity resolver、section plan、evidence status、scoring、citation support、per-subtask tool rounds、replan/tried-strategy metadata、Reporter support summary |
+| **报告质量链路** | Phase 1-9 已落地：domain profile、Markdown-backed domain configs、memory context hints、entity resolver、section plan、evidence status、scoring、citation support、per-subtask tool rounds、conversation compression summaries、replan/tried-strategy metadata、Reporter support summary |
 | **证据溯源链** | Evidence 从 search / fetch / GitHub / news / local document 进入 pool，Reporter 仅引用 verified evidence；文档、远程 PDF 和长网页 evidence 带 chunk/page/section metadata、deterministic document index ranking，并可归因到 planned section |
 | **Rendered fetch** | 默认关闭；`INSIGHT_GRAPH_FETCH_RENDERED=1` 时 `fetch_url` 可尝试 optional Playwright rendering，并在失败时回退 bounded HTTP fetch |
 | **SEC financials** | `sec_filings` 发现近期 filings；`sec_financials` 可从 SEC companyfacts 生成 revenue / net income / assets evidence，不做完整财务模型 |
@@ -77,7 +77,7 @@ src/insight_graph/
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：真实 external embedding/vector RAG。PostgreSQL checkpoint store 目前是 opt-in persistence adapter，event runner 和 API/background jobs 已支持按 `run_id`/`job_id` 保存并从 checkpoint 继续；pgvector memory 目前是 opt-in storage/search/delete adapter，并有 deterministic offline embedding helper；Document retrieval 目前有 deterministic index、lexical ranking 和 opt-in deterministic vector ranking；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
+未实现或未默认启用的高级能力：真实 external embedding/vector RAG。PostgreSQL checkpoint store 目前是 opt-in persistence adapter，event runner 和 API/background jobs 已支持按 `run_id`/`job_id` 保存并从 checkpoint 继续；pgvector memory 目前是 opt-in storage/search/delete adapter，并有 deterministic offline embedding helper；Document retrieval 目前有 deterministic index、lexical ranking 和 opt-in deterministic vector ranking；Conversation compression 目前可 opt-in 写入 evidence-preserving summary，尚未接入外部 agent memory runtime。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
 
 ---
 

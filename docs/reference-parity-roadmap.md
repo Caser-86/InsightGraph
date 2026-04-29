@@ -12,7 +12,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Per-subtask multi-round tool loop | Implemented with configurable tool rounds | Expand query strategy diversity over time | Medium |
 | Pre-search fetch pipeline | Search/fetch tools exist | Need automatic top-N fetch pipeline per search results | High |
 | LLM relevance filtering | Implemented and opt-in | Needs tighter integration with pre-fetch loop | Medium |
-| Conversation compression | Deterministic helper implemented | Need automatic long-run integration | High |
+| Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | Implemented | Need final URL revalidation and snippet-level citation tightening | High |
 | Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
@@ -34,7 +34,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 2. Planner memory context injection. **Implemented.**
 3. Planner consumption of memory context and tried strategies. **Implemented.**
 4. Generic per-subtask multi-round tool loop. **Implemented.**
-5. Automatic conversation compression in long-running loops.
+5. Automatic conversation compression in long-running loops. **Implemented.**
 6. Pre-search fetch pipeline hardening.
 7. Reporter URL revalidation.
 8. Snippet-level citation support tightening.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 5 starts with automatic conversation compression in long-running loops. The first implementation should wire the deterministic compressor into bounded agent loops without changing default offline behavior or losing evidence IDs, source URLs, tool-call counts, and findings.
+Phase 6 starts with pre-search fetch pipeline hardening. The first implementation should wire top-N search result fetching into collection behind explicit live/search opt-in while keeping default tests offline and deterministic.

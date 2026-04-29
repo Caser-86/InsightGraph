@@ -107,3 +107,4 @@ class GraphState(BaseModel):
     collection_rounds: list[dict[str, object]] = Field(default_factory=list)
     collection_stop_reason: str | None = None
     tried_strategies: list[str] = Field(default_factory=list)
+    conversation_summary: dict[str, object] | None = None

@@ -6,6 +6,7 @@ from insight_graph.agents.relevance import (
     is_relevance_filter_enabled,
 )
 from insight_graph.report_quality.budgeting import get_research_budgets
+from insight_graph.report_quality.conversation_compression import compress_conversation
 from insight_graph.report_quality.evidence_scoring import score_evidence
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
@@ -19,6 +20,7 @@ WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 MAX_EVIDENCE_PER_TOOL = 5
 MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
 MAX_TOOL_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_TOOL_ROUNDS"
+CONVERSATION_COMPRESSION_ENV = "INSIGHT_GRAPH_CONVERSATION_COMPRESSION"
 TOOL_SOURCE_TYPES = {
     "github_search": {"github"},
     "news_search": {"news"},
@@ -46,6 +48,10 @@ def _max_tool_rounds() -> int:
     except ValueError:
         return _max_collection_rounds()
     return value if value > 0 else _max_collection_rounds()
+
+
+def _conversation_compression_enabled() -> bool:
+    return os.environ.get(CONVERSATION_COMPRESSION_ENV, "").lower() in {"1", "true", "yes"}
 
 
 def execute_subtasks(state: GraphState) -> GraphState:
@@ -84,6 +90,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                 break
         if stop_reason == "tool_budget_exhausted":
             state = _finalize_collected_evidence(state, collected, records)
+            state = _maybe_compress_conversation(state)
             round_summaries.append(
                 {
                     "round": round_index,
@@ -95,6 +102,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
             break
 
         state = _finalize_collected_evidence(state, collected, records)
+        state = _maybe_compress_conversation(state)
         current_evidence_keys = {(item.id, item.source_url) for item in state.evidence_pool}
         new_evidence_count = len(current_evidence_keys - previous_evidence_keys)
         previous_evidence_keys = current_evidence_keys
@@ -119,6 +127,12 @@ def execute_subtasks(state: GraphState) -> GraphState:
 
     state.collection_rounds = round_summaries
     state.collection_stop_reason = stop_reason
+    return state
+
+
+def _maybe_compress_conversation(state: GraphState) -> GraphState:
+    if _conversation_compression_enabled():
+        state.conversation_summary = compress_conversation(state)
     return state
 
 

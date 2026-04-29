@@ -64,6 +64,7 @@ Built-in Markdown profile example: `biotech_finance`, used for biotech/clinical/
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | 单次研究最终保留的 evidence 数上限 | `20` |
 | `INSIGHT_GRAPH_MAX_TOKENS` | 单次研究已记录 LLM total token 上限；耗尽后 Analyst/Reporter 回退 deterministic，OpenAI relevance judge 保守拒绝新 LLM 判断 | `50000` |
 | `INSIGHT_GRAPH_MAX_TOOL_ROUNDS` | Executor 对每个 planned tool/subtask collection loop 允许的最大轮数；未设置时沿用 `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` | `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` |
+| `INSIGHT_GRAPH_CONVERSATION_COMPRESSION` | `1` / `true` / `yes` 时 Executor 在 collection loop 后写入 deterministic `GraphState.conversation_summary` | 未启用 |
 
 ## Research Jobs Persistence
 
@@ -98,7 +99,7 @@ Research memory is opt-in. The default backend is in-memory and is useful only f
 
 `PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides persistence/search plus deletion by memory ID or metadata key/value. `build_memory_record` can generate deterministic offline embeddings for process-local tests and reproducible memory records. When memory context is enabled, Planner retrieves the top 3 similar memory records and uses them as collection hints. Real embedding providers and report-quality eval proof remain future work.
 
-当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 目前提供 deterministic summary helper，保留 evidence IDs、source URLs、tool-call counts 和 findings，尚未接入完整 agentic step loop。
+当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 默认关闭；启用后会写入 deterministic summary，保留 evidence IDs、source URLs、tool-call counts 和 findings，供后续长跑 agent loop 使用。
 
 ## Relevance Filtering
 
