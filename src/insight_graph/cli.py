@@ -15,6 +15,7 @@ app = typer.Typer(help="InsightGraph research workflow CLI")
 class ResearchPreset(StrEnum):
     offline = "offline"
     live_llm = "live-llm"
+    live_research = "live-research"
 
 
 LIVE_LLM_PRESET_DEFAULTS = {
@@ -26,12 +27,25 @@ LIVE_LLM_PRESET_DEFAULTS = {
     "INSIGHT_GRAPH_REPORTER_PROVIDER": "llm",
 }
 
+LIVE_RESEARCH_PRESET_DEFAULTS = {
+    "INSIGHT_GRAPH_USE_WEB_SEARCH": "1",
+    "INSIGHT_GRAPH_SEARCH_PROVIDER": "duckduckgo",
+    "INSIGHT_GRAPH_SEARCH_LIMIT": "5",
+    "INSIGHT_GRAPH_RELEVANCE_FILTER": "1",
+    "INSIGHT_GRAPH_RELEVANCE_JUDGE": "deterministic",
+}
+
 
 def _apply_research_preset(preset: ResearchPreset) -> None:
     if preset == ResearchPreset.offline:
         return
 
-    for name, value in LIVE_LLM_PRESET_DEFAULTS.items():
+    defaults = (
+        LIVE_RESEARCH_PRESET_DEFAULTS
+        if preset == ResearchPreset.live_research
+        else LIVE_LLM_PRESET_DEFAULTS
+    )
+    for name, value in defaults.items():
         os.environ.setdefault(name, value)
 
 
@@ -117,7 +131,7 @@ def research(
     query: str,
     preset: Annotated[
         ResearchPreset,
-        typer.Option("--preset", help="Runtime preset: offline or live-llm."),
+        typer.Option("--preset", help="Runtime preset: offline, live-llm, or live-research."),
     ] = ResearchPreset.offline,
     show_llm_log: Annotated[
         bool,

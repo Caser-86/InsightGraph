@@ -11,6 +11,7 @@ from typing import Any, TextIO
 
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
+    LIVE_RESEARCH_PRESET_DEFAULTS,
     ResearchPreset,
     _apply_research_preset,
     _configure_output_encoding,
@@ -22,6 +23,7 @@ MAX_SLUG_LENGTH = 60
 
 __all__ = [
     "LIVE_LLM_PRESET_DEFAULTS",
+    "LIVE_RESEARCH_PRESET_DEFAULTS",
     "build_log_payload",
     "build_log_path",
     "main",
@@ -103,7 +105,7 @@ def main(
         "--preset",
         choices=[preset.value for preset in ResearchPreset],
         default=ResearchPreset.offline.value,
-        help="Runtime preset: offline or live-llm.",
+        help="Runtime preset: offline, live-llm, or live-research.",
     )
     parser.add_argument(
         "--log-dir",

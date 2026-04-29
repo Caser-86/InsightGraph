@@ -77,6 +77,8 @@ def make_state(query: str, *, wire_api: str = "responses") -> GraphState:
 def clear_live_defaults(monkeypatch) -> None:
     for name in llm_log_script.LIVE_LLM_PRESET_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
+    for name in llm_log_script.LIVE_RESEARCH_PRESET_DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
 
 
 def fixed_now() -> datetime:
@@ -305,6 +307,32 @@ def test_main_live_llm_preset_applies_defaults(monkeypatch, tmp_path):
 
     assert exit_code == 0
     assert observed_env == llm_log_script.LIVE_LLM_PRESET_DEFAULTS
+
+
+def test_main_live_research_preset_applies_defaults(monkeypatch, tmp_path):
+    clear_live_defaults(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update(
+            {
+                name: os.getenv(name)
+                for name in llm_log_script.LIVE_RESEARCH_PRESET_DEFAULTS
+            }
+        )
+        return make_state(query)
+
+    exit_code = llm_log_script.main(
+        ["Compare", "--preset", "live-research", "--log-dir", str(tmp_path)],
+        stdin=io.StringIO(),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+        run_research_func=fake_run_research,
+        now_func=fixed_now,
+    )
+
+    assert exit_code == 0
+    assert observed_env == llm_log_script.LIVE_RESEARCH_PRESET_DEFAULTS
 
 
 def test_main_workflow_exception_returns_one_without_log_or_raw_error(tmp_path):

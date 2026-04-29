@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a `live-research` preset for opt-in networked research runs.
 - Added Reporter citation support summaries from verified citation metadata.
 - Added structured Critic replan request metadata.
 - Added deterministic citation support metadata in Critic.

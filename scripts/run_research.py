@@ -8,6 +8,7 @@ from typing import Any, TextIO
 
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
+    LIVE_RESEARCH_PRESET_DEFAULTS,
     ResearchPreset,
     _apply_research_preset,
     _build_research_json_payload,
@@ -16,7 +17,7 @@ from insight_graph.cli import (
 from insight_graph.graph import run_research
 from insight_graph.state import GraphState
 
-__all__ = ["LIVE_LLM_PRESET_DEFAULTS", "main"]
+__all__ = ["LIVE_LLM_PRESET_DEFAULTS", "LIVE_RESEARCH_PRESET_DEFAULTS", "main"]
 
 
 class ResearchArgumentParser(argparse.ArgumentParser):
@@ -67,7 +68,7 @@ def main(
         "--preset",
         choices=[preset.value for preset in ResearchPreset],
         default=ResearchPreset.offline.value,
-        help="Runtime preset: offline or live-llm.",
+        help="Runtime preset: offline, live-llm, or live-research.",
     )
     parser.add_argument(
         "--output-json",

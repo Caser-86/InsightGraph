@@ -62,6 +62,7 @@ src/insight_graph/
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
 | **可选实时数据源** | DuckDuckGo web search 和 GitHub REST Search 均为显式 opt-in；默认测试不访问公网 |
+| **Live Research Preset** | `--preset live-research` 一键启用联网搜索、较高候选数量和 deterministic relevance filtering |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
@@ -392,6 +393,9 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 # Markdown report
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 
+# Reference-style networked research path
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
+
 # CLI/API aligned JSON
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
 
@@ -489,6 +493,14 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 | `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` | opt-in JSON job metadata store | - |
 | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` | job backend，支持 `sqlite` | memory |
 | `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` | SQLite job metadata path | - |
+
+启用联网研究 preset：
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
+```
+
+该 preset 会启用 DuckDuckGo-backed `web_search`、提高搜索候选数量，并打开 deterministic relevance filtering；不会自动启用 LLM Analyst/Reporter。
 
 启用 live LLM preset：
 

@@ -26,6 +26,7 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_LLM_MODEL",
         "INSIGHT_GRAPH_USE_WEB_SEARCH",
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
+        "INSIGHT_GRAPH_SEARCH_LIMIT",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
         "OPENAI_API_KEY",
@@ -86,6 +87,20 @@ def test_apply_live_llm_preset_sets_missing_runtime_defaults(monkeypatch) -> Non
     assert os.environ["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "llm"
 
 
+def test_apply_live_research_preset_sets_network_defaults(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
+    cli_module._apply_research_preset(cli_module.ResearchPreset.live_research)
+
+    assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
+    assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "5"
+    assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
+    assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "deterministic"
+    assert "INSIGHT_GRAPH_ANALYST_PROVIDER" not in os.environ
+    assert "INSIGHT_GRAPH_REPORTER_PROVIDER" not in os.environ
+
+
 def test_apply_live_llm_preset_preserves_explicit_env_values(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")
@@ -131,6 +146,28 @@ def test_cli_live_llm_preset_applies_defaults_before_workflow(monkeypatch) -> No
 
     assert result.exit_code == 0
     assert observed_env == cli_module.LIVE_LLM_PRESET_DEFAULTS
+    assert "# Report" in result.output
+
+
+def test_cli_live_research_preset_applies_defaults_before_workflow(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update(
+            {name: os.getenv(name) for name in cli_module.LIVE_RESEARCH_PRESET_DEFAULTS}
+        )
+        return GraphState(user_request=query, report_markdown="# Report\n")
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["research", "Compare AI coding agents", "--preset", "live-research"]
+    )
+
+    assert result.exit_code == 0
+    assert observed_env == cli_module.LIVE_RESEARCH_PRESET_DEFAULTS
     assert "# Report" in result.output
 
 

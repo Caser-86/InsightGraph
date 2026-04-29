@@ -32,6 +32,8 @@ class BadStdin:
 def clear_live_defaults(monkeypatch) -> None:
     for name in run_research_script.LIVE_LLM_PRESET_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
+    for name in run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
 
 
 def make_state(query: str) -> GraphState:
@@ -274,6 +276,31 @@ def test_main_live_llm_preset_applies_defaults(monkeypatch):
 
     assert exit_code == 0
     assert observed_env == run_research_script.LIVE_LLM_PRESET_DEFAULTS
+
+
+def test_main_live_research_preset_applies_defaults(monkeypatch):
+    clear_live_defaults(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update(
+            {
+                name: os.getenv(name)
+                for name in run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS
+            }
+        )
+        return make_state(query)
+
+    exit_code = run_research_script.main(
+        ["Compare", "--preset", "live-research"],
+        stdin=io.StringIO(),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+        run_research_func=fake_run_research,
+    )
+
+    assert exit_code == 0
+    assert observed_env == run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS
 
 
 def test_main_returns_one_for_workflow_exception_without_raw_error():
