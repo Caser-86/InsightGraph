@@ -117,6 +117,17 @@ INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 ```
 
+## Observability And Extensibility
+
+Full trace export, MCP-style tool specs, and code execution are explicit opt-in surfaces. By default, trace events omit prompt/completion payloads, MCP specs are empty, and code execution is disabled.
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_MCP_TOOLS_JSON` | JSON array of external MCP-style tool specs `{name, description, endpoint}`; specs are metadata only and are not executed by default | - |
+| `INSIGHT_GRAPH_ENABLE_CODE_EXECUTION` | `1` / `true` / `yes` enables restricted arithmetic expression evaluation only | 未启用 |
+
+`build_full_trace_event(..., include_payload=True)` is the explicit code-level switch for including prompt/completion payloads in trace exports. The default omits `messages` and `output_text` to avoid accidental sensitive data capture.
+
 ## LLM Analyst 配置
 
 Analyst 默认使用 `deterministic` provider，离线且不调用真实 LLM，适合本地开发、测试和 CLI smoke。需要 OpenAI-compatible LLM 生成 evidence-grounded findings 时，可显式 opt-in：

@@ -548,6 +548,7 @@ Phases 1-10 are implemented. The next approved direction is the reference-qualit
 - Long-document retrieval now has a deterministic document index layer and an opt-in vector retrieval boundary.
 - Checkpoint persistence now has memory and opt-in PostgreSQL store adapters for GraphState payloads.
 - Long-term memory now has in-memory and opt-in pgvector storage/search adapters.
+- Observability/extensibility now has safe opt-in boundaries for full trace payloads, MCP-style tool specs, and restricted code execution.
 - Default offline behavior remains one collection round; `live-research` opts into deeper collection.
 
 - PostgreSQL checkpoint resume still needs full LangGraph resume wiring after the checkpoint store adapter.

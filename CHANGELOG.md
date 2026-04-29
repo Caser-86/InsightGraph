@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added safe boundaries for full LLM trace export, MCP-style tool specs, and opt-in restricted code execution.
 - Added long-term research memory interfaces with opt-in pgvector persistence.
 - Added checkpoint store interfaces with opt-in PostgreSQL checkpoint persistence.
 - Added a deterministic document index layer with an opt-in vector retrieval boundary.
