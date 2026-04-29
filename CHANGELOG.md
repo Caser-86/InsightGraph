@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.17 - 2026-04-29
+
 - Added CI Eval Bench report artifacts.
 
 ## v0.1.16 - 2026-04-28
