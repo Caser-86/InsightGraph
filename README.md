@@ -76,7 +76,7 @@ src/insight_graph/
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：API/background-worker 自动 resume 和真实 embedding/vector RAG。PostgreSQL checkpoint store 目前是 opt-in persistence adapter，event runner 已支持按 `run_id` 保存并从 checkpoint 继续；pgvector memory 目前是 opt-in storage/search adapter，尚未接入 embeddings pipeline；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
+未实现或未默认启用的高级能力：API/background-worker 自动 resume 和真实 embedding/vector RAG。PostgreSQL checkpoint store 目前是 opt-in persistence adapter，event runner 已支持按 `run_id` 保存并从 checkpoint 继续；pgvector memory 目前是 opt-in storage/search/delete adapter，尚未接入 embeddings pipeline；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。Full trace payload、MCP-style tool specs 和 restricted code execution 都有安全边界，默认不暴露 prompt/completion、不执行外部 MCP 工具、不启用 code execution。
 
 ---
 

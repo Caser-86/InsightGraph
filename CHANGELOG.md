@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added memory deletion controls by memory ID and metadata key/value.
 - Added event-runner checkpoint save and resume hooks for persisted `GraphState` runs.
 - Added `INSIGHT_GRAPH_MAX_TOKENS` accounting for LLM analyst, reporter, and relevance calls.
 - Added safe boundaries for full LLM trace export, MCP-style tool specs, and opt-in restricted code execution.

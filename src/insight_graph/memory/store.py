@@ -14,6 +14,10 @@ class ResearchMemoryStore(Protocol):
 
     def search(self, embedding: list[float], *, limit: int = 5) -> list["ResearchMemoryRecord"]: ...
 
+    def delete_memory(self, memory_id: str) -> bool: ...
+
+    def delete_by_metadata(self, key: str, value: str) -> int: ...
+
 
 @dataclass(frozen=True)
 class ResearchMemoryRecord:
@@ -40,6 +44,19 @@ class InMemoryResearchMemoryStore:
         ]
         scored.sort(reverse=True)
         return [record for score, _, record in scored[:limit] if score > 0]
+
+    def delete_memory(self, memory_id: str) -> bool:
+        return self._records.pop(memory_id, None) is not None
+
+    def delete_by_metadata(self, key: str, value: str) -> int:
+        matching_ids = [
+            memory_id
+            for memory_id, record in self._records.items()
+            if record.metadata.get(key) == value
+        ]
+        for memory_id in matching_ids:
+            del self._records[memory_id]
+        return len(matching_ids)
 
 
 class PgVectorResearchMemoryStore:
@@ -107,6 +124,26 @@ class PgVectorResearchMemoryStore:
             )
             for row in rows
         ]
+
+    def delete_memory(self, memory_id: str) -> bool:
+        connection = self._connection_factory()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM insight_graph_memories WHERE memory_id = %s",
+                (memory_id,),
+            )
+        connection.commit()
+        return True
+
+    def delete_by_metadata(self, key: str, value: str) -> int:
+        connection = self._connection_factory()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM insight_graph_memories WHERE metadata ->> %s = %s",
+                (key, value),
+            )
+        connection.commit()
+        return 0
 
 
 def get_research_memory_store() -> ResearchMemoryStore:

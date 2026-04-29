@@ -60,6 +60,40 @@ def test_in_memory_research_memory_ranks_by_embedding_similarity() -> None:
     assert [record.memory_id for record in results] == ["m1"]
 
 
+def test_in_memory_research_memory_deletes_by_id_and_metadata() -> None:
+    store = InMemoryResearchMemoryStore()
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="m1",
+            text="pricing evidence",
+            embedding=[1.0, 0.0],
+            metadata={"user_id": "u1", "run_id": "r1"},
+        )
+    )
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="m2",
+            text="risk evidence",
+            embedding=[1.0, 0.0],
+            metadata={"user_id": "u1", "run_id": "r2"},
+        )
+    )
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="m3",
+            text="market evidence",
+            embedding=[1.0, 0.0],
+            metadata={"user_id": "u2", "run_id": "r3"},
+        )
+    )
+
+    assert store.delete_memory("m1") is True
+    assert store.delete_memory("missing") is False
+    assert store.delete_by_metadata("user_id", "u1") == 1
+
+    assert [record.memory_id for record in store.search([1.0, 0.0], limit=10)] == ["m3"]
+
+
 def test_pgvector_memory_store_emits_schema_insert_and_search_sql() -> None:
     connection = FakeConnection()
     store = PgVectorResearchMemoryStore(lambda: connection)
@@ -79,6 +113,25 @@ def test_pgvector_memory_store_emits_schema_insert_and_search_sql() -> None:
     assert any("CREATE TABLE IF NOT EXISTS insight_graph_memories" in sql for sql in statements)
     assert any("ON CONFLICT (memory_id) DO UPDATE" in sql for sql in statements)
     assert any("embedding <-> %s::vector" in sql for sql in statements)
+    assert connection.commits == 2
+
+
+def test_pgvector_memory_store_deletes_by_id_and_metadata() -> None:
+    connection = FakeConnection()
+    store = PgVectorResearchMemoryStore(lambda: connection)
+
+    store.delete_memory("m1")
+    store.delete_by_metadata("user_id", "u1")
+
+    statements = connection.cursor_obj.statements
+    assert any(
+        "DELETE FROM insight_graph_memories WHERE memory_id = %s" in sql
+        for sql, _ in statements
+    )
+    assert any(
+        "DELETE FROM insight_graph_memories WHERE metadata ->> %s = %s" in sql
+        for sql, _ in statements
+    )
     assert connection.commits == 2
 
 

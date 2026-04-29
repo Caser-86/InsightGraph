@@ -86,7 +86,7 @@ Research memory is opt-in. The default backend is in-memory and is useful only f
 | `INSIGHT_GRAPH_MEMORY_BACKEND` | `memory` 或 opt-in `pgvector` | `memory` |
 | `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN used when memory backend is `pgvector` | - |
 
-`PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides the persistence/search boundary; embedding generation, privacy/deletion controls, and report-quality eval proof remain future work.
+`PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides persistence/search plus deletion by memory ID or metadata key/value. Embedding generation and report-quality eval proof remain future work.
 
 当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets 和 collection round 设置约束。Conversation compression 目前提供 deterministic summary helper，保留 evidence IDs、source URLs、tool-call counts 和 findings，尚未接入完整 agentic step loop。
 
