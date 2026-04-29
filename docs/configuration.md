@@ -65,6 +65,17 @@ For multi-process-safe job metadata storage, set `INSIGHT_GRAPH_RESEARCH_JOBS_BA
 
 For JSON metadata persistence, queued or running jobs from a previous process are restored as failed with `Research job did not complete before server restart.` SQLite storage keeps queued jobs in the queue and requeues expired running jobs through worker lease claim. The API does not automatically resume interrupted workflow execution or rerun unfinished jobs without a later worker claim/retry.
 
+## Checkpoint Persistence
+
+Checkpoint persistence is opt-in and separate from research job metadata. The default backend is in-memory and does not require services. PostgreSQL checkpoints require installing the optional dependency group, for example `pip install '.[postgres]'`.
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_CHECKPOINT_BACKEND` | `memory` 或 opt-in `postgres` | `memory` |
+| `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN used when checkpoint backend is `postgres` | - |
+
+`PostgresCheckpointStore` persists one latest `GraphState` payload per `run_id` in `insight_graph_checkpoints`. It provides the storage boundary needed for resume semantics; automatic LangGraph resume wiring remains explicit future work.
+
 当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets 和 collection round 设置约束。Conversation compression 目前提供 deterministic summary helper，保留 evidence IDs、source URLs、tool-call counts 和 findings，尚未接入完整 agentic step loop。
 
 ## Relevance Filtering
