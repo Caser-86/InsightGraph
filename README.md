@@ -62,7 +62,7 @@ src/insight_graph/
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
 | **可选实时数据源** | DuckDuckGo web search 和 GitHub REST Search 均为显式 opt-in；默认测试不访问公网 |
-| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集和 deterministic relevance filtering |
+| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch 和 deterministic relevance filtering |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |

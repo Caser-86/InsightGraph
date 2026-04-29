@@ -58,6 +58,16 @@ def test_fetch_text_rejects_empty_body(monkeypatch) -> None:
         fetch_text("https://example.com/empty")
 
 
+def test_fetch_text_rejects_response_over_max_bytes(monkeypatch) -> None:
+    def fake_urlopen(request, timeout):
+        return FakeResponse(b"abcdef")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
+
+    with pytest.raises(FetchError, match="Response body too large: 6 bytes"):
+        fetch_text("https://example.com/large", max_bytes=5)
+
+
 def test_fetch_text_rejects_non_success_status(monkeypatch) -> None:
     def fake_urlopen(request, timeout):
         response = FakeResponse(b"error")

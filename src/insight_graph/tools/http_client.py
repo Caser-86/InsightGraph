@@ -6,6 +6,8 @@ from urllib.request import Request, urlopen
 
 from pydantic import BaseModel
 
+DEFAULT_MAX_RESPONSE_BYTES = 2_000_000
+
 
 class FetchError(RuntimeError):
     pass
@@ -19,7 +21,11 @@ class FetchedPage(BaseModel):
     body: bytes | None = None
 
 
-def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
+def fetch_text(
+    url: str,
+    timeout: float = 10.0,
+    max_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+) -> FetchedPage:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise FetchError(f"Unsupported URL scheme: {parsed.scheme or 'missing'}")
@@ -35,6 +41,8 @@ def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
             body = response.read()
             if not body:
                 raise FetchError("Empty response body")
+            if len(body) > max_bytes:
+                raise FetchError(f"Response body too large: {len(body)} bytes")
             content_type = response.headers.get("Content-Type", "")
             encoding = _encoding_from_content_type(content_type)
             text = _decode_body(body, encoding)

@@ -456,6 +456,8 @@ The first filings capability adds an opt-in `sec_filings` tool backed by SEC sub
 
 Remote PDF responses fetched through `fetch_url` now retain response bytes, extract text with pypdf, and emit verified docs evidence with chunk index and page metadata. This extends the live evidence path to PDF reports without adding OCR, browser rendering, storage, or vector search.
 
+Live HTTP fetches now reject oversized response bodies before decoding or extraction, keeping HTML/PDF evidence generation bounded in addition to the existing evidence chunk limits.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
