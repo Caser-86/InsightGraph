@@ -452,6 +452,8 @@ The document retrieval baseline records optional chunk index, PDF page number, a
 
 Live fetched HTML pages now use the same bounded evidence chunking model: long pages produce multiple verified `Evidence` records with chunk index and nearest HTML heading metadata. This connects the networked `web_search -> pre_fetch -> fetch_url` path to the long-document evidence model.
 
+The first filings capability adds an opt-in `sec_filings` tool backed by SEC submissions JSON for known public-company tickers. `live-research` enables the source, and Planner can include it in multi-source collection for public-company questions.
+
 Deferred items:
 
 - Long-document RAG with TOC/page-aware retrieval.

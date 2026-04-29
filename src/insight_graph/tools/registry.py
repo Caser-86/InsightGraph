@@ -7,6 +7,7 @@ from insight_graph.tools.file_tools import list_directory, read_file, write_file
 from insight_graph.tools.github_search import github_search
 from insight_graph.tools.mock_search import mock_search
 from insight_graph.tools.news_search import news_search
+from insight_graph.tools.sec_filings import sec_filings
 from insight_graph.tools.web_search import web_search
 
 ToolFn = Callable[[str, str], list[Evidence]]
@@ -22,6 +23,7 @@ class ToolRegistry:
             "mock_search": mock_search,
             "news_search": news_search,
             "read_file": read_file,
+            "sec_filings": sec_filings,
             "web_search": web_search,
             "write_file": write_file,
         }

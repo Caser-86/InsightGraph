@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added an opt-in SEC EDGAR filings evidence tool for public-company research.
 - Added chunked evidence metadata for long fetched HTML pages.
 - Added document evidence chunk, page, and section metadata for long-document retrieval.
 - Expanded `live-research` to use multi-source web and GitHub live collection.

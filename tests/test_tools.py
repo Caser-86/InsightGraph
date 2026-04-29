@@ -16,6 +16,7 @@ from insight_graph.tools import (
     list_directory,
     news_search,
     read_file,
+    sec_filings,
     web_search,
     write_file,
 )
@@ -90,6 +91,10 @@ def test_tools_package_exports_github_search_callable() -> None:
 
 def test_tools_package_exports_news_search_callable() -> None:
     assert callable(news_search)
+
+
+def test_tools_package_exports_sec_filings_callable() -> None:
+    assert callable(sec_filings)
 
 
 def test_tools_package_exports_document_reader_callable() -> None:
@@ -236,6 +241,53 @@ def test_news_search_returns_deterministic_verified_news_evidence() -> None:
         "https://openai.com/index/introducing-codex/",
         "https://www.cursor.com/changelog",
     ]
+
+
+def test_sec_filings_maps_recent_company_filings(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        observed["url"] = url
+        observed["headers"] = headers
+        observed["timeout"] = timeout
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K", "10-Q", "8-K"],
+                    "accessionNumber": [
+                        "0000320193-23-000106",
+                        "0000320193-23-000077",
+                        "0000320193-23-000064",
+                    ],
+                    "filingDate": ["2023-11-03", "2023-08-04", "2023-05-05"],
+                    "primaryDocument": ["aapl-20230930.htm", "aapl-20230701.htm", "aapl.htm"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = sec_filings("AAPL", "s1")
+
+    assert len(evidence) == 3
+    assert evidence[0].id == "sec-aapl-10-k-2023-11-03"
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "AAPL 10-K filing 2023-11-03"
+    assert evidence[0].source_url == (
+        "https://www.sec.gov/Archives/edgar/data/320193/"
+        "000032019323000106/aapl-20230930.htm"
+    )
+    assert evidence[0].source_type == "official_site"
+    assert evidence[0].verified is True
+    assert "AAPL filed 10-K on 2023-11-03." in evidence[0].snippet
+    assert observed["url"] == "https://data.sec.gov/submissions/CIK0000320193.json"
+    assert observed["timeout"] == 10.0
+    assert observed["headers"]["User-Agent"] == "InsightGraph contact@example.com"
+
+
+def test_sec_filings_returns_empty_for_unknown_ticker() -> None:
+    assert sec_filings("not-a-known-ticker", "s1") == []
 
 
 def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -> None:
@@ -917,6 +969,29 @@ def test_registry_runs_news_search_tool() -> None:
     assert evidence[0].id == "news-github-copilot-changelog"
     assert evidence[0].subtask_id == "s1"
     assert {item.source_type for item in evidence} == {"news"}
+
+
+def test_registry_runs_sec_filings_tool(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K"],
+                    "accessionNumber": ["0000320193-23-000106"],
+                    "filingDate": ["2023-11-03"],
+                    "primaryDocument": ["aapl-20230930.htm"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = ToolRegistry().run("sec_filings", "AAPL", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == "sec-aapl-10-k-2023-11-03"
 
 
 def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:

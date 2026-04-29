@@ -58,6 +58,8 @@ def _collection_tool_names() -> list[str]:
             tools.append("github_search")
         if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
             tools.append("news_search")
+        if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS"):
+            tools.append("sec_filings")
         if tools:
             return tools
 
@@ -71,6 +73,8 @@ def _collection_tool_name() -> str:
         return "github_search"
     if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
         return "news_search"
+    if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS"):
+        return "sec_filings"
     if _is_truthy_env("INSIGHT_GRAPH_USE_DOCUMENT_READER"):
         return "document_reader"
     if _is_truthy_env("INSIGHT_GRAPH_USE_READ_FILE"):
