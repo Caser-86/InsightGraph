@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in full LLM JSONL trace logging for Analyst and Reporter calls.
 - Added snippet-level citation support metadata and tighter Reporter anti-hallucination prompts.
 - Added live Reporter URL revalidation for final references.
 - Hardened the pre-fetch pipeline with fetch-budget caps, per-result failure isolation, and retrieval-query propagation.

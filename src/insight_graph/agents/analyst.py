@@ -9,6 +9,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.llm.trace_writer import write_full_llm_trace_event
 from insight_graph.report_quality.budgeting import can_start_llm_call
 from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
 
@@ -185,6 +186,15 @@ def _analyze_evidence_with_llm(
                 llm_client=llm_client,
             )
         )
+        write_full_llm_trace_event(
+            stage="analyst",
+            llm_client=llm_client,
+            messages=messages,
+            output_text="",
+            duration_ms=duration_ms,
+            success=False,
+            error=exc,
+        )
         raise ValueError("LLM analyst failed.") from exc
 
     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -216,6 +226,18 @@ def _analyze_evidence_with_llm(
                 llm_client=llm_client,
             )
         )
+        write_full_llm_trace_event(
+            stage="analyst",
+            llm_client=llm_client,
+            messages=messages,
+            output_text=result.content or "",
+            duration_ms=duration_ms,
+            success=False,
+            error=exc,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
+        )
         raise
 
     state.llm_call_log.append(
@@ -232,6 +254,17 @@ def _analyze_evidence_with_llm(
             total_tokens=result.total_tokens,
             llm_client=llm_client,
         )
+    )
+    write_full_llm_trace_event(
+        stage="analyst",
+        llm_client=llm_client,
+        messages=messages,
+        output_text=result.content or "",
+        duration_ms=duration_ms,
+        success=True,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        total_tokens=result.total_tokens,
     )
     return state
 

@@ -9,6 +9,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
+from insight_graph.llm.trace_writer import write_full_llm_trace_event
 from insight_graph.report_quality.budgeting import can_start_llm_call
 from insight_graph.report_quality.url_validation import validate_evidence_url
 from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
@@ -213,6 +214,15 @@ def _write_report_with_llm(
                 llm_client=llm_client,
             )
         )
+        write_full_llm_trace_event(
+            stage="reporter",
+            llm_client=llm_client,
+            messages=messages,
+            output_text="",
+            duration_ms=duration_ms,
+            success=False,
+            error=exc,
+        )
         raise
     except Exception as exc:
         duration_ms = int((time.perf_counter() - started) * 1000)
@@ -228,6 +238,15 @@ def _write_report_with_llm(
                 secrets=[config.api_key],
                 llm_client=llm_client,
             )
+        )
+        write_full_llm_trace_event(
+            stage="reporter",
+            llm_client=llm_client,
+            messages=messages,
+            output_text="",
+            duration_ms=duration_ms,
+            success=False,
+            error=exc,
         )
         raise ReporterFallbackError("LLM reporter failed.") from exc
 
@@ -279,6 +298,17 @@ def _write_report_with_llm(
             total_tokens=result.total_tokens,
             llm_client=llm_client,
         )
+    )
+    write_full_llm_trace_event(
+        stage="reporter",
+        llm_client=llm_client,
+        messages=messages,
+        output_text=result.content or "",
+        duration_ms=duration_ms,
+        success=True,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        total_tokens=result.total_tokens,
     )
 
     lines = [body.rstrip(), ""]

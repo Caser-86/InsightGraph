@@ -18,7 +18,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
-| Full LLM observability | Safe metadata + trace boundary | Need opt-in trace writer and CLI summary | High |
+| Full LLM observability | Full JSONL trace writer implemented for Analyst/Reporter | Need CLI token summary polish | Medium |
 | Qwen/Minimax providers | OpenAI-compatible provider exists | Need named provider adapters | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
 | Code execution | Restricted expression boundary | Need real sandbox only if approved | Low |
@@ -38,7 +38,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 6. Pre-search fetch pipeline hardening. **Implemented.**
 7. Reporter URL revalidation. **Implemented.**
 8. Snippet-level citation support tightening. **Implemented.**
-9. Opt-in full LLM trace writer.
+9. Opt-in full LLM trace writer. **Implemented.**
 10. `run_with_llm_log` token/call summary script.
 
 ### Phase B: Provider And Long-Document Parity
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 9 starts with opt-in full LLM trace writer. The first implementation should persist safe trace events only when explicitly enabled and keep prompt/completion payloads excluded by default.
+Phase 10 starts with `run_with_llm_log` token/call summary parity. The first implementation should summarize JSONL trace logs into call counts and token totals similar to the reference scripts.

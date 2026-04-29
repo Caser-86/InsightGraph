@@ -145,8 +145,10 @@ Full trace export, MCP-style tool specs, and code execution are explicit opt-in 
 |------|------|--------|
 | `INSIGHT_GRAPH_MCP_TOOLS_JSON` | JSON array of external MCP-style tool specs `{name, description, endpoint}`; specs are metadata only and are not executed by default | - |
 | `INSIGHT_GRAPH_ENABLE_CODE_EXECUTION` | `1` / `true` / `yes` enables restricted arithmetic expression evaluation only | 未启用 |
+| `INSIGHT_GRAPH_LLM_TRACE` | `1` / `true` / `yes` 时启用 full LLM JSONL trace logging 到默认 `llm_logs/llm-trace.jsonl` | 未启用 |
+| `INSIGHT_GRAPH_LLM_TRACE_PATH` | 设置后启用 full LLM JSONL trace logging 并写入指定文件 | - |
 
-`build_full_trace_event(..., include_payload=True)` is the explicit code-level switch for including prompt/completion payloads in trace exports. The default omits `messages` and `output_text` to avoid accidental sensitive data capture.
+`build_full_trace_event(..., include_payload=True)` is the explicit code-level switch for including prompt/completion payloads in trace exports. `INSIGHT_GRAPH_LLM_TRACE=1` follows the reference `llm_logger` behavior and writes Analyst/Reporter LLM input messages, output text, token usage, duration, and success/error metadata as JSONL. This is diagnostic mode and may persist sensitive prompts or outputs.
 
 ## LLM Analyst 配置
 

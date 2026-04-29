@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from insight_graph.agents.analyst import analyze_evidence, get_analyst_provider
@@ -920,6 +922,37 @@ def test_analyze_evidence_records_llm_token_usage(monkeypatch) -> None:
     assert updated.llm_call_log[0].total_tokens == 15
 
 
+def test_llm_analyst_writes_full_trace_when_enabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    trace_path = tmp_path / "llm-trace.jsonl"
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    client = UsageLLMClient(
+        result=ChatCompletionResult(
+            content=(
+                '{"findings": [{"title": "Pricing differs", '
+                '"summary": "Cursor and Copilot differ.", '
+                '"evidence_ids": ["cursor-pricing"]}]}'
+            ),
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+        )
+    )
+
+    analyze_evidence(make_analyst_state(), llm_client=client)
+
+    event = json.loads(trace_path.read_text(encoding="utf-8").strip())
+    assert event["stage"] == "analyst"
+    assert event["token_usage"] == {
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
+    }
+    assert event["messages"][0]["role"] == "system"
+    assert "Pricing differs" in event["output_text"]
+    assert event["success"] is True
+
+
 def test_analyze_evidence_uses_deterministic_fallback_when_token_budget_exhausted(
     monkeypatch,
 ) -> None:
@@ -1559,6 +1592,55 @@ def test_llm_reporter_creates_client_with_routing_context(monkeypatch) -> None:
     assert calls[0]["purpose"] == "reporter"
     assert calls[0]["messages"] is not None
     assert "allowed_citations" in calls[0]["messages"][-1].content
+
+
+def test_llm_reporter_writes_full_trace_when_enabled(tmp_path, monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    trace_path = tmp_path / "llm-trace.jsonl"
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    client = UsageLLMClient(
+        result=ChatCompletionResult(
+            content=(
+                '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+                'Cursor differs from Copilot [1]."}'
+            ),
+            input_tokens=11,
+            output_tokens=7,
+            total_tokens=18,
+        )
+    )
+
+    write_report(make_reporter_state(), llm_client=client)
+
+    event = json.loads(trace_path.read_text(encoding="utf-8").strip())
+    assert event["stage"] == "reporter"
+    assert event["provider"] == "llm"
+    assert event["token_usage"] == {
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "total_tokens": 18,
+    }
+    assert event["messages"][0]["role"] == "system"
+    assert "Cursor differs from Copilot" in event["output_text"]
+    assert event["success"] is True
+
+
+def test_llm_reporter_writes_failed_full_trace_when_enabled(tmp_path, monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    trace_path = tmp_path / "llm-trace.jsonl"
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    client = UsageLLMClient(error=RuntimeError("provider failed"))
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    event = json.loads(trace_path.read_text(encoding="utf-8").strip())
+    assert "# InsightGraph Research Report" in updated.report_markdown
+    assert event["stage"] == "reporter"
+    assert event["success"] is False
+    assert event["error"] == "RuntimeError: LLM call failed."
+    assert "messages" in event
 
 
 def test_llm_reporter_prompt_uses_verified_snippets_as_fact_boundary(monkeypatch) -> None:
