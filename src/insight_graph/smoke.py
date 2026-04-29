@@ -2,8 +2,10 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 from urllib.error import HTTPError, URLError
@@ -18,6 +20,8 @@ class SmokeResponse:
 
 
 HttpGet = Callable[[str, dict[str, str], float], SmokeResponse]
+Now = Callable[[], str]
+Monotonic = Callable[[], float]
 
 
 def run_smoke(
@@ -26,10 +30,16 @@ def run_smoke(
     api_key: str | None = None,
     timeout: float = 5.0,
     http_get: HttpGet | None = None,
+    now: Now | None = None,
+    monotonic: Monotonic | None = None,
 ) -> dict[str, object]:
     http_get = default_http_get if http_get is None else http_get
+    now = utc_now if now is None else now
+    monotonic = time.monotonic if monotonic is None else monotonic
     normalized_base_url = base_url.rstrip("/")
     auth_headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    created_at = now()
+    started_at = monotonic()
 
     checks = [
         _run_check(
@@ -38,6 +48,7 @@ def run_smoke(
             headers={},
             timeout=timeout,
             http_get=http_get,
+            monotonic=monotonic,
             validator=_valid_json_object,
         ),
         _run_check(
@@ -46,6 +57,7 @@ def run_smoke(
             headers={},
             timeout=timeout,
             http_get=http_get,
+            monotonic=monotonic,
             validator=lambda response: "InsightGraph" in response.body,
         ),
         _run_check(
@@ -54,13 +66,17 @@ def run_smoke(
             headers=auth_headers,
             timeout=timeout,
             http_get=http_get,
+            monotonic=monotonic,
             validator=_valid_json_object,
         ),
     ]
+    finished_at = monotonic()
 
     return {
         "ok": all(check["ok"] for check in checks),
         "base_url": normalized_base_url,
+        "created_at": created_at,
+        "duration_ms": _duration_ms(started_at, finished_at),
         "checks": checks,
     }
 
@@ -132,10 +148,12 @@ def format_markdown(result: dict[str, object]) -> str:
         "# Deployment Smoke Test",
         "",
         f"Base URL: `{result.get('base_url', '')}`",
+        f"Created at: `{result.get('created_at', '')}`",
+        f"Duration ms: `{result.get('duration_ms', '')}`",
         f"Overall: {'PASS' if result.get('ok') else 'FAIL'}",
         "",
-        "| Check | Status | HTTP |",
-        "| --- | --- | ---: |",
+        "| Check | Status | HTTP | Duration ms |",
+        "| --- | --- | ---: | ---: |",
     ]
     for check in checks:
         if not isinstance(check, dict):
@@ -143,7 +161,8 @@ def format_markdown(result: dict[str, object]) -> str:
         name = _markdown_cell(str(check.get("name", "")))
         status = "PASS" if check.get("ok") else "FAIL"
         status_code = "" if check.get("status_code") is None else str(check.get("status_code"))
-        lines.append(f"| {name} | {status} | {status_code} |")
+        duration_ms = "" if check.get("duration_ms") is None else str(check.get("duration_ms"))
+        lines.append(f"| {name} | {status} | {status_code} | {duration_ms} |")
     return "\n".join(lines) + "\n"
 
 
@@ -178,17 +197,37 @@ def _run_check(
     headers: dict[str, str],
     timeout: float,
     http_get: HttpGet,
+    monotonic: Monotonic,
     validator: Callable[[SmokeResponse], bool],
 ) -> dict[str, object]:
+    started_at = monotonic()
     try:
         response = http_get(url, headers, timeout)
     except OSError as exc:
-        return {"name": name, "ok": False, "status_code": None, "error": str(exc)}
+        return {
+            "name": name,
+            "ok": False,
+            "status_code": None,
+            "duration_ms": _duration_ms(started_at, monotonic()),
+            "error": str(exc),
+        }
     except SmokeCheckError as exc:
-        return {"name": name, "ok": False, "status_code": None, "error": str(exc)}
+        return {
+            "name": name,
+            "ok": False,
+            "status_code": None,
+            "duration_ms": _duration_ms(started_at, monotonic()),
+            "error": str(exc),
+        }
 
+    finished_at = monotonic()
     ok = response.status_code == 200 and validator(response)
-    check: dict[str, object] = {"name": name, "ok": ok, "status_code": response.status_code}
+    check: dict[str, object] = {
+        "name": name,
+        "ok": ok,
+        "status_code": response.status_code,
+        "duration_ms": _duration_ms(started_at, finished_at),
+    }
     if not ok:
         check["error"] = "unexpected response"
     return check
@@ -200,6 +239,14 @@ def _valid_json_object(response: SmokeResponse) -> bool:
     except json.JSONDecodeError:
         return False
     return isinstance(payload, dict)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _duration_ms(started_at: float, finished_at: float) -> int:
+    return max(0, round((finished_at - started_at) * 1000))
 
 
 class SmokeCheckError(RuntimeError):

@@ -96,7 +96,7 @@ insight-graph-smoke https://insightgraph.example.com --markdown --output smoke.m
 
 该脚本会对已运行的 API 或 reverse proxy 边界执行部署 smoke test。它检查 `/health` 可访问、`/dashboard` 返回 dashboard HTML、`/research/jobs/summary` 返回 JSON；当设置 `INSIGHT_GRAPH_API_KEY` 或传入 `--api-key` 时，会用 `Authorization: Bearer <key>` 请求受保护的 jobs summary endpoint。
 
-退出码：全部通过为 `0`，任一 endpoint 检查失败为 `1`，CLI 参数错误或 `--output` 写入失败为 `2`。脚本默认输出 JSON；`--markdown` 输出 GitHub-flavored Markdown summary，便于粘贴到 runbook、issue 或发布记录。`--output PATH` 会把当前格式写入文件，endpoint 检查失败时仍会写出报告。两种格式都不打印 API key、请求 body 或响应 body。
+退出码：全部通过为 `0`，任一 endpoint 检查失败为 `1`，CLI 参数错误或 `--output` 写入失败为 `2`。脚本默认输出 JSON；`--markdown` 输出 GitHub-flavored Markdown summary，便于粘贴到 runbook、issue 或发布记录。`--output PATH` 会把当前格式写入文件，endpoint 检查失败时仍会写出报告。报告包含 UTC `created_at`、总 `duration_ms` 和每个 endpoint check 的 `duration_ms`。两种格式都不打印 API key、请求 body 或响应 body。
 
 `scripts/smoke_deployment.py` remains as a repository-local compatibility wrapper around
 the packaged `insight-graph-smoke` command.

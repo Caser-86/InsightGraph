@@ -69,6 +69,32 @@ def test_run_smoke_checks_health_dashboard_and_summary_with_api_key() -> None:
     ]
 
 
+def test_run_smoke_records_created_at_and_durations() -> None:
+    clock_values = iter([1000.0, 1000.0, 1000.1, 1000.1, 1000.3, 1000.3, 1000.6, 1001.0])
+
+    def fake_now() -> str:
+        return "2026-04-29T04:00:00Z"
+
+    def fake_monotonic() -> float:
+        return next(clock_values)
+
+    def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
+        if url.endswith("/dashboard"):
+            return FakeResponse(status_code=200, body="InsightGraph", content_type="text/html")
+        return FakeResponse(status_code=200, body="{}", content_type="application/json")
+
+    result = smoke_module.run_smoke(
+        "https://insightgraph.example.com",
+        http_get=fake_get,
+        now=fake_now,
+        monotonic=fake_monotonic,
+    )
+
+    assert result["created_at"] == "2026-04-29T04:00:00Z"
+    assert result["duration_ms"] == 1000
+    assert [check["duration_ms"] for check in result["checks"]] == [100, 200, 300]
+
+
 def test_main_returns_one_when_a_check_fails() -> None:
     def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
         if url.endswith("/health"):
@@ -146,7 +172,9 @@ def test_main_can_print_markdown_summary() -> None:
     assert exit_code == 0
     assert "# Deployment Smoke Test" in markdown
     assert "Base URL: `https://insightgraph.example.com`" in markdown
-    assert "| Check | Status | HTTP |" in markdown
+    assert "Created at:" in markdown
+    assert "Duration ms:" in markdown
+    assert "| Check | Status | HTTP | Duration ms |" in markdown
     assert "| health | PASS | 200 |" in markdown
     assert "| dashboard | PASS | 200 |" in markdown
     assert "| jobs_summary | PASS | 200 |" in markdown

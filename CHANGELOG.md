@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added timestamp and duration metadata to `insight-graph-smoke` reports.
+
 ## v0.1.30 - 2026-04-29
 
 - Added `--output` support for `insight-graph-smoke` JSON and Markdown reports.

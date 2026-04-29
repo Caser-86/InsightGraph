@@ -392,7 +392,8 @@ INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example
 The script checks `/health`, `/dashboard`, and `/research/jobs/summary`. It exits `0`
 when all checks pass, `1` when any endpoint check fails, and `2` for invalid CLI input.
 It emits JSON by default, supports `--markdown` for runbook notes, supports `--output`
-for saving deployment evidence, and does not print the API key.
+for saving deployment evidence, and records UTC creation time plus per-check and total
+duration in milliseconds. It does not print the API key.
 
 ## Storage and Backup Notes
 
