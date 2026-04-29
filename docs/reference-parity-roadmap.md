@@ -18,7 +18,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
-| Full LLM observability | Full JSONL trace writer implemented for Analyst/Reporter | Need CLI token summary polish | Medium |
+| Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
 | Qwen/Minimax providers | OpenAI-compatible provider exists | Need named provider adapters | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
 | Code execution | Restricted expression boundary | Need real sandbox only if approved | Low |
@@ -39,7 +39,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 7. Reporter URL revalidation. **Implemented.**
 8. Snippet-level citation support tightening. **Implemented.**
 9. Opt-in full LLM trace writer. **Implemented.**
-10. `run_with_llm_log` token/call summary script.
+10. `run_with_llm_log` token/call summary script. **Implemented.**
 
 ### Phase B: Provider And Long-Document Parity
 
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 10 starts with `run_with_llm_log` token/call summary parity. The first implementation should summarize JSONL trace logs into call counts and token totals similar to the reference scripts.
+Phase 11 starts with named Qwen/DashScope LLM adapter. The first implementation should add provider naming/config sugar on top of the existing OpenAI-compatible client without changing default deterministic behavior.

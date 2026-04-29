@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Callable
@@ -26,8 +27,10 @@ __all__ = [
     "LIVE_RESEARCH_PRESET_DEFAULTS",
     "build_log_payload",
     "build_log_path",
+    "build_trace_path",
     "main",
     "slugify_query",
+    "summarize_trace_file",
 ]
 
 
@@ -50,8 +53,14 @@ class LLMLogArgumentParser(argparse.ArgumentParser):
         self.exit(2, f"{self.prog}: error: {message}\n")
 
 
-def build_log_payload(state: GraphState, *, preset: str) -> dict[str, Any]:
-    return {
+def build_log_payload(
+    state: GraphState,
+    *,
+    preset: str,
+    trace_path: Path | None = None,
+    trace_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
         "query": state.user_request,
         "preset": preset,
         "report_markdown_length": len(state.report_markdown or ""),
@@ -61,6 +70,10 @@ def build_log_payload(state: GraphState, *, preset: str) -> dict[str, Any]:
         "llm_call_log": [record.model_dump(mode="json") for record in state.llm_call_log],
         "iterations": state.iterations,
     }
+    if trace_path is not None:
+        payload["llm_trace_path"] = str(trace_path)
+        payload["llm_trace_summary"] = trace_summary or summarize_trace_file(trace_path)
+    return payload
 
 
 def slugify_query(query: str) -> str:
@@ -78,6 +91,48 @@ def build_log_path(*, log_dir: Path, query: str, now: datetime) -> Path:
         candidate = log_dir / f"{base_name}-{suffix}.json"
         suffix += 1
     return candidate
+
+
+def build_trace_path(log_path: Path) -> Path:
+    return log_path.with_suffix(".jsonl")
+
+
+def summarize_trace_file(trace_path: Path) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "call_count": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "by_stage": {},
+        "by_model": {},
+    }
+    if not trace_path.exists():
+        return summary
+    for line in trace_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        token_usage = event.get("token_usage", {})
+        input_tokens = _int_value(token_usage.get("input_tokens", 0))
+        output_tokens = _int_value(token_usage.get("output_tokens", 0))
+        total_tokens = _int_value(token_usage.get("total_tokens", 0))
+        summary["call_count"] += 1
+        summary["input_tokens"] += input_tokens
+        summary["output_tokens"] += output_tokens
+        summary["total_tokens"] += total_tokens
+        _add_group_total(summary["by_stage"], str(event.get("stage", "unknown")), total_tokens)
+        _add_group_total(summary["by_model"], str(event.get("model", "unknown")), total_tokens)
+    return summary
+
+
+def _int_value(value: object) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def _add_group_total(groups: dict[str, dict[str, int]], key: str, total_tokens: int) -> None:
+    group = groups.setdefault(key, {"call_count": 0, "total_tokens": 0})
+    group["call_count"] += 1
+    group["total_tokens"] += total_tokens
 
 
 def main(
@@ -112,6 +167,11 @@ def main(
         default="llm_logs",
         help="Directory where the safe LLM metadata JSON log will be written.",
     )
+    parser.add_argument(
+        "--safe-log-only",
+        action="store_true",
+        help="Write only safe metadata JSON and do not enable full LLM trace logging.",
+    )
 
     try:
         args = parser.parse_args(argv)
@@ -134,6 +194,10 @@ def main(
         return 2
 
     _apply_research_preset(ResearchPreset(args.preset))
+    log_path = build_log_path(log_dir=log_dir, query=query, now=now_func())
+    trace_path = None if args.safe_log_only else build_trace_path(log_path)
+    if trace_path is not None:
+        os.environ["INSIGHT_GRAPH_LLM_TRACE_PATH"] = str(trace_path)
 
     try:
         state = run_research_func(query)
@@ -141,15 +205,30 @@ def main(
         stderr.write("Research workflow failed.\n")
         return 1
 
-    log_path = build_log_path(log_dir=log_dir, query=query, now=now_func())
+    trace_summary = summarize_trace_file(trace_path) if trace_path is not None else None
     try:
-        _write_log(log_path, build_log_payload(state, preset=args.preset))
+        _write_log(
+            log_path,
+            build_log_payload(
+                state,
+                preset=args.preset,
+                trace_path=trace_path,
+                trace_summary=trace_summary,
+            ),
+        )
     except OSError:
         stderr.write("Failed to write LLM log.\n")
         return 2
 
     try:
-        stdout.write(_format_stdout(state.report_markdown or "", log_path))
+        stdout.write(
+            _format_stdout(
+                state.report_markdown or "",
+                log_path,
+                trace_path=trace_path,
+                trace_summary=trace_summary,
+            )
+        )
     except (OSError, UnicodeError):
         stderr.write("Failed to write output.\n")
         return 2
@@ -179,9 +258,27 @@ def _write_log(log_path: Path, payload: dict[str, Any]) -> None:
         handle.write("\n")
 
 
-def _format_stdout(report_markdown: str, log_path: Path) -> str:
+def _format_stdout(
+    report_markdown: str,
+    log_path: Path,
+    *,
+    trace_path: Path | None = None,
+    trace_summary: dict[str, Any] | None = None,
+) -> str:
     report = report_markdown.rstrip("\r\n") + "\n"
-    return f"{report}\nLLM log written to: {log_path}\n"
+    lines = [report, f"LLM log written to: {log_path}"]
+    if trace_path is not None:
+        summary = trace_summary or summarize_trace_file(trace_path)
+        lines.extend(
+            [
+                f"Full trace written to: {trace_path}",
+                f"LLM calls: {summary['call_count']}",
+                f"Total tokens: {summary['total_tokens']}",
+                f"Input tokens: {summary['input_tokens']}",
+                f"Output tokens: {summary['output_tokens']}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

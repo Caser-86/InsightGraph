@@ -150,6 +150,8 @@ Full trace export, MCP-style tool specs, and code execution are explicit opt-in 
 
 `build_full_trace_event(..., include_payload=True)` is the explicit code-level switch for including prompt/completion payloads in trace exports. `INSIGHT_GRAPH_LLM_TRACE=1` follows the reference `llm_logger` behavior and writes Analyst/Reporter LLM input messages, output text, token usage, duration, and success/error metadata as JSONL. This is diagnostic mode and may persist sensitive prompts or outputs.
 
+`scripts/run_with_llm_log.py` is the reference-style diagnostic runner. It enables full LLM trace logging by default, writes `<timestamp-query>.jsonl` full payload trace files next to `<timestamp-query>.json` safe metadata logs, and prints LLM call/token totals. Use `--safe-log-only` to preserve metadata-only logging without prompt/output trace capture.
+
 ## LLM Analyst 配置
 
 Analyst 默认使用 `deterministic` provider，离线且不调用真实 LLM，适合本地开发、测试和 CLI smoke。需要 OpenAI-compatible LLM 生成 evidence-grounded findings 时，可显式 opt-in：

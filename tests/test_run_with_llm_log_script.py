@@ -159,11 +159,89 @@ def test_build_log_path_uses_utc_timestamp_slug_and_collision_suffix(tmp_path):
     assert second.name == "20260426T120000Z-compare-cursor-opencode-and-github-copilot-2.json"
 
 
+def test_build_trace_path_uses_log_path_stem(tmp_path):
+    log_path = tmp_path / "20260426T120000Z-compare-cursor.json"
+
+    assert llm_log_script.build_trace_path(log_path) == tmp_path / (
+        "20260426T120000Z-compare-cursor.jsonl"
+    )
+
+
+def test_summarize_trace_file_counts_calls_tokens_stage_and_model(tmp_path):
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "stage": "analyst",
+                        "model": "model-a",
+                        "token_usage": {
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "total_tokens": 15,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "stage": "reporter",
+                        "model": "model-b",
+                        "token_usage": {
+                            "input_tokens": 20,
+                            "output_tokens": 7,
+                            "total_tokens": 27,
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = llm_log_script.summarize_trace_file(trace_path)
+
+    assert summary == {
+        "call_count": 2,
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "total_tokens": 42,
+        "by_stage": {
+            "analyst": {"call_count": 1, "total_tokens": 15},
+            "reporter": {"call_count": 1, "total_tokens": 27},
+        },
+        "by_model": {
+            "model-a": {"call_count": 1, "total_tokens": 15},
+            "model-b": {"call_count": 1, "total_tokens": 27},
+        },
+    }
+
+
 def test_main_runs_query_writes_markdown_and_log_file(tmp_path):
     observed_queries: list[str] = []
+    observed_trace_paths: list[str | None] = []
 
     def fake_run_research(query: str) -> GraphState:
         observed_queries.append(query)
+        trace_path = os.getenv("INSIGHT_GRAPH_LLM_TRACE_PATH")
+        observed_trace_paths.append(trace_path)
+        assert trace_path is not None
+        with open(trace_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "stage": "reporter",
+                        "model": "relay-model",
+                        "token_usage": {
+                            "input_tokens": 10,
+                            "output_tokens": 20,
+                            "total_tokens": 30,
+                        },
+                    }
+                )
+                + "\n"
+            )
         return make_state(query)
 
     stdout = io.StringIO()
@@ -179,15 +257,26 @@ def test_main_runs_query_writes_markdown_and_log_file(tmp_path):
 
     assert exit_code == 0
     assert observed_queries == ["Compare Cursor"]
+    assert observed_trace_paths == [str(tmp_path / "20260426T120000Z-compare-cursor.jsonl")]
     assert stderr.getvalue() == ""
     assert stdout.getvalue().startswith("# InsightGraph Research Report")
     assert "LLM log written to:" in stdout.getvalue()
+    assert "Full trace written to:" in stdout.getvalue()
+    assert "LLM calls: 1" in stdout.getvalue()
+    assert "Total tokens: 30" in stdout.getvalue()
+    assert "Input tokens: 10" in stdout.getvalue()
+    assert "Output tokens: 20" in stdout.getvalue()
     log_files = list(tmp_path.glob("*.json"))
     assert [path.name for path in log_files] == ["20260426T120000Z-compare-cursor.json"]
     payload = json.loads(log_files[0].read_text(encoding="utf-8"))
     assert payload["query"] == "Compare Cursor"
     assert payload["preset"] == "offline"
     assert payload["llm_call_log"][0]["wire_api"] == "responses"
+    assert payload["llm_trace_path"] == str(
+        tmp_path / "20260426T120000Z-compare-cursor.jsonl"
+    )
+    assert payload["llm_trace_summary"]["call_count"] == 1
+    assert payload["llm_trace_summary"]["total_tokens"] == 30
 
 
 def test_main_passes_document_reader_json_query_and_logs_metadata(tmp_path):
@@ -220,6 +309,34 @@ def test_main_passes_document_reader_json_query_and_logs_metadata(tmp_path):
     assert payload["preset"] == "offline"
     assert "tool_call_log" in payload
     assert "llm_call_log" in payload
+
+
+def test_main_safe_log_only_does_not_enable_full_trace(tmp_path, monkeypatch):
+    observed_trace_paths: list[str | None] = []
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_trace_paths.append(os.getenv("INSIGHT_GRAPH_LLM_TRACE_PATH"))
+        return make_state(query)
+
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_TRACE_PATH", raising=False)
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    exit_code = llm_log_script.main(
+        ["Compare Cursor", "--log-dir", str(tmp_path), "--safe-log-only"],
+        stdin=io.StringIO(),
+        stdout=stdout,
+        stderr=stderr,
+        run_research_func=fake_run_research,
+        now_func=fixed_now,
+    )
+
+    assert exit_code == 0
+    assert observed_trace_paths == [None]
+    assert "Full trace written to:" not in stdout.getvalue()
+    log_files = list(tmp_path.glob("*.json"))
+    payload = json.loads(log_files[0].read_text(encoding="utf-8"))
+    assert "llm_trace_path" not in payload
+    assert "llm_trace_summary" not in payload
 
 
 def test_main_reads_query_from_stdin_dash(tmp_path):

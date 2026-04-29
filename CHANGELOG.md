@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated `run_with_llm_log.py` to write full LLM trace logs and token/call summaries by default.
 - Added opt-in full LLM JSONL trace logging for Analyst and Reporter calls.
 - Added snippet-level citation support metadata and tighter Reporter anti-hallucination prompts.
 - Added live Reporter URL revalidation for final references.
