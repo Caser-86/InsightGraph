@@ -480,11 +480,8 @@ SEC financial evidence now extends beyond recent filing discovery. The opt-in `s
 
 PostgreSQL checkpoint resume and pgvector long-term memory are deferred to a later infrastructure phase. Phase 10 closes without adding heavy persistence dependencies; future work must first specify resume semantics, migration paths, embedding cost controls, privacy/deletion behavior, and report-quality gains.
 
-Deferred items:
+Deferred infrastructure items:
 
-- Long-document RAG with TOC-aware retrieval and vector ranking.
-- Financial analysis tools beyond recent SEC filing discovery.
-- Playwright-rendered pages.
 - PostgreSQL checkpoint resume.
 - pgvector long-term memory.
 - Conversation compression for very long live runs.
@@ -540,10 +537,9 @@ These rules are mandatory for future work:
 
 ## Next Required Step
 
-Phases 1-9 are implemented and Phase 10 is active. Next work should continue the cheapest Phase 10 improvements that strengthen grounded live research before heavier deferred items:
+Phases 1-10 are implemented. Next work should move to a separately approved infrastructure or evaluation phase rather than silently adding heavyweight dependencies:
 
-- Keep docs aligned with implemented live/document/filings behavior.
-- Add safety and quality bounds around live fetches.
-- Use evidence scores and section source requirements more directly during collection.
-- Implement the next work queue in order unless the user explicitly reprioritizes.
-- Defer Playwright, pgvector, PostgreSQL checkpoint resume, and long-term memory until the bounded evidence path is stable.
+- PostgreSQL checkpoint resume requires explicit resume semantics, migration tests, and operational design.
+- pgvector memory requires opt-in embeddings, privacy/deletion controls, and eval proof that memory improves grounded reports.
+- Conversation compression requires long-run trace tests and evidence-preservation rules.
+- Eval Bench should be expanded before infrastructure work if report-quality regression detection is the priority.
