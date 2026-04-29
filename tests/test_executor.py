@@ -285,6 +285,99 @@ def test_executor_counts_section_status_from_assigned_evidence(monkeypatch) -> N
     ]
 
 
+def make_numbered_evidence(
+    prefix: str,
+    count: int,
+    *,
+    source_type: str = "official_site",
+) -> list[Evidence]:
+    return [
+        Evidence(
+            id=f"{prefix}-{index}",
+            subtask_id="collect",
+            title=f"{prefix.title()} Evidence {index}",
+            source_url=f"https://example.com/{prefix}/{index}",
+            snippet=f"{prefix.title()} evidence {index} has enough words for scoring.",
+            source_type=source_type,
+            verified=True,
+        )
+        for index in range(count)
+    ]
+
+
+def test_executor_caps_evidence_per_tool(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return make_numbered_evidence("tool", 7)
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.evidence_pool) == 5
+    assert updated.tool_call_log[0].evidence_count == 7
+    assert updated.tool_call_log[0].filtered_count == 2
+
+
+def test_executor_caps_evidence_per_section_budget(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return make_numbered_evidence("pricing", 3)
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        section_research_plan=[
+            {
+                "section_id": "pricing",
+                "title": "Pricing",
+                "required_source_types": ["official_site"],
+                "min_evidence": 1,
+                "budget": 1,
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.evidence_pool) == 1
+    assert updated.evidence_pool[0].section_id == "pricing"
+    assert updated.section_collection_status[0]["evidence_count"] == 1
+
+
+def test_executor_caps_total_evidence_per_run(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return make_numbered_evidence(name, 5)
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[
+            Subtask(
+                id="collect",
+                description="Collect",
+                suggested_tools=["tool-a", "tool-b", "tool-c", "tool-d", "tool-e"],
+            )
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.evidence_pool) == 20
+
+
 def test_executor_records_evidence_scores() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",

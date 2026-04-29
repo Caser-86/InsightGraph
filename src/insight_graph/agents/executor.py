@@ -14,6 +14,8 @@ WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
     "web_search returned no evidence; falling back to mock_search"
 )
 WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
+MAX_EVIDENCE_PER_TOOL = 5
+MAX_EVIDENCE_PER_RUN = 20
 
 
 def execute_subtasks(state: GraphState) -> GraphState:
@@ -41,13 +43,15 @@ def execute_subtasks(state: GraphState) -> GraphState:
         state.section_research_plan,
     )
     ordered_evidence, evidence_scores = _order_evidence_by_score(deduped)
-    state.evidence_pool = ordered_evidence
-    state.global_evidence_pool = ordered_evidence
+    capped_evidence = _cap_evidence_pool(ordered_evidence, state.section_research_plan)
+    evidence_scores = [score_evidence(item) for item in capped_evidence]
+    state.evidence_pool = capped_evidence
+    state.global_evidence_pool = capped_evidence
     state.tool_call_log = records
     state.evidence_scores = evidence_scores
     state.section_collection_status = _build_section_collection_status(
         state.section_research_plan,
-        ordered_evidence,
+        capped_evidence,
     )
     return state
 
@@ -234,13 +238,14 @@ def _run_tool_with_fallback(
     kept_results, filtered_count = _process_tool_results(
         query, subtask, results, filter_enabled, llm_call_log
     )
+    kept_results, cap_filtered_count = _cap_tool_results(kept_results)
     return kept_results, [
         ToolCallRecord(
             subtask_id=subtask.id,
             tool_name=tool_name,
             query=query,
             evidence_count=len(results),
-            filtered_count=filtered_count,
+            filtered_count=filtered_count + cap_filtered_count,
         )
     ]
 
@@ -286,13 +291,14 @@ def _run_mock_search_fallback(
     kept_results, filtered_count = _process_tool_results(
         query, subtask, results, filter_enabled, llm_call_log
     )
+    kept_results, cap_filtered_count = _cap_tool_results(kept_results)
     return kept_results, [
         ToolCallRecord(
             subtask_id=subtask.id,
             tool_name=MOCK_SEARCH_TOOL,
             query=query,
             evidence_count=len(results),
-            filtered_count=filtered_count,
+            filtered_count=filtered_count + cap_filtered_count,
             error=WEB_SEARCH_FALLBACK_NOTE,
         )
     ]
@@ -316,3 +322,49 @@ def _order_evidence_by_score(
     scored = [(score_evidence(item), index, item) for index, item in enumerate(evidence)]
     scored.sort(key=lambda item: (-int(item[0]["overall_score"]), item[1]))
     return [item for _, _, item in scored], [score for score, _, _ in scored]
+
+
+def _cap_tool_results(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
+    capped = evidence[:MAX_EVIDENCE_PER_TOOL]
+    return capped, max(0, len(evidence) - len(capped))
+
+
+def _cap_evidence_pool(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    section_capped = _cap_evidence_by_section_budget(evidence, section_plan)
+    return section_capped[:MAX_EVIDENCE_PER_RUN]
+
+
+def _cap_evidence_by_section_budget(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    budgets = {
+        str(section.get("section_id", "")): _section_budget(section)
+        for section in section_plan
+    }
+    if not budgets:
+        return evidence
+    counts: dict[str, int] = {}
+    capped: list[Evidence] = []
+    for item in evidence:
+        section_id = item.section_id
+        budget = budgets.get(section_id or "")
+        if budget is None:
+            capped.append(item)
+            continue
+        current_count = counts.get(section_id or "", 0)
+        if current_count >= budget:
+            continue
+        counts[section_id or ""] = current_count + 1
+        capped.append(item)
+    return capped
+
+
+def _section_budget(section: dict[str, object]) -> int | None:
+    value = section.get("budget")
+    if isinstance(value, int) and value > 0:
+        return value
+    return None

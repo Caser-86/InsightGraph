@@ -7,8 +7,8 @@
 **Execution Order:**
 1. Done: replan-driven follow-up collection.
 2. Done: section evidence attribution.
-3. Next: collection budgets and caps.
-4. Section-aware query generation.
+3. Done: collection budgets and caps.
+4. Next: section-aware query generation.
 5. Report template tightening.
 6. Long-document retrieval v2.
 7. Opt-in rendered-page fetch.

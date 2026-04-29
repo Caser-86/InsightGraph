@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Executor evidence caps per tool, per section budget, and per run.
 - Added deterministic section attribution metadata for collected evidence.
 - Added retry follow-up collection queries from Critic replan requests.
 - Documented the ordered Phase 10 next-work queue for remaining report-quality work.
