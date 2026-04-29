@@ -4,6 +4,7 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -88,6 +89,10 @@ def main(
         action="store_true",
         help="Write a GitHub-flavored Markdown summary instead of JSON.",
     )
+    parser.add_argument(
+        "--output",
+        help="Write the smoke report to this file instead of stdout.",
+    )
     args = parser.parse_args(argv)
 
     if args.timeout <= 0:
@@ -102,12 +107,20 @@ def main(
         timeout=args.timeout,
         http_get=http_get,
     )
-    if args.markdown:
-        stdout.write(format_markdown(result))
+    output = format_markdown(result) if args.markdown else format_json(result)
+    if args.output:
+        try:
+            Path(args.output).write_text(output, encoding="utf-8")
+        except OSError as exc:
+            stderr.write(f"Failed to write smoke report: {exc}\n")
+            return 2
     else:
-        json.dump(result, stdout, indent=2, ensure_ascii=False)
-        stdout.write("\n")
+        stdout.write(output)
     return 0 if result["ok"] else 1
+
+
+def format_json(result: dict[str, object]) -> str:
+    return json.dumps(result, indent=2, ensure_ascii=False) + "\n"
 
 
 def format_markdown(result: dict[str, object]) -> str:

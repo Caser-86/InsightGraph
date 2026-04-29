@@ -151,3 +151,74 @@ def test_main_can_print_markdown_summary() -> None:
     assert "| dashboard | PASS | 200 |" in markdown
     assert "| jobs_summary | PASS | 200 |" in markdown
     assert stderr.getvalue() == ""
+
+
+def test_main_can_write_json_output_file(tmp_path) -> None:
+    output_path = tmp_path / "smoke.json"
+
+    def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
+        if url.endswith("/dashboard"):
+            return FakeResponse(status_code=200, body="InsightGraph", content_type="text/html")
+        return FakeResponse(status_code=200, body="{}", content_type="application/json")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = smoke_module.main(
+        ["https://insightgraph.example.com", "--output", str(output_path)],
+        stdout=stdout,
+        stderr=stderr,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    assert stdout.getvalue() == ""
+    assert json.loads(output_path.read_text(encoding="utf-8"))["ok"] is True
+    assert stderr.getvalue() == ""
+
+
+def test_main_can_write_markdown_output_file(tmp_path) -> None:
+    output_path = tmp_path / "smoke.md"
+
+    def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
+        if url.endswith("/dashboard"):
+            return FakeResponse(status_code=200, body="InsightGraph", content_type="text/html")
+        return FakeResponse(status_code=200, body="{}", content_type="application/json")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = smoke_module.main(
+        ["https://insightgraph.example.com", "--markdown", "--output", str(output_path)],
+        stdout=stdout,
+        stderr=stderr,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 0
+    assert stdout.getvalue() == ""
+    assert "# Deployment Smoke Test" in output_path.read_text(encoding="utf-8")
+    assert stderr.getvalue() == ""
+
+
+def test_main_returns_two_when_output_file_cannot_be_written(tmp_path) -> None:
+    output_path = tmp_path / "missing" / "smoke.json"
+
+    def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
+        if url.endswith("/dashboard"):
+            return FakeResponse(status_code=200, body="InsightGraph", content_type="text/html")
+        return FakeResponse(status_code=200, body="{}", content_type="application/json")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = smoke_module.main(
+        ["https://insightgraph.example.com", "--output", str(output_path)],
+        stdout=stdout,
+        stderr=stderr,
+        http_get=fake_get,
+    )
+
+    assert exit_code == 2
+    assert stdout.getvalue() == ""
+    assert "Failed to write smoke report:" in stderr.getvalue()
