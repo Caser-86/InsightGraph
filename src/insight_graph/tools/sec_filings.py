@@ -10,8 +10,14 @@ from insight_graph.state import Evidence
 
 SEC_USER_AGENT = "InsightGraph contact@example.com"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+SEC_COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{document}"
 DEFAULT_SEC_LIMIT = 3
+FINANCIAL_FACTS = (
+    ("Revenue", "Revenues"),
+    ("Net income", "NetIncomeLoss"),
+    ("Assets", "Assets"),
+)
 
 KNOWN_TICKER_CIKS = {
     "AAPL": "0000320193",
@@ -56,6 +62,52 @@ def sec_filings(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     return _filings_to_evidence(payload, ticker, cik, subtask_id)
+
+
+def sec_financials(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    ticker = resolve_sec_ticker(query)
+    if ticker is None:
+        return []
+    cik = KNOWN_TICKER_CIKS.get(ticker)
+    if cik is None:
+        return []
+
+    url = SEC_COMPANYFACTS_URL.format(cik=cik)
+    try:
+        payload = fetch_sec_json(
+            url,
+            {"Accept": "application/json", "User-Agent": SEC_USER_AGENT},
+            timeout=10.0,
+        )
+    except Exception:
+        return []
+
+    facts = _extract_financial_facts(payload)
+    if not facts:
+        return []
+    first_fact = facts[0][1]
+    fiscal_year = str(first_fact["fy"])
+    fiscal_period = str(first_fact["fp"])
+    snippet_parts = [
+        f"{label}: {fact['val']} USD"
+        for label, fact in facts
+    ]
+    filed = str(first_fact["filed"])
+    snippet = (
+        f"{ticker} SEC companyfacts for {fiscal_year} {fiscal_period} "
+        f"filed {filed}. " + "; ".join(snippet_parts) + "."
+    )
+    return [
+        Evidence(
+            id=f"sec-financials-{ticker.lower()}-{fiscal_year.lower()}-{fiscal_period.lower()}",
+            subtask_id=subtask_id,
+            title=f"{ticker} SEC financial facts {fiscal_year} {fiscal_period}",
+            source_url=url,
+            snippet=snippet,
+            source_type="official_site",
+            verified=True,
+        )
+    ]
 
 
 def has_sec_filing_target(query: str) -> bool:
@@ -149,3 +201,38 @@ def _filing_url(cik: str, accession: str, document: str) -> str:
         accession=accession_path,
         document=document,
     )
+
+
+def _extract_financial_facts(payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    us_gaap = payload.get("facts", {}).get("us-gaap", {})
+    if not isinstance(us_gaap, dict):
+        return []
+    facts: list[tuple[str, dict[str, Any]]] = []
+    for label, concept in FINANCIAL_FACTS:
+        fact = _latest_usd_fact(us_gaap.get(concept))
+        if fact is None:
+            continue
+        facts.append((label, fact))
+    return facts
+
+
+def _latest_usd_fact(concept_payload: object) -> dict[str, Any] | None:
+    if not isinstance(concept_payload, dict):
+        return None
+    usd_facts = concept_payload.get("units", {}).get("USD", [])
+    if not isinstance(usd_facts, list):
+        return None
+    candidates = [
+        fact
+        for fact in usd_facts
+        if isinstance(fact, dict)
+        and fact.get("form") in {"10-K", "10-Q"}
+        and isinstance(fact.get("val"), int | float)
+        and isinstance(fact.get("fy"), int)
+        and isinstance(fact.get("fp"), str)
+        and isinstance(fact.get("filed"), str)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda fact: str(fact.get("filed", "")), reverse=True)
+    return candidates[0]

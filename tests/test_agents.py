@@ -342,6 +342,19 @@ def test_planner_uses_sec_filings_when_enabled(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["sec_filings"]
 
 
+def test_planner_uses_sec_financials_when_enabled(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_USE_SEC_FILINGS", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_SEC_FINANCIALS", "1")
+    state = GraphState(user_request="Analyze AAPL financials")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["sec_financials"]
+
+
 def test_planner_uses_document_reader_when_enabled(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     monkeypatch.delenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", raising=False)

@@ -476,6 +476,8 @@ Long-document retrieval now ranks chunks before truncation. Local document queri
 
 Rendered-page fetch is now opt-in. `fetch_url` uses lazy Playwright rendering only when `INSIGHT_GRAPH_FETCH_RENDERED` is truthy, and falls back to bounded HTTP fetch if the optional renderer is unavailable or fails.
 
+SEC financial evidence now extends beyond recent filing discovery. The opt-in `sec_financials` tool reads SEC companyfacts JSON for known public-company targets and emits deterministic revenue, net income, and assets evidence without claiming full financial modeling.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
@@ -494,8 +496,8 @@ Next work queue:
 5. Done: report template tightening maps domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
 6. Done: long-document retrieval v2 improves local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
 7. Done: rendered-page fetch adds opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
-8. Next: financial analysis tools extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
-9. Persistence and memory: defer PostgreSQL checkpoint resume and pgvector long-term memory until the grounded evidence loop produces consistently useful reports.
+8. Done: financial analysis tools extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
+9. Next: persistence and memory defers PostgreSQL checkpoint resume and pgvector long-term memory until the grounded evidence loop produces consistently useful reports.
 
 Acceptance criteria:
 

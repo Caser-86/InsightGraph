@@ -17,6 +17,7 @@ from insight_graph.tools import (
     news_search,
     read_file,
     sec_filings,
+    sec_financials,
     web_search,
     write_file,
 )
@@ -313,6 +314,80 @@ def test_sec_filings_accepts_company_name_alias(monkeypatch) -> None:
 
 def test_sec_filings_returns_empty_for_unknown_ticker() -> None:
     assert sec_filings("not-a-known-ticker", "s1") == []
+
+
+def test_sec_financials_maps_companyfacts(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        observed["url"] = url
+        observed["headers"] = headers
+        observed["timeout"] = timeout
+        return {
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "val": 394328000000,
+                                }
+                            ]
+                        }
+                    },
+                    "NetIncomeLoss": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "val": 96995000000,
+                                }
+                            ]
+                        }
+                    },
+                    "Assets": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "val": 352583000000,
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = sec_financials("Analyze AAPL revenue and net income", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == "sec-financials-aapl-2023-fy"
+    assert evidence[0].title == "AAPL SEC financial facts 2023 FY"
+    assert evidence[0].source_url == (
+        "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
+    )
+    assert evidence[0].source_type == "official_site"
+    assert evidence[0].verified is True
+    assert "Revenue: 394328000000 USD" in evidence[0].snippet
+    assert "Net income: 96995000000 USD" in evidence[0].snippet
+    assert "Assets: 352583000000 USD" in evidence[0].snippet
+    assert observed["url"] == "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
+    assert observed["headers"]["User-Agent"] == "InsightGraph contact@example.com"
+    assert observed["timeout"] == 10.0
 
 
 def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -> None:
@@ -1036,6 +1111,31 @@ def test_registry_runs_sec_filings_tool(monkeypatch) -> None:
 
     assert len(evidence) == 1
     assert evidence[0].id == "sec-aapl-10-k-2023-11-03"
+
+
+def test_registry_runs_sec_financials_tool(monkeypatch) -> None:
+    registry_module = importlib.import_module("insight_graph.tools.registry")
+
+    def fake_financials(query: str, subtask_id: str) -> list[Evidence]:
+        assert query == "AAPL financials"
+        assert subtask_id == "s1"
+        return [
+            Evidence(
+                id="sec-financials-aapl-2023-fy",
+                subtask_id=subtask_id,
+                title="AAPL SEC financial facts 2023 FY",
+                source_url="https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
+                snippet="Revenue: 394328000000 USD.",
+                source_type="official_site",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setattr(registry_module, "sec_financials", fake_financials)
+
+    evidence = ToolRegistry().run("sec_financials", "AAPL financials", "s1")
+
+    assert evidence[0].id == "sec-financials-aapl-2023-fy"
 
 
 def test_registry_runs_document_reader_tool(tmp_path, monkeypatch) -> None:

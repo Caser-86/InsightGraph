@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic SEC companyfacts financial evidence.
 - Added opt-in rendered-page fetch support for JavaScript-heavy pages.
 - Improved long-document chunk ranking for local documents and fetched pages.
 - Tightened deterministic report templates to follow planned domain sections.

@@ -12,8 +12,8 @@
 5. Done: report template tightening.
 6. Done: long-document retrieval v2.
 7. Done: opt-in rendered-page fetch.
-8. Next: financial analysis tools beyond recent filing discovery.
-9. PostgreSQL checkpoint resume and pgvector memory.
+8. Done: financial analysis tools beyond recent filing discovery.
+9. Next: PostgreSQL checkpoint resume and pgvector memory.
 
 **Rules:**
 - Preserve deterministic/offline defaults.
