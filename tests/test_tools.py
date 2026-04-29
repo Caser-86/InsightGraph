@@ -260,6 +260,8 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     )
     assert evidence[0].source_type == "docs"
     assert evidence[0].verified is True
+    assert evidence[0].chunk_index == 1
+    assert evidence[0].section_heading == "Market Report"
 
 
 def test_document_reader_reads_html_visible_text(tmp_path, monkeypatch) -> None:
@@ -332,6 +334,8 @@ def test_document_reader_reads_pdf_text(tmp_path, monkeypatch) -> None:
     assert evidence[0].snippet == "PDF market brief for Cursor and GitHub Copilot."
     assert evidence[0].source_type == "docs"
     assert evidence[0].verified is True
+    assert evidence[0].chunk_index == 1
+    assert evidence[0].document_page == 1
 
 
 def test_document_reader_rejects_malformed_pdf_without_parser_output(
@@ -413,6 +417,7 @@ def test_document_reader_chunks_long_documents(tmp_path, monkeypatch) -> None:
     assert evidence[0].title == "long.md"
     assert evidence[1].title == "long.md (chunk 2)"
     assert evidence[4].title == "long.md (chunk 5)"
+    assert [item.chunk_index for item in evidence] == [1, 2, 3, 4, 5]
     assert evidence[0].snippet[-100:] == evidence[1].snippet[:100]
     assert {item.source_url for item in evidence} == {document.resolve().as_uri()}
     assert {item.source_type for item in evidence} == {"docs"}
@@ -442,6 +447,31 @@ def test_document_reader_ranks_chunks_with_json_query(tmp_path, monkeypatch) -> 
     assert evidence[0].source_url == document.resolve().as_uri()
     assert evidence[0].source_type == "docs"
     assert evidence[0].verified is True
+    assert evidence[0].chunk_index in {3, 4}
+
+
+def test_document_reader_records_section_heading_for_ranked_markdown(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "sections.md"
+    document.write_text(
+        "# Executive Summary\n"
+        + "overview " * 120
+        + "\n## Pricing\n"
+        + "enterprise pricing " * 40
+        + "\n## Risks\n"
+        + "risk " * 120,
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = document_reader(
+        '{"path":"sections.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert evidence[0].section_heading == "Pricing"
+    assert evidence[0].chunk_index >= 1
 
 
 def test_document_reader_json_query_falls_back_when_no_terms_match(

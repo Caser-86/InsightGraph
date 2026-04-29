@@ -25,6 +25,20 @@ class DocumentReaderQuery:
     retrieval_query: str | None = None
 
 
+@dataclass(frozen=True)
+class DocumentText:
+    text: str
+    page_starts: list[tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class DocumentChunk:
+    snippet: str
+    index: int
+    page: int | None = None
+    section_heading: str | None = None
+
+
 def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     parsed_query = _parse_document_reader_query(query)
     if parsed_query is None:
@@ -36,18 +50,25 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     try:
-        text = _read_document_text(path)
+        document_text = _read_document_text(path)
     except (OSError, UnicodeDecodeError, PdfReadError):
         return []
 
-    normalized_text = _normalize_snippet(_extract_text(text, path.suffix.lower()))
-    snippets = _select_snippets(normalized_text, parsed_query.retrieval_query)
+    normalized_text = _normalize_snippet(
+        _extract_text(document_text.text, path.suffix.lower())
+    )
+    snippets = _select_snippets(
+        normalized_text,
+        parsed_query.retrieval_query,
+        page_starts=document_text.page_starts,
+        section_headings=_extract_section_headings(document_text.text, normalized_text),
+    )
     if not snippets:
         return []
 
     return [
-        _build_evidence(root, path, subtask_id, snippet, index)
-        for snippet, index in snippets
+        _build_evidence(root, path, subtask_id, chunk)
+        for chunk in snippets
     ]
 
 
@@ -72,52 +93,74 @@ def _parse_document_reader_query(query: str) -> DocumentReaderQuery | None:
     )
 
 
-def _read_document_text(path: Path) -> str:
+def _read_document_text(path: Path) -> DocumentText:
     suffix = path.suffix.lower()
     if suffix in PDF_SUFFIXES:
         return _read_pdf_text(path)
-    return path.read_text(encoding="utf-8")
+    return DocumentText(text=path.read_text(encoding="utf-8"), page_starts=[])
 
 
-def _select_snippets(text: str, retrieval_query: str | None) -> list[tuple[str, int]]:
-    candidates = _chunk_snippets(text)
+def _select_snippets(
+    text: str,
+    retrieval_query: str | None,
+    *,
+    page_starts: list[tuple[int, int]],
+    section_headings: list[tuple[int, str]],
+) -> list[DocumentChunk]:
+    candidates = _chunk_snippets(text, page_starts, section_headings)
     if not retrieval_query:
         return candidates[:MAX_DOCUMENT_EVIDENCE]
     ranked = _rank_snippets(candidates, retrieval_query)
     return ranked[:MAX_DOCUMENT_EVIDENCE] if ranked else candidates[:MAX_DOCUMENT_EVIDENCE]
 
 
-def _chunk_snippets(text: str) -> list[tuple[str, int]]:
+def _chunk_snippets(
+    text: str,
+    page_starts: list[tuple[int, int]],
+    section_headings: list[tuple[int, str]],
+) -> list[DocumentChunk]:
     if not text:
         return []
     if len(text) <= MAX_SNIPPET_CHARS:
-        return [(text, 0)]
+        return [
+            DocumentChunk(
+                snippet=text,
+                index=0,
+                page=_page_for_start(0, page_starts),
+                section_heading=_section_for_start(0, section_headings),
+            )
+        ]
     step = MAX_SNIPPET_CHARS - SNIPPET_OVERLAP_CHARS
     return [
-        (text[start : start + MAX_SNIPPET_CHARS], index)
+        DocumentChunk(
+            snippet=text[start : start + MAX_SNIPPET_CHARS],
+            index=index,
+            page=_page_for_start(start, page_starts),
+            section_heading=_section_for_start(start, section_headings),
+        )
         for index, start in enumerate(range(0, len(text), step))
         if text[start : start + MAX_SNIPPET_CHARS]
     ]
 
 
 def _rank_snippets(
-    candidates: list[tuple[str, int]],
+    candidates: list[DocumentChunk],
     retrieval_query: str,
-) -> list[tuple[str, int]]:
+) -> list[DocumentChunk]:
     query_tokens = set(_tokenize(retrieval_query))
     if not query_tokens:
         return []
 
     scored = []
-    for snippet, index in candidates:
-        tokens = _tokenize(snippet)
+    for chunk in candidates:
+        tokens = _tokenize(chunk.snippet)
         score = sum(1 for token in tokens if token in query_tokens)
         distinct_matches = len({token for token in tokens if token in query_tokens})
         if score > 0:
-            scored.append((score, distinct_matches, -index, snippet, index))
+            scored.append((score, distinct_matches, -chunk.index, chunk))
 
     scored.sort(reverse=True)
-    return [(snippet, index) for _, _, _, snippet, index in scored]
+    return [chunk for _, _, _, chunk in scored]
 
 
 def _tokenize(value: str) -> list[str]:
@@ -128,23 +171,26 @@ def _build_evidence(
     root: Path,
     path: Path,
     subtask_id: str,
-    snippet: str,
-    index: int,
+    chunk: DocumentChunk,
 ) -> Evidence:
     base_id = _evidence_id(root, path)
+    index = chunk.index
     chunk_number = index + 1
     return Evidence(
         id=base_id if index == 0 else f"{base_id}-chunk-{chunk_number}",
         subtask_id=subtask_id,
         title=path.name if index == 0 else f"{path.name} (chunk {chunk_number})",
         source_url=path.as_uri(),
-        snippet=snippet,
+        snippet=chunk.snippet,
         source_type="docs",
         verified=True,
+        chunk_index=chunk_number,
+        document_page=chunk.page,
+        section_heading=chunk.section_heading,
     )
 
 
-def _read_pdf_text(path: Path) -> str:
+def _read_pdf_text(path: Path) -> DocumentText:
     logger = logging.getLogger("pypdf")
     previous_level = logger.level
     logger.setLevel(logging.CRITICAL + 1)
@@ -152,8 +198,17 @@ def _read_pdf_text(path: Path) -> str:
         with path.open("rb") as handle:
             reader = PdfReader(handle)
             if reader.is_encrypted:
-                return ""
-            return "\n".join(page.extract_text() or "" for page in reader.pages)
+                return DocumentText(text="", page_starts=[])
+            parts: list[str] = []
+            page_starts: list[tuple[int, int]] = []
+            offset = 0
+            for page_number, page in enumerate(reader.pages, start=1):
+                page_text = page.extract_text() or ""
+                if page_text:
+                    page_starts.append((offset, page_number))
+                parts.append(page_text)
+                offset += len(page_text) + 1
+            return DocumentText(text="\n".join(parts), page_starts=page_starts)
     finally:
         logger.setLevel(previous_level)
 
@@ -184,6 +239,43 @@ def _resolve_inside_root(root: Path, query: str) -> Path | None:
 
 def _normalize_snippet(text: str) -> str:
     return " ".join(text.split())
+
+
+def _extract_section_headings(
+    raw_text: str,
+    normalized_text: str,
+) -> list[tuple[int, str]]:
+    headings: list[tuple[int, str]] = []
+    search_start = 0
+    for line in raw_text.splitlines():
+        match = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", line)
+        if match is None:
+            continue
+        marker = _normalize_snippet(line)
+        position = normalized_text.find(marker, search_start)
+        if position == -1:
+            continue
+        headings.append((position, match.group(1).strip()))
+        search_start = position + len(marker)
+    return headings
+
+
+def _page_for_start(start: int, page_starts: list[tuple[int, int]]) -> int | None:
+    page = None
+    for page_start, page_number in page_starts:
+        if page_start > start:
+            break
+        page = page_number
+    return page
+
+
+def _section_for_start(start: int, headings: list[tuple[int, str]]) -> str | None:
+    section = None
+    for heading_start, heading in headings:
+        if heading_start > start:
+            break
+        section = heading
+    return section
 
 
 def _evidence_id(root: Path, path: Path) -> str:
