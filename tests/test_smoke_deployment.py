@@ -124,3 +124,30 @@ def test_main_uses_api_key_from_environment(monkeypatch) -> None:
         5.0,
     )
     assert stderr.getvalue() == ""
+
+
+def test_main_can_print_markdown_summary() -> None:
+    def fake_get(url: str, headers: dict[str, str], timeout: float) -> FakeResponse:
+        if url.endswith("/dashboard"):
+            return FakeResponse(status_code=200, body="InsightGraph", content_type="text/html")
+        return FakeResponse(status_code=200, body="{}", content_type="application/json")
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    exit_code = smoke_module.main(
+        ["https://insightgraph.example.com", "--markdown"],
+        stdout=stdout,
+        stderr=stderr,
+        http_get=fake_get,
+    )
+
+    markdown = stdout.getvalue()
+    assert exit_code == 0
+    assert "# Deployment Smoke Test" in markdown
+    assert "Base URL: `https://insightgraph.example.com`" in markdown
+    assert "| Check | Status | HTTP |" in markdown
+    assert "| health | PASS | 200 |" in markdown
+    assert "| dashboard | PASS | 200 |" in markdown
+    assert "| jobs_summary | PASS | 200 |" in markdown
+    assert stderr.getvalue() == ""

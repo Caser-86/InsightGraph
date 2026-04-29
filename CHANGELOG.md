@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Markdown output for `insight-graph-smoke` deployment checks.
+
 ## v0.1.28 - 2026-04-29
 
 - Added the `insight-graph-smoke` console script for deployment smoke checks.

@@ -385,11 +385,13 @@ You can also run the deployment smoke test script against the public URL:
 
 ```bash
 INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com
+INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com --markdown
 ```
 
 The script checks `/health`, `/dashboard`, and `/research/jobs/summary`. It exits `0`
 when all checks pass, `1` when any endpoint check fails, and `2` for invalid CLI input.
-It emits JSON and does not print the API key.
+It emits JSON by default, supports `--markdown` for runbook notes, and does not print
+the API key.
 
 ## Storage and Backup Notes
 

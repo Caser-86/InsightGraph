@@ -83,6 +83,11 @@ def main(
         default=5.0,
         help="Per-request timeout in seconds. Defaults to 5.",
     )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Write a GitHub-flavored Markdown summary instead of JSON.",
+    )
     args = parser.parse_args(argv)
 
     if args.timeout <= 0:
@@ -97,9 +102,40 @@ def main(
         timeout=args.timeout,
         http_get=http_get,
     )
-    json.dump(result, stdout, indent=2, ensure_ascii=False)
-    stdout.write("\n")
+    if args.markdown:
+        stdout.write(format_markdown(result))
+    else:
+        json.dump(result, stdout, indent=2, ensure_ascii=False)
+        stdout.write("\n")
     return 0 if result["ok"] else 1
+
+
+def format_markdown(result: dict[str, object]) -> str:
+    checks = result.get("checks")
+    if not isinstance(checks, list):
+        checks = []
+
+    lines = [
+        "# Deployment Smoke Test",
+        "",
+        f"Base URL: `{result.get('base_url', '')}`",
+        f"Overall: {'PASS' if result.get('ok') else 'FAIL'}",
+        "",
+        "| Check | Status | HTTP |",
+        "| --- | --- | ---: |",
+    ]
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        name = _markdown_cell(str(check.get("name", "")))
+        status = "PASS" if check.get("ok") else "FAIL"
+        status_code = "" if check.get("status_code") is None else str(check.get("status_code"))
+        lines.append(f"| {name} | {status} | {status_code} |")
+    return "\n".join(lines) + "\n"
+
+
+def _markdown_cell(value: str) -> str:
+    return " ".join(value.splitlines()).replace("|", r"\|")
 
 
 def default_http_get(url: str, headers: dict[str, str], timeout: float) -> SmokeResponse:
