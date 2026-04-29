@@ -266,6 +266,12 @@ def test_dashboard_returns_html() -> None:
     assert "live-events" in response.text
     assert "renderLiveEvent" in response.text
     assert "appendLiveEvent" in response.text
+    assert "Eval Gate" in response.text
+    assert "docs/evals/default.json" in response.text
+    assert "--min-score 85 --fail-on-case-failure" in response.text
+    assert "eval-reports" in response.text
+    assert "reports/eval.json" in response.text
+    assert "reports/eval.md" in response.text
     assert "'/research/jobs'" in response.text
     assert "'/research/jobs/summary'" in response.text
     assert "`/research/jobs/${encodeURIComponent(state.selectedJobId)}`" in response.text

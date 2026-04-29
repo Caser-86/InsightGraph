@@ -846,6 +846,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
           <div class="info-card"><span>LLM Calls</span><strong>${escapeHtml(detail.llm_call_count || 0)}</strong></div>
           <div class="info-card"><span>Iterations</span><strong>${escapeHtml(result.iterations || 0)}</strong></div>
           <div class="info-card"><span>Critic</span><strong>${escapeHtml(critique.passed === false ? 'needs review' : 'passed/unknown')}</strong></div>
+          <div class="info-card"><span>Eval Gate</span><strong>docs/evals/default.json<br>--min-score 85 --fail-on-case-failure<br>CI artifact: eval-reports<br>Reports: reports/eval.json, reports/eval.md</strong></div>
           <div class="info-card"><span>Error</span><strong>${escapeHtml(detail.error || 'none')}</strong></div>
         </div>`;
     }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Dashboard Eval Gate visibility.
+
 ## v0.1.17 - 2026-04-29
 
 - Added CI Eval Bench report artifacts.

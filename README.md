@@ -119,7 +119,7 @@ http://127.0.0.1:8000/dashboard
 ```
 
 Dashboard 是一个静态本地 UI，用于创建、流式跟踪和查看 research jobs，包含执行进度
-timeline、Live Events、report、tool calls、LLM metadata 和 Markdown/HTML 下载。Dashboard 会优先连接
+timeline、Live Events、report、tool calls、LLM metadata、Eval Gate metadata 和 Markdown/HTML 下载。Dashboard 会优先连接
 `/research/jobs/<job_id>/stream` WebSocket 接收 stage/tool/LLM/report 事件；不可用时回退到 REST polling。如果配置了
 `INSIGHT_GRAPH_API_KEY`，请先在 dashboard 的 API key 输入框填入同一个 key。
 

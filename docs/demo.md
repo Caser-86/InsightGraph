@@ -108,6 +108,9 @@ Use `docs/evals/default.json` for the checked-in default case set, or pass
 GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`
 and `reports/eval.md` for each CI run.
 
+The Dashboard Overview tab also shows the active Eval Gate case file, threshold,
+artifact name, and report paths for quick operator reference.
+
 The eval bench clears live search and LLM opt-in environment variables while cases
 run. It reports per-case score, pass/fail status, failed rules, references,
 findings, matrix rows, tool calls, and LLM calls without using an LLM judge.
