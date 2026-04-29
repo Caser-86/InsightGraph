@@ -454,7 +454,7 @@ Live fetched HTML pages now use the same bounded evidence chunking model: long p
 
 The first filings capability adds an opt-in `sec_filings` tool backed by SEC submissions JSON for known public-company tickers and company-name aliases. `live-research` enables the source, and Planner includes it in multi-source collection only when the request contains a known public-company target.
 
-Remote PDF responses fetched through `fetch_url` now retain response bytes, extract text with pypdf, and emit verified docs evidence with chunk index and page metadata. This extends the live evidence path to PDF reports without adding OCR, browser rendering, storage, or vector search.
+Remote PDF responses fetched through `fetch_url` now retain response bytes, extract text with pypdf, suppress noisy parser logs, and emit verified docs evidence with chunk index and page metadata. This extends the live evidence path to PDF reports without adding OCR, browser rendering, storage, or vector search.
 
 Live HTTP fetches now reject oversized `Content-Length` responses before body reads and oversized response bodies before decoding or extraction, keeping HTML/PDF evidence generation bounded in addition to the existing evidence chunk limits.
 

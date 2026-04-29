@@ -1,4 +1,5 @@
 import importlib
+import logging
 
 from insight_graph.tools.fetch_url import fetch_url, infer_source_type
 from insight_graph.tools.http_client import FetchedPage
@@ -130,6 +131,39 @@ def test_fetch_url_reads_remote_pdf_with_page_metadata(monkeypatch) -> None:
     assert item.verified is True
     assert item.chunk_index == 1
     assert item.document_page == 1
+
+
+def test_fetch_url_suppresses_pypdf_logger_during_remote_pdf_parse(monkeypatch) -> None:
+    class FakePdfPage:
+        def extract_text(self) -> str:
+            return "Quiet PDF evidence text."
+
+    class RecordingPdfReader:
+        is_encrypted = False
+        pages = [FakePdfPage()]
+
+        def __init__(self, stream) -> None:
+            del stream
+            assert logging.getLogger("pypdf").level == logging.CRITICAL + 1
+
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="application/pdf",
+            text="",
+            body=b"%PDF-1.4",
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    previous_level = logging.getLogger("pypdf").level
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+    monkeypatch.setattr(fetch_url_module, "PdfReader", RecordingPdfReader)
+
+    evidence = fetch_url("https://example.com/report.pdf", "s1")
+
+    assert evidence[0].snippet == "Quiet PDF evidence text."
+    assert logging.getLogger("pypdf").level == previous_level
 
 
 def test_fetch_url_returns_empty_list_for_empty_snippet(monkeypatch) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from io import BytesIO
@@ -100,22 +101,28 @@ def _pdf_evidence(page, subtask_id: str) -> list[Evidence]:
 def _extract_pdf_text(body: bytes | None) -> tuple[str, list[tuple[int, int]]] | None:
     if not body:
         return None
+    logger = logging.getLogger("pypdf")
+    previous_level = logger.level
+    logger.setLevel(logging.CRITICAL + 1)
     try:
-        reader = PdfReader(BytesIO(body))
-    except PdfReadError:
-        return None
-    if reader.is_encrypted:
-        return None
-    parts: list[str] = []
-    page_starts: list[tuple[int, int]] = []
-    offset = 0
-    for page_number, pdf_page in enumerate(reader.pages, start=1):
-        page_text = pdf_page.extract_text() or ""
-        if page_text:
-            page_starts.append((offset, page_number))
-        parts.append(page_text)
-        offset += len(page_text) + 1
-    return _normalize_whitespace("\n".join(parts)), page_starts
+        try:
+            reader = PdfReader(BytesIO(body))
+        except PdfReadError:
+            return None
+        if reader.is_encrypted:
+            return None
+        parts: list[str] = []
+        page_starts: list[tuple[int, int]] = []
+        offset = 0
+        for page_number, pdf_page in enumerate(reader.pages, start=1):
+            page_text = pdf_page.extract_text() or ""
+            if page_text:
+                page_starts.append((offset, page_number))
+            parts.append(page_text)
+            offset += len(page_text) + 1
+        return _normalize_whitespace("\n".join(parts)), page_starts
+    finally:
+        logger.setLevel(previous_level)
 
 
 def _is_pdf_response(content_type: str, url: str) -> bool:
