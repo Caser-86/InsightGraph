@@ -56,6 +56,37 @@ def test_resolve_llm_config_qwen_provider_sets_dashscope_defaults(monkeypatch) -
     assert config.model == "qwen-plus"
 
 
+@pytest.mark.parametrize(
+    ("provider", "expected_base_url", "expected_model", "expected_api_key"),
+    [
+        ("ollama", "http://localhost:11434/v1", "qwen2.5:7b", "ollama"),
+        ("lmstudio", "http://localhost:1234/v1", "local-model", "lm-studio"),
+        ("vllm", "http://localhost:8000/v1", "local-model", "vllm"),
+        ("localai", "http://localhost:8080/v1", "local-model", "localai"),
+    ],
+)
+def test_resolve_llm_config_local_provider_defaults(
+    monkeypatch,
+    provider: str,
+    expected_base_url: str,
+    expected_model: str,
+    expected_api_key: str,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", provider)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    config = resolve_llm_config()
+
+    assert config.provider == provider
+    assert config.api_key == expected_api_key
+    assert config.base_url == expected_base_url
+    assert config.model == expected_model
+
+
 def test_resolve_llm_config_qwen_provider_allows_explicit_overrides(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
@@ -111,6 +142,16 @@ def test_resolve_llm_config_qwen_provider_ignores_openai_base_url(monkeypatch) -
     config = resolve_llm_config()
 
     assert config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def test_resolve_llm_config_named_provider_ignores_openai_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "ollama")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+
+    config = resolve_llm_config()
+
+    assert config.base_url == "http://localhost:11434/v1"
 
 
 def test_resolve_llm_config_openai_compatible_reads_openai_base_url(
