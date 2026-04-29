@@ -4,7 +4,7 @@
 
 Phase 10 report-quality queue is complete, and Phase 11 has started the reference-quality deep-research route with bounded multi-round collection for live research. PostgreSQL checkpoint resume and pgvector memory are intentionally deferred to a later infrastructure phase.
 
-当前项目已完成可运行 MVP 和 Report Quality Roadmap Phase 1-9：支持 domain profile、实体解析、section research plan、section evidence status、evidence scoring、citation support metadata、critic replan requests 和 Reporter citation support summary。默认运行模式是 deterministic/offline，适合本地开发、测试和 CI；真实搜索、真实 GitHub API、真实 LLM 都需要显式 opt-in。
+当前项目已完成可运行 MVP 和 Report Quality Roadmap Phase 1-9：支持 domain profile、实体解析、section research plan、section evidence status、evidence scoring、citation support metadata、critic replan requests、tried-strategy metadata 和 Reporter citation support summary。默认运行模式是 deterministic/offline，适合本地开发、测试和 CI；真实搜索、真实 GitHub API、真实 LLM 都需要显式 opt-in。
 
 ---
 
@@ -59,7 +59,7 @@ src/insight_graph/
 | 特性 | 说明 |
 |------|------|
 | **多智能体编排** | Planner → Collector → Analyst → Critic → Reporter，支持 Critic 触发一次 replan 闭环 |
-| **报告质量链路** | Phase 1-9 已落地：domain profile、entity resolver、section plan、evidence status、scoring、citation support、replan metadata、Reporter support summary |
+| **报告质量链路** | Phase 1-9 已落地：domain profile、entity resolver、section plan、evidence status、scoring、citation support、replan/tried-strategy metadata、Reporter support summary |
 | **证据溯源链** | Evidence 从 search / fetch / GitHub / news / local document 进入 pool，Reporter 仅引用 verified evidence；文档、远程 PDF 和长网页 evidence 带 chunk/page/section metadata、query-ranked chunks，并可归因到 planned section |
 | **Rendered fetch** | 默认关闭；`INSIGHT_GRAPH_FETCH_RENDERED=1` 时 `fetch_url` 可尝试 optional Playwright rendering，并在失败时回退 bounded HTTP fetch |
 | **SEC financials** | `sec_filings` 发现近期 filings；`sec_financials` 可从 SEC companyfacts 生成 revenue / net income / assets evidence，不做完整财务模型 |
@@ -315,7 +315,7 @@ flowchart TB
 
 - **质量评审**：检查 evidence 数量、analysis 是否存在、citation support 是否足够。
 - **Citation support**：记录 claim-level support metadata，标记 supported / unsupported。
-- **Replan metadata**：写入结构化 `replan_requests`，包含 missing section evidence 和 unsupported claim 请求。
+- **Replan metadata**：写入结构化 `replan_requests`，包含 missing section evidence 和 unsupported claim 请求；section follow-up 会记录 `strategy_key` 到 `tried_strategies`，避免重复尝试同一失败策略。
 
 ### 5. Reporter
 

@@ -94,6 +94,7 @@ def test_collection_depth_metadata_defaults_are_backward_compatible() -> None:
     assert record.stop_reason is None
     assert state.collection_rounds == []
     assert state.collection_stop_reason is None
+    assert state.tried_strategies == []
 
 
 def test_graph_state_starts_with_executor_collections() -> None:

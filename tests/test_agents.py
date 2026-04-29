@@ -1998,6 +1998,7 @@ def test_critic_creates_missing_evidence_replan_requests() -> None:
             "section_id": "pricing",
             "missing_evidence": 2,
             "missing_source_types": [],
+            "strategy_key": "missing_section_evidence:pricing:evidence",
         },
         {
             "type": "unsupported_claim",
@@ -2032,7 +2033,59 @@ def test_critic_includes_missing_source_types_in_replan_requests() -> None:
         "section_id": "market-signals",
         "missing_evidence": 0,
         "missing_source_types": ["news"],
+        "strategy_key": "missing_section_evidence:market-signals:news",
     }
+
+
+def test_critic_records_tried_strategies_for_replan_requests() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        section_collection_status=[
+            {
+                "section_id": "market-signals",
+                "sufficient": False,
+                "missing_evidence": 1,
+                "missing_source_types": ["news"],
+            }
+        ],
+        evidence_pool=[],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.replan_requests == [
+        {
+            "type": "missing_section_evidence",
+            "section_id": "market-signals",
+            "missing_evidence": 1,
+            "missing_source_types": ["news"],
+            "strategy_key": "missing_section_evidence:market-signals:news",
+        }
+    ]
+    assert updated.tried_strategies == ["missing_section_evidence:market-signals:news"]
+
+
+def test_critic_skips_previously_tried_replan_strategy() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        tried_strategies=["missing_section_evidence:market-signals:news"],
+        section_collection_status=[
+            {
+                "section_id": "market-signals",
+                "sufficient": False,
+                "missing_evidence": 1,
+                "missing_source_types": ["news"],
+            }
+        ],
+        evidence_pool=[],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.replan_requests == []
+    assert updated.tried_strategies == ["missing_section_evidence:market-signals:news"]
 
 
 def test_reporter_excludes_unverified_sources(monkeypatch) -> None:
