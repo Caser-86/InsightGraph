@@ -16,16 +16,17 @@ WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 
 def execute_subtasks(state: GraphState) -> GraphState:
     registry = ToolRegistry()
-    collected: list[Evidence] = []
+    collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
+    query = _collection_query(state)
 
     for subtask in state.subtasks:
         for tool_name in subtask.suggested_tools:
             kept_results, new_records = _run_tool_with_fallback(
                 registry,
                 tool_name,
-                state.user_request,
+                query,
                 subtask,
                 filter_enabled,
                 state.llm_call_log,
@@ -44,6 +45,40 @@ def execute_subtasks(state: GraphState) -> GraphState:
         ordered_evidence,
     )
     return state
+
+
+def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
+    if state.iterations <= 0 or not state.replan_requests:
+        return []
+    existing = state.global_evidence_pool or state.evidence_pool
+    return [Evidence.model_validate(item) for item in existing]
+
+
+def _collection_query(state: GraphState) -> str:
+    if state.iterations <= 0 or not state.replan_requests:
+        return state.user_request
+
+    parts = [state.user_request]
+    for request in state.replan_requests:
+        if request.get("type") != "missing_section_evidence":
+            continue
+        section_id = str(request.get("section_id", "")).strip()
+        missing_evidence = int(request.get("missing_evidence", 0))
+        missing_source_types = _string_list(request.get("missing_source_types", []))
+        if section_id:
+            parts.append(f"section: {section_id}")
+        if missing_source_types:
+            parts.append(f"missing source types: {', '.join(missing_source_types)}")
+        if missing_evidence > 0:
+            parts.append(f"missing evidence: {missing_evidence}")
+        break
+    return " | ".join(parts)
+
+
+def _string_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str) and value]
 
 
 def _build_section_collection_status(

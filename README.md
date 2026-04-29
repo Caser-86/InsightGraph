@@ -299,7 +299,7 @@ flowchart TB
 - **工具执行**：执行 Planner 指定工具，生成 verified evidence。
 - **证据管理**：维护 `evidence_pool` 和 `global_evidence_pool`，执行基础去重，并按 deterministic evidence score 排序。
 - **质量 metadata**：写入 `section_collection_status`（含 required/covered/missing source types）和 `evidence_scores`。
-- **边界**：当前不是完整 agentic 多轮工具循环；真正 follow-up query orchestration 属于后续增强。
+- **边界**：当前不是完整 agentic 多轮工具循环；Critic retry 会把 replan metadata 转为一次 deterministic follow-up query。
 
 ### 3. Analyst
 

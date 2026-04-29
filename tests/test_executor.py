@@ -112,6 +112,62 @@ def test_executor_marks_section_insufficient_when_required_source_type_missing(
     ]
 
 
+def test_executor_uses_replan_requests_for_retry_follow_up_query(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    previous = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+    follow_up = Evidence(
+        id="news",
+        subtask_id="collect",
+        title="News Evidence",
+        source_url="https://example.com/news",
+        snippet="News evidence has enough words for relevance.",
+        source_type="news",
+        verified=True,
+    )
+    observed: dict[str, str] = {}
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed["query"] = query
+            assert name == "fake"
+            assert subtask_id == "collect"
+            return [follow_up]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        iterations=1,
+        evidence_pool=[previous],
+        global_evidence_pool=[previous],
+        replan_requests=[
+            {
+                "type": "missing_section_evidence",
+                "section_id": "market-signals",
+                "missing_evidence": 1,
+                "missing_source_types": ["news"],
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert "Compare AI coding agents" in observed["query"]
+    assert "market-signals" in observed["query"]
+    assert "news" in observed["query"]
+    assert "1" in observed["query"]
+    assert {item.id for item in updated.evidence_pool} == {"official", "news"}
+    assert updated.tool_call_log[0].query == observed["query"]
+
+
 def test_executor_records_evidence_scores() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",

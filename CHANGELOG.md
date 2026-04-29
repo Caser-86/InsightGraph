@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added retry follow-up collection queries from Critic replan requests.
 - Documented the ordered Phase 10 next-work queue for remaining report-quality work.
 - Added section-level required source type coverage metadata and replan hints.
 - Ordered collected evidence by deterministic evidence scores before analysis/reporting.

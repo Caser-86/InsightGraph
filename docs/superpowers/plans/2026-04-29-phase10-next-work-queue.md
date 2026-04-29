@@ -5,8 +5,8 @@
 **Goal:** Continue InsightGraph's report-quality route without drifting into heavy infrastructure before the grounded evidence loop is stronger.
 
 **Execution Order:**
-1. Replan-driven follow-up collection.
-2. Section evidence attribution.
+1. Done: replan-driven follow-up collection.
+2. Next: section evidence attribution.
 3. Collection budgets and caps.
 4. Section-aware query generation.
 5. Report template tightening.
