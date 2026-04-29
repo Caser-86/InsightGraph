@@ -182,11 +182,11 @@ Set `INSIGHT_GRAPH_LLM_PROVIDER` to choose an OpenAI-compatible endpoint preset.
 | Provider | Default base URL | Default model | Default API key |
 |---|---|---|---|
 | `openai_compatible` | `OPENAI_BASE_URL` if set | `gpt-4o-mini` | `OPENAI_API_KEY` if set |
-| `ollama` | `http://localhost:11434/v1` | `qwen2.5:7b` | `ollama` |
+| `ollama` | `http://localhost:11434/v1` | `llama3.2` | `ollama` |
 | `lmstudio` | `http://localhost:1234/v1` | `local-model` | `lm-studio` |
 | `vllm` | `http://localhost:8000/v1` | `local-model` | `vllm` |
 | `localai` | `http://localhost:8080/v1` | `local-model` | `localai` |
-| `qwen` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | `DASHSCOPE_API_KEY`, then `OPENAI_API_KEY` |
+| `qwen` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | `DASHSCOPE_API_KEY` |
 
 Explicit `resolve_llm_config(...)` arguments and `INSIGHT_GRAPH_LLM_*` environment variables override provider defaults. Named providers do not use stale `OPENAI_BASE_URL` as an endpoint fallback; set `INSIGHT_GRAPH_LLM_BASE_URL` if you need a relay or non-default local port.
 

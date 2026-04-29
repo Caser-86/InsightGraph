@@ -18,7 +18,7 @@ LLM_PROVIDER_PRESETS = {
     },
     "ollama": {
         "base_url": "http://localhost:11434/v1",
-        "model": "qwen2.5:7b",
+        "model": "llama3.2",
         "api_key": "ollama",
         "api_key_env": None,
     },
@@ -100,13 +100,16 @@ def resolve_llm_config(
     provider_base_url = preset.get("base_url")
     if resolved_provider == DEFAULT_LLM_PROVIDER:
         provider_base_url = os.getenv("OPENAI_BASE_URL")
+    openai_api_key = (
+        os.getenv("OPENAI_API_KEY") if resolved_provider == DEFAULT_LLM_PROVIDER else None
+    )
 
     return LLMConfig(
         api_key=api_key
         if api_key is not None
         else os.getenv("INSIGHT_GRAPH_LLM_API_KEY")
         or provider_api_key
-        or os.getenv("OPENAI_API_KEY"),
+        or openai_api_key,
         base_url=base_url
         if base_url is not None
         else os.getenv("INSIGHT_GRAPH_LLM_BASE_URL")

@@ -9,7 +9,7 @@ Add a general LLM provider preset layer that supports local/self-hosted OpenAI-c
 `INSIGHT_GRAPH_LLM_PROVIDER` supports:
 
 - `openai_compatible`: existing generic behavior; reads `OPENAI_API_KEY` and `OPENAI_BASE_URL` fallbacks.
-- `ollama`: local default `http://localhost:11434/v1`, model `qwen2.5:7b`, dummy API key `ollama`.
+- `ollama`: local default `http://localhost:11434/v1`, model `llama3.2`, dummy API key `ollama`.
 - `lmstudio`: local default `http://localhost:1234/v1`, model `local-model`, dummy API key `lm-studio`.
 - `vllm`: self-hosted default `http://localhost:8000/v1`, model `local-model`, dummy API key `vllm`.
 - `localai`: self-hosted default `http://localhost:8080/v1`, model `local-model`, dummy API key `localai`.
@@ -21,7 +21,7 @@ All providers continue to use the existing OpenAI-compatible client. No provider
 
 Explicit `resolve_llm_config(...)` arguments win over all environment variables. `INSIGHT_GRAPH_LLM_API_KEY`, `INSIGHT_GRAPH_LLM_BASE_URL`, and `INSIGHT_GRAPH_LLM_MODEL` override provider defaults.
 
-Provider-specific defaults apply only after explicit args and `INSIGHT_GRAPH_LLM_*` env vars are absent. `OPENAI_API_KEY` and `OPENAI_BASE_URL` remain compatibility fallbacks for `openai_compatible`; `OPENAI_API_KEY` may be a final API-key fallback for cloud-compatible providers, but `OPENAI_BASE_URL` must not override named provider endpoints.
+Provider-specific defaults apply only after explicit args and `INSIGHT_GRAPH_LLM_*` env vars are absent. `OPENAI_API_KEY` and `OPENAI_BASE_URL` remain compatibility fallbacks for `openai_compatible`; named providers must not inherit stale OpenAI endpoint or key variables.
 
 ## Architecture
 

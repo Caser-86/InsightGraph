@@ -59,7 +59,7 @@ def test_resolve_llm_config_qwen_provider_sets_dashscope_defaults(monkeypatch) -
 @pytest.mark.parametrize(
     ("provider", "expected_base_url", "expected_model", "expected_api_key"),
     [
-        ("ollama", "http://localhost:11434/v1", "qwen2.5:7b", "ollama"),
+        ("ollama", "http://localhost:11434/v1", "llama3.2", "ollama"),
         ("lmstudio", "http://localhost:1234/v1", "local-model", "lm-studio"),
         ("vllm", "http://localhost:8000/v1", "local-model", "vllm"),
         ("localai", "http://localhost:8080/v1", "local-model", "localai"),
@@ -142,6 +142,17 @@ def test_resolve_llm_config_qwen_provider_ignores_openai_base_url(monkeypatch) -
     config = resolve_llm_config()
 
     assert config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def test_resolve_llm_config_named_provider_ignores_openai_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+
+    config = resolve_llm_config()
+
+    assert config.api_key is None
 
 
 def test_resolve_llm_config_named_provider_ignores_openai_base_url(monkeypatch) -> None:
