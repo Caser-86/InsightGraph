@@ -1,257 +1,366 @@
 # InsightGraph
 
-InsightGraph 是一个基于 LangGraph 的多智能体商业情报研究引擎，面向竞品分析、技术趋势、市场机会识别、公司研究和产业洞察等场景，生成带证据链和可验证引用的结构化研究报告。
+基于 LangGraph 的多智能体商业情报研究引擎，面向竞品分析、技术趋势、市场机会识别、公司研究和产业洞察等场景。系统通过 Planner、Collector、Analyst、Critic、Reporter 协作完成任务分解、证据采集、分析归纳、质量评审和引用报告生成，默认产出带可验证 References 的结构化 Markdown 报告。
 
-当前项目已经具备可运行的本地 MVP：Planner、Collector、Analyst、Critic、Reporter 组成完整研究流，CLI/API/Dashboard/Eval/CI/部署 smoke 能力已经落地。下一阶段主线是 `Report Quality Roadmap`：在保持现有工程基础稳定的前提下，系统性提升报告深度、来源多样性、claim-level citation support 和多轮证据采集质量。
+当前项目已完成可运行 MVP 和 Report Quality Roadmap Phase 1-9：支持 domain profile、实体解析、section research plan、section evidence status、evidence scoring、citation support metadata、critic replan requests 和 Reporter citation support summary。默认运行模式是 deterministic/offline，适合本地开发、测试和 CI；真实搜索、真实 GitHub API、真实 LLM 都需要显式 opt-in。
 
-> 默认运行模式是 deterministic/offline，适合本地开发、测试和 CI。真实搜索、真实 GitHub API、真实 LLM 都需要显式 opt-in。
-
-## 当前定位
-
-| 维度 | 当前状态 |
-|------|----------|
-| 项目阶段 | MVP 工程骨架已落地，报告质量增强路线进行中 |
-| 默认行为 | 离线、确定性、可测试，不访问公网，不调用真实 LLM |
-| 已实现链路 | Planner -> Collector -> Analyst -> Critic -> Reporter |
-| 已实现入口 | CLI、FastAPI REST、research jobs、WebSocket stream、静态 Dashboard |
-| 已实现质量门 | pytest、ruff、offline Eval Bench、CI Eval Gate、deployment smoke entry point |
-| 下一主线 | Domain Profile、Entity Resolver、Section Research Plan、Multi-Round Collector、Evidence Scoring、Citation Support Validator、Reporter v2 |
+---
 
 ## 项目结构
 
 ```text
-InsightGraph/
-├── src/insight_graph/
-│   ├── agents/
-│   │   ├── planner.py          # 研究任务分解和工具选择
-│   │   ├── collector.py        # Collection 阶段入口
-│   │   ├── executor.py         # 工具执行、证据去重、relevance filtering
-│   │   ├── analyst.py          # findings 和 competitive matrix 生成
-│   │   ├── critic.py           # 结构、证据数量和 citation support 检查
-│   │   └── reporter.py         # Markdown 报告和 References 生成
-│   ├── tools/
-│   │   ├── mock_search.py      # 默认 deterministic 搜索证据
-│   │   ├── web_search.py       # opt-in web search provider 调用
-│   │   ├── pre_fetch.py        # 搜索结果预抓取
-│   │   ├── fetch_url.py        # direct URL 抓取并生成 Evidence
-│   │   ├── content_extract.py  # HTML 标题、正文、snippet 提取
-│   │   ├── github_search.py    # deterministic 或 opt-in GitHub repository search
-│   │   ├── news_search.py      # deterministic news/product announcement evidence
-│   │   ├── document_reader.py  # cwd 内 TXT/Markdown/HTML/PDF evidence reader
-│   │   └── file_tools.py       # cwd 内安全 read/list/create-only write 工具
-│   ├── llm/
-│   │   ├── client.py           # OpenAI-compatible client
-│   │   ├── config.py           # LLM provider 配置
-│   │   ├── observability.py    # safe LLM metadata log
-│   │   └── router.py           # opt-in rules router
-│   ├── api.py                  # FastAPI REST endpoint
-│   ├── dashboard.py            # zero-build static dashboard
-│   ├── eval.py                 # deterministic offline Eval Bench
-│   ├── graph.py                # LangGraph StateGraph 编排
-│   ├── research_jobs.py        # research job lifecycle 和 response shaping
-│   ├── research_jobs_store.py  # JSON persistence adapter
-│   ├── research_jobs_sqlite_backend.py
-│   ├── smoke.py                # deployment smoke CLI
-│   └── state.py                # GraphState、Evidence、Finding、Critique 等模型
-├── docs/
-│   ├── configuration.md
-│   ├── architecture.md
-│   ├── report-quality-roadmap.md
-│   ├── research-jobs-api.md
-│   ├── deployment.md
-│   └── evals/default.json
-├── scripts/
-│   ├── run_research.py
-│   ├── benchmark_research.py
-│   ├── summarize_eval_report.py
-│   └── append_eval_history.py
-└── tests/
+src/insight_graph/
+├── agents/                         # 多智能体核心
+│   ├── planner.py                  # 任务分解、工具选择、domain/entity/section plan 注入
+│   ├── collector.py                # Collection 阶段入口
+│   ├── executor.py                 # 工具执行、证据去重、section status、evidence scoring
+│   ├── analyst.py                  # Findings 与 competitive matrix 生成
+│   ├── critic.py                   # 质量评审、citation support、replan request
+│   └── reporter.py                 # Markdown 报告、citation support summary、References
+├── report_quality/                 # 报告质量增强层
+│   ├── domain_profiles.py          # 领域检测与 source policy baseline
+│   ├── entity_resolver.py          # 实体识别、别名与 source hints
+│   ├── research_plan.py            # section-aware research plan
+│   ├── evidence_scoring.py         # authority / relevance / overall scoring
+│   └── citation_support.py         # claim-to-snippet support metadata
+├── tools/                          # 内置工具集
+│   ├── mock_search.py              # 默认 deterministic evidence
+│   ├── web_search.py               # opt-in DuckDuckGo provider
+│   ├── pre_fetch.py                # search candidate 预抓取
+│   ├── fetch_url.py                # direct URL 抓取并生成 Evidence
+│   ├── content_extract.py          # HTML title/text/snippet 提取
+│   ├── github_search.py            # deterministic 或 opt-in GitHub repository search
+│   ├── news_search.py              # deterministic news/product announcement evidence
+│   ├── document_reader.py          # cwd 内 TXT/Markdown/HTML/PDF evidence reader
+│   └── file_tools.py               # cwd 内安全 read/list/create-only write
+├── llm/                            # OpenAI-compatible LLM 与 router
+│   ├── client.py
+│   ├── config.py
+│   ├── observability.py            # 安全 LLM metadata log
+│   └── router.py                   # opt-in rules router
+├── api.py                          # FastAPI REST + WebSocket
+├── dashboard.py                    # zero-build static Dashboard
+├── eval.py                         # deterministic offline Eval Bench
+├── graph.py                        # LangGraph StateGraph 编排
+├── research_jobs.py                # research job lifecycle 和 response shaping
+├── research_jobs_store.py          # JSON persistence adapter
+├── research_jobs_sqlite_backend.py # opt-in SQLite job metadata backend
+├── smoke.py                        # deployment smoke CLI
+└── state.py                        # GraphState、Evidence、Finding、Critique 等模型
 ```
+
+---
 
 ## 核心特性
 
-| 能力 | 当前状态 |
-|------|----------|
-| LangGraph 多智能体工作流 | 已实现 Planner -> Collector -> Analyst -> Critic -> Reporter 状态图 |
-| CLI 研究流 | 已实现 `insight-graph research`、`python -m insight_graph.cli research`、JSON 输出、LLM/tool log 展示 |
-| FastAPI API | 已实现 `/health`、同步 `/research`、异步 research jobs、report export、API key 保护 |
-| Dashboard | 已实现静态本地 UI，支持创建 jobs、WebSocket live events、progress、report、tool calls、LLM metadata、Eval guidance、Markdown/HTML 下载 |
-| Research jobs | 已实现 queued/running/succeeded/failed/cancelled 状态、cancel、retry、summary、active cap、terminal retention |
-| Job persistence | 已实现默认内存、opt-in JSON metadata store、opt-in SQLite backend 和 worker lease |
-| 证据工具 | 已实现 mock search、web search、pre-fetch、fetch URL、content extraction、GitHub search、news search、document reader、本地文件工具 |
-| LLM opt-in | 已实现 OpenAI-compatible Analyst/Reporter/Relevance Judge 和 rules router，默认不调用真实 LLM |
-| Citation safety | 已实现引用重建、citation support metadata、非法 citation fallback、基本 evidence support 检查 |
-| Eval Bench | 已实现 deterministic offline scoring、case file、CI Eval Gate、JSON/Markdown report、summary、history artifact |
-| Deployment smoke | 已实现 `insight-graph-smoke`，可检查 `/health`、`/dashboard`、`/research/jobs/summary` |
-| 报告质量路线 | 路线中，详见 `docs/report-quality-roadmap.md` |
+| 特性 | 说明 |
+|------|------|
+| **多智能体编排** | Planner → Collector → Analyst → Critic → Reporter，支持 Critic 触发一次 replan 闭环 |
+| **报告质量链路** | Phase 1-9 已落地：domain profile、entity resolver、section plan、evidence status、scoring、citation support、replan metadata、Reporter support summary |
+| **证据溯源链** | Evidence 从 search / fetch / GitHub / news / local document 进入 pool，Reporter 仅引用 verified evidence |
+| **Citation 安全** | LLM Reporter 不能保留未知引用；References 由系统重建；Critic 记录 claim-level citation support metadata |
+| **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
+| **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
+| **可选实时数据源** | DuckDuckGo web search 和 GitHub REST Search 均为显式 opt-in；默认测试不访问公网 |
+| **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
+| **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
+| **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
+
+未实现或未默认启用的高级能力：SEC/filings 工具、Playwright 渲染、pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG。这些属于 Phase 10 deferred items，后续按需推进。
+
+---
 
 ## 技术架构
 
-```mermaid
-flowchart TB
-    CLI[CLI: insight-graph] --> Runtime[Research Runtime]
-    API[FastAPI REST] --> Runtime
-    Dashboard[Static Dashboard] --> API
-    Dashboard --> Stream[WebSocket Job Stream]
-    Stream --> Jobs[Research Jobs]
-    API --> Jobs
-    Jobs --> Runtime
-
-    Runtime --> Graph[LangGraph StateGraph]
-    Graph --> Planner[Planner]
-    Planner --> Collector[Collector]
-    Collector --> Executor[Tool Executor]
-    Executor --> Analyst[Analyst]
-    Analyst --> Critic[Critic]
-    Critic -->|pass| Reporter[Reporter]
-    Critic -->|replan| Planner
-    Reporter --> Report[Markdown Report + References]
-
-    Executor --> Tools[Tool Registry]
-    Tools --> Mock[mock_search]
-    Tools --> Web[web_search + pre_fetch + fetch_url]
-    Tools --> GitHub[github_search]
-    Tools --> News[news_search]
-    Tools --> Docs[document_reader]
-    Tools --> Files[read_file / list_directory / write_file]
-
-    Analyst --> LLM[optional OpenAI-compatible LLM]
-    Reporter --> LLM
-    Executor --> Relevance[optional Relevance Judge]
-
-    Runtime --> Observability[tool calls + LLM metadata + token usage + router decisions]
-    Runtime --> Eval[Offline Eval Bench]
+```text
+┌───────────────────────────────────────────────────────────────────────┐
+│                    CLI / FastAPI / Dashboard                           │
+│       insight-graph, /research, /research/jobs, WebSocket stream        │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                       LangGraph StateGraph                             │
+│                                                                       │
+│  ┌──────────┐   ┌───────────┐   ┌─────────┐   ┌──────────┐            │
+│  │ Planner  │──▶│ Collector │──▶│ Analyst │──▶│  Critic  │            │
+│  │ domain   │   │ tools     │   │ claims  │   │ support  │            │
+│  │ entities │   │ scoring   │   │ matrix  │   │ replan   │            │
+│  └────┬─────┘   └───────────┘   └─────────┘   └────┬─────┘            │
+│       ▲                                            │                  │
+│       └────────────── one retry / replan ──────────┘                  │
+│                                                    │                  │
+│                                           ┌────────▼────────┐         │
+│                                           │    Reporter     │         │
+│                                           │ verified-only   │         │
+│                                           └─────────────────┘         │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                         Evidence Grounding Layer                       │
+│ Domain Profile │ Entity Resolver │ Section Plan │ Evidence Scoring    │
+│ Citation Support Validator │ Replan Requests │ Eval Quality Metrics    │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────────────┐
+│                              Tools                                     │
+│ mock_search │ web_search │ pre_fetch │ fetch_url │ github_search       │
+│ news_search │ document_reader │ read_file │ list_directory │ write_file │
+└───────────────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## 整体执行流程
 
 ```mermaid
-flowchart TD
-    A[用户研究请求] --> B[初始化 GraphState]
-    B --> C[Planner: 生成 subtasks 和 suggested_tools]
-    C --> D[Collector]
-    D --> E[Executor: 执行 planned tools]
-    E --> F[Evidence pool 去重和可选 relevance filtering]
-    F --> G[Analyst: findings + competitive matrix]
-    G --> H[Critic: 结构、证据、citation support 检查]
-    H -->|需要补充| C
-    H -->|通过| I[Reporter: 生成 Markdown]
-    I --> J[References 重建和 citation metadata]
-    J --> K[CLI/API/Dashboard 输出]
+flowchart TB
+    subgraph Input
+        A[用户研究请求] --> B[GraphState 初始化]
+    end
+
+    subgraph Planning
+        B --> C[Planner]
+        C --> C1[Domain Profile]
+        C1 --> C2[Entity Resolver]
+        C2 --> C3[Section Research Plan]
+        C3 --> C4[Subtasks + Suggested Tools]
+    end
+
+    subgraph Collection
+        C4 --> D[Collector]
+        D --> E[Executor]
+        E --> E1[planned tools]
+        E1 --> E2[verified Evidence]
+        E2 --> E3[section_collection_status]
+        E3 --> E4[evidence_scores]
+    end
+
+    subgraph Analysis
+        E4 --> F[Analyst]
+        F --> F1[Findings]
+        F --> F2[Competitive Matrix]
+    end
+
+    subgraph Quality
+        F1 --> G[Critic]
+        F2 --> G
+        G --> G1[Citation Support]
+        G1 --> G2{质量通过?}
+        G2 -->|否| C
+        G2 -->|是| H[Reporter]
+    end
+
+    subgraph Output
+        H --> H1[Citation Support Summary]
+        H1 --> H2[Markdown Report]
+        H2 --> H3[Numbered References]
+    end
 ```
+
+---
 
 ## 多智能体协作流程
 
-| Agent | 当前职责 | 报告质量路线中的演进方向 |
-|-------|----------|--------------------------|
-| Planner | 固定阶段式 subtasks，按环境变量选择工具 | Domain-aware、section-based research plan、entity-aware queries |
-| Collector | 调用 executor 采集当前 subtask evidence | Multi-round collection、follow-up queries、budgeted acquisition |
-| Executor | 执行工具、记录 tool call、维护 `global_evidence_pool`、去重、可选 relevance filtering | Search/fetch/extract/rank/converge 编排层 |
-| Analyst | 从 evidence 生成 findings 和 competitive matrix，支持 deterministic 或 opt-in LLM | Section drafts、grounded claims、source diversity awareness |
-| Critic | 检查 evidence 数量、analysis 结果、citation support | Missing-evidence replan by section/source/entity |
-| Reporter | 从 findings/evidence 生成 Markdown，重建 References，过滤非法 citation | Verified-only long-form report、strict allowed citations |
+```mermaid
+flowchart LR
+    subgraph Planner
+        P1[解析请求] --> P2[选择 domain profile]
+        P2 --> P3[解析 known entities]
+        P3 --> P4[生成 section research plan]
+        P4 --> P5[生成 subtasks]
+    end
+
+    subgraph Collector
+        E1[读取 subtasks] --> E2[执行 suggested tool]
+        E2 --> E3[采集 Evidence]
+        E3 --> E4[去重 + global_evidence_pool]
+        E4 --> E5[section sufficiency metadata]
+        E5 --> E6[evidence scoring]
+    end
+
+    subgraph Analyst
+        A1[读取 verified evidence] --> A2[生成 grounded findings]
+        A2 --> A3[生成 competitive matrix]
+    end
+
+    subgraph Critic
+        C1[检查 evidence / analysis] --> C2[validate citation support]
+        C2 --> C3[生成 replan_requests]
+        C3 --> C4{passed?}
+    end
+
+    subgraph Reporter
+        R1[读取 findings 和 verified evidence] --> R2[过滤非法引用]
+        R2 --> R3[渲染 support summary]
+        R3 --> R4[重建 References]
+    end
+
+    Planner --> Collector
+    Collector --> Analyst
+    Analyst --> Critic
+    Critic -->|replan once| Planner
+    Critic -->|passed| Reporter
+```
+
+---
 
 ## 数据流与证据链路
 
 ```mermaid
-flowchart LR
-    Request[Research Request] --> State[GraphState]
-    State --> Plan[Subtasks]
-    Plan --> Registry[Tool Registry]
+flowchart TB
+    subgraph 数据采集
+        T1[mock_search / web_search] --> T2[pre_fetch]
+        T2 --> T3[fetch_url]
+        T3 --> T4[content_extract]
+        T5[github_search] --> T8[Evidence]
+        T6[news_search] --> T8
+        T7[document_reader / file tools] --> T8
+        T4 --> T8
+    end
 
-    Registry --> Search[mock_search / web_search / news_search]
-    Registry --> Fetch[pre_fetch / fetch_url]
-    Registry --> GH[github_search]
-    Registry --> LocalDocs[document_reader]
-    Registry --> LocalFiles[read_file / list_directory / write_file]
+    subgraph State 传递
+        T8 --> S1[evidence_pool]
+        S1 --> S2[global_evidence_pool]
+        S2 --> S3[section_collection_status]
+        S2 --> S4[evidence_scores]
+    end
 
-    Search --> Evidence[Evidence]
-    Fetch --> Evidence
-    GH --> Evidence
-    LocalDocs --> Evidence
-    LocalFiles --> Evidence
+    subgraph 分析与校验
+        S2 --> A1[Findings]
+        A1 --> A2[citation_support]
+        A2 --> A3[replan_requests]
+    end
 
-    Evidence --> Pool[verified evidence_pool]
-    Pool --> Global[global_evidence_pool]
-    Global --> Findings[Findings + Competitive Matrix]
-    Findings --> Critique[Critic Assessment]
-    Critique --> Report[Markdown Report]
-    Report --> References[Numbered References]
+    subgraph Reporter 消费
+        A2 --> R1[Citation Support Summary]
+        S2 --> R2[verified references only]
+        R2 --> R3[Markdown + References]
+    end
 ```
 
-当前 evidence 模型仍是轻量结构，主要包含 title、source URL、snippet、source type、verified 等字段。路线中的目标是增加 authority、relevance、recency、section、entity、duplicate metadata，并将 claim-level snippet support 作为核心质量门。
+当前 `Evidence` 模型仍是轻量结构，主要包含 title、source URL、snippet、source type、verified 等字段。报告质量增强 metadata 通过 `GraphState` 承载，避免破坏现有公共 API 形状。
 
-## 报告质量主路线
-
-`docs/report-quality-roadmap.md` 是当前 canonical route。后续功能应优先服务报告质量，而不是继续扩展无关 dashboard、部署、auth、storage 或 eval convenience 功能。
-
-| Phase | 目标 | 状态 |
-|-------|------|------|
-| Phase 1 | Report Quality Baseline，增加深度、来源多样性、引用支撑、unsupported claims 等 deterministic metrics | 计划中 |
-| Phase 2 | Domain Profile v1，选择报告模板、来源优先级、必需 sections 和 evidence minimums | 路线中 |
-| Phase 3 | Entity Resolver v1，抽取 canonical entities、aliases、official source hints | 路线中 |
-| Phase 4 | Section-Based Research Plan，生成 section-level questions、budgets、source requirements | 路线中 |
-| Phase 5 | Multi-Round Collector v1，多轮 search/fetch/extract/rank/follow-up | 路线中 |
-| Phase 6 | Evidence Scoring v1，authority、relevance、recency、diversity、dedupe scoring | 路线中 |
-| Phase 7 | Citation Support Validator v1，claim-to-snippet validation | 路线中 |
-| Phase 8 | Critic Replan v2，按 section/source/entity 给出缺失证据任务 | 路线中 |
-| Phase 9 | Reporter v2，仅从 verified section drafts 和 allowed citations 写长报告 | 路线中 |
-| Phase 10 | Advanced Research Capabilities，高级来源、RAG、长期记忆等按需推进 | 延后 |
+---
 
 ## 技术栈
 
-| 层级 | 当前使用 |
-|------|----------|
-| 语言 | Python 3.11+ |
-| 编排 | LangGraph、LangChain Core |
-| API | FastAPI，WebSocket endpoint，静态 Dashboard |
-| CLI | Typer、Rich |
-| 数据模型 | Pydantic |
-| HTML 解析 | BeautifulSoup |
-| PDF 读取 | pypdf |
-| 搜索 | 默认 deterministic mock，opt-in DuckDuckGo via `ddgs` |
-| GitHub | 默认 deterministic mock，opt-in GitHub REST Search API |
-| LLM | 默认 deterministic/offline，opt-in OpenAI-compatible API |
-| Persistence | 默认内存，opt-in JSON metadata store，opt-in SQLite job backend |
-| 质量门 | pytest、ruff、offline Eval Bench |
+| 层级 | 技术 |
+|------|------|
+| **语言** | Python 3.11+ |
+| **编排** | LangGraph、LangChain Core |
+| **API** | FastAPI、WebSocket endpoint |
+| **前端** | zero-build static HTML/CSS/JS Dashboard |
+| **CLI** | Typer、Rich |
+| **数据模型** | Pydantic |
+| **HTML 解析** | BeautifulSoup |
+| **PDF 读取** | pypdf |
+| **搜索** | deterministic mock；opt-in DuckDuckGo via `ddgs` |
+| **GitHub** | deterministic mock；opt-in GitHub REST Search API |
+| **LLM** | deterministic default；opt-in OpenAI-compatible API |
+| **Job metadata** | 默认内存；opt-in JSON store；opt-in SQLite backend |
+| **质量门** | pytest、ruff、offline Eval Bench、CI Eval Gate |
+
+---
 
 ## 内置工具
 
-| 工具 | 默认行为 | Opt-in 行为 |
-|------|----------|-------------|
-| `mock_search` | 返回稳定 mock evidence | 无 |
-| `web_search` | mock provider，不访问公网 | `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo` 启用 DuckDuckGo provider |
-| `pre_fetch` | 对候选 URL 做受控抓取 | 跟随 `web_search` provider 输出 |
-| `fetch_url` | 抓取 direct HTTP/HTTPS URL 并生成 evidence | 用于 live URL evidence |
-| `content_extract` | 从 HTML 提取 title/text/snippet | 无 |
-| `github_search` | deterministic/offline repository evidence | `INSIGHT_GRAPH_GITHUB_PROVIDER=live` 调用 GitHub REST Search API |
-| `news_search` | deterministic/offline news evidence | 暂无 live news provider |
-| `document_reader` | 读取 cwd 内 TXT/Markdown/HTML/PDF | `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 由 Planner 选择 |
-| `read_file` | cwd 内安全只读文本读取 | `INSIGHT_GRAPH_USE_READ_FILE=1` 由 Planner 选择 |
-| `list_directory` | cwd 内一层目录列表 | `INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 由 Planner 选择 |
-| `write_file` | cwd 内 create-only 安全文本写入，不覆盖已有文件 | `INSIGHT_GRAPH_USE_WRITE_FILE=1` 由 Planner 选择 |
+| 工具 | 用途 | 默认行为 |
+|------|------|----------|
+| `mock_search` | 稳定搜索证据 | deterministic/offline |
+| `web_search` | 搜索引擎查询 | mock provider；DuckDuckGo 需 opt-in |
+| `pre_fetch` | 对候选 URL 做受控抓取 | 跟随候选 URL |
+| `fetch_url` | 抓取 direct HTTP/HTTPS URL 并生成 Evidence | live URL 工具，需用户提供 URL 或由上游候选触发 |
+| `content_extract` | 从 HTML 提取 title/text/snippet | 本地解析 |
+| `github_search` | GitHub repository evidence | mock provider；GitHub API 需 opt-in |
+| `news_search` | 新闻和产品公告风格 evidence | deterministic/offline |
+| `document_reader` | 读取 cwd 内 TXT/Markdown/HTML/PDF | opt-in，本地文件，不读 cwd 外路径 |
+| `read_file` | 读取 cwd 内安全文本文件 | opt-in，只读 |
+| `list_directory` | 列出 cwd 内一层目录 | opt-in，只读 |
+| `write_file` | 创建 cwd 内安全文本文件 | opt-in，create-only，不覆盖 |
+
+---
 
 ## 执行链路详解
 
-### Planner
+### 1. Planner
 
-Planner 接收用户研究请求和当前 GraphState，生成结构化 subtasks。当前默认 subtasks 覆盖 scope、collect、analyze、report，并根据环境变量选择 `mock_search`、`web_search`、`github_search`、`news_search`、`document_reader` 或本地文件工具。路线中的 Planner 将演进为 domain-aware 和 section-aware 计划生成器。
+- **输入**：`user_request` 和当前 `GraphState`。
+- **输出**：`subtasks`，包括 scope、collect、analyze、report 等阶段。
+- **报告质量增强**：写入 `domain_profile`、`resolved_entities`、`section_research_plan`。
+- **工具选择**：根据环境变量选择 `mock_search`、`web_search`、`github_search`、`news_search`、`document_reader` 或本地文件工具。
 
-### Collector 和 Executor
+### 2. Collector / Executor
 
-Collector 负责进入 collection 阶段，Executor 负责执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool`、去重 evidence，并在显式启用时执行 relevance filtering。当前不是完整 agentic 多轮检索循环，多轮采集属于 Phase 5。
+- **工具执行**：执行 Planner 指定工具，生成 verified evidence。
+- **证据管理**：维护 `evidence_pool` 和 `global_evidence_pool`，执行基础去重。
+- **质量 metadata**：写入 `section_collection_status` 和 `evidence_scores`。
+- **边界**：当前不是完整 agentic 多轮工具循环；真正 follow-up query orchestration 属于后续增强。
 
-### Analyst
+### 3. Analyst
 
-Analyst 默认使用 deterministic/offline provider，从 verified evidence 生成 findings 和 competitive matrix。设置 `INSIGHT_GRAPH_ANALYST_PROVIDER=llm` 后可以使用 OpenAI-compatible LLM，但 LLM 输出必须引用当前 verified evidence ID，不合法时回退 deterministic 输出。
+- **deterministic 默认**：从 verified evidence 生成 findings 和 competitive matrix。
+- **LLM opt-in**：设置 `INSIGHT_GRAPH_ANALYST_PROVIDER=llm` 后可调用 OpenAI-compatible LLM。
+- **引用约束**：LLM findings 和 matrix 必须引用当前 verified evidence ID，否则 fallback。
 
-### Critic
+### 4. Critic
 
-Critic 检查 evidence 数量、analysis 是否存在、citation support 是否足够，并决定是否放行 Reporter 或触发 replan。当前 replan 仍较轻量，Phase 8 会升级为按 section/source/entity 定位缺失证据。
+- **质量评审**：检查 evidence 数量、analysis 是否存在、citation support 是否足够。
+- **Citation support**：记录 claim-level support metadata，标记 supported / unsupported。
+- **Replan metadata**：写入结构化 `replan_requests`，包含 missing section evidence 和 unsupported claim 请求。
 
-### Reporter
+### 5. Reporter
 
-Reporter 默认 deterministic/offline，生成 Markdown report、Competitive Matrix、Critic Assessment 和 numbered References。设置 `INSIGHT_GRAPH_REPORTER_PROVIDER=llm` 后可用 OpenAI-compatible LLM 生成正文，但最终 References 由系统重建，非法 citation 会被丢弃或触发 fallback。
+- **deterministic 默认**：生成 Markdown report、Competitive Matrix、Critic Assessment、Citation Support Summary 和 References。
+- **LLM opt-in**：设置 `INSIGHT_GRAPH_REPORTER_PROVIDER=llm` 后可用 OpenAI-compatible LLM 生成正文。
+- **引用安全**：最终 References 由系统从 verified evidence 重建；support summary 只暴露 verified evidence ID。
+
+### 6. API / Dashboard / Jobs
+
+- **同步 API**：`POST /research` 返回一次性研究结果。
+- **异步 Jobs**：`/research/jobs` 支持 queued/running/succeeded/failed/cancelled 状态、cancel、retry、summary 和 report export。
+- **WebSocket**：`/research/jobs/{job_id}/stream` 推送 job lifecycle events。
+- **Dashboard**：静态页面，无构建步骤，支持创建 jobs、查看进度、报告、tool calls、LLM metadata 和导出。
+
+---
+
+## 示例输出
+
+默认离线任务：
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+典型输出结构：
+
+| 章节 | 内容 |
+|------|------|
+| `# InsightGraph Research Report` | 报告标题 |
+| `Research Request` | 原始用户请求 |
+| `Key Findings` | 带编号引用的核心发现 |
+| `Competitive Matrix` | 可引用的竞品对比表，只有 evidence 可验证时输出 |
+| `Critic Assessment` | Critic 质量评审摘要 |
+| `Citation Support` | claim support 状态、verified evidence ID 和原因 |
+| `References` | 系统重建的 numbered references |
+
+当前 offline Eval Bench 会生成 deterministic JSON/Markdown 报告，包含深度、来源多样性、引用支撑、unsupported claims 等质量指标。示例命令：
+
+```bash
+insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
+```
+
+---
+
+## 效果与亮点
+
+- **可验证引用**：最终报告只从 verified evidence 重建 References。
+- **报告质量 metadata**：从 Planner 到 Reporter 持续记录 domain、entity、section、score、support 和 replan 信息。
+- **默认安全离线**：测试、CI、默认 CLI 不访问公网，不调用真实 LLM。
+- **渐进 opt-in**：真实搜索、GitHub API、LLM provider、本地文件工具均由环境变量显式开启。
+- **API 和 Dashboard 可用**：可本地运行研究任务、查看事件流、导出 Markdown/HTML 报告。
+- **Eval 可度量**：报告质量改进通过 offline Eval Bench 和 CI Gate 验证。
+
+---
 
 ## 快速开始
 
@@ -263,10 +372,17 @@ Reporter 默认 deterministic/offline，生成 Markdown report、Competitive Mat
 ### 安装和运行
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/Caser-86/InsightGraph.git
 cd InsightGraph
+
+# 2. 安装开发依赖
 python -m pip install -e ".[dev]"
+
+# 3. 运行测试
 python -m pytest -v
+
+# 4. 执行一次离线研究
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 ```
 
@@ -294,12 +410,11 @@ insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-
 # Summarize an eval JSON report
 python scripts/summarize_eval_report.py reports/eval.json --markdown
 
-# Append a CI eval history row
-python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z
-
 # Deployment smoke CLI help
 insight-graph-smoke --help
 ```
+
+---
 
 ## API 和 Dashboard
 
@@ -310,11 +425,10 @@ python -m pip install "uvicorn[standard]"
 uvicorn insight_graph.api:app --reload
 ```
 
-Dashboard：
+访问：
 
-```text
-http://127.0.0.1:8000/dashboard
-```
+- **Dashboard**：http://127.0.0.1:8000/dashboard
+- **Health check**：http://127.0.0.1:8000/health
 
 同步研究请求：
 
@@ -348,7 +462,33 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 
 设置 `INSIGHT_GRAPH_API_KEY` 后，除 `/health` 外的 API endpoint 会要求 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`。Dashboard 提供 API key 输入框。
 
-## 配置示例
+---
+
+## 配置说明
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_USE_WEB_SEARCH` | Planner collect subtask 使用 `web_search` | 未启用 |
+| `INSIGHT_GRAPH_SEARCH_PROVIDER` | `web_search` provider：`mock` 或 `duckduckgo` | `mock` |
+| `INSIGHT_GRAPH_SEARCH_LIMIT` | web search candidate / pre-fetch 数量 | `3` |
+| `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | Planner collect subtask 使用 `github_search` | 未启用 |
+| `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider：`mock` 或 `live` | `mock` |
+| `INSIGHT_GRAPH_GITHUB_TOKEN` | GitHub API token，可选 | - |
+| `INSIGHT_GRAPH_USE_NEWS_SEARCH` | 使用 deterministic news evidence | 未启用 |
+| `INSIGHT_GRAPH_USE_DOCUMENT_READER` | 使用 cwd 内 document reader | 未启用 |
+| `INSIGHT_GRAPH_USE_READ_FILE` | 使用 cwd 内只读文本文件工具 | 未启用 |
+| `INSIGHT_GRAPH_USE_LIST_DIRECTORY` | 使用 cwd 内目录列表工具 | 未启用 |
+| `INSIGHT_GRAPH_USE_WRITE_FILE` | 使用 cwd 内 create-only 写文件工具 | 未启用 |
+| `INSIGHT_GRAPH_RELEVANCE_FILTER` | 启用 evidence relevance filtering | 未启用 |
+| `INSIGHT_GRAPH_RELEVANCE_JUDGE` | `deterministic` 或 `openai_compatible` | `deterministic` |
+| `INSIGHT_GRAPH_ANALYST_PROVIDER` | `deterministic` 或 `llm` | `deterministic` |
+| `INSIGHT_GRAPH_REPORTER_PROVIDER` | `deterministic` 或 `llm` | `deterministic` |
+| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible API key | - |
+| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint | - |
+| `INSIGHT_GRAPH_LLM_MODEL` | LLM model name | `gpt-4o-mini` |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` | opt-in JSON job metadata store | - |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` | job backend，支持 `sqlite` | memory |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` | SQLite job metadata path | - |
 
 启用 live LLM preset：
 
@@ -377,6 +517,8 @@ python -m insight_graph.cli research "README.md"
 
 更多配置见 `docs/configuration.md`。
 
+---
+
 ## 示例任务
 
 ```text
@@ -385,7 +527,23 @@ python -m insight_graph.cli research "README.md"
 要求所有关键事实附带可验证引用。
 ```
 
-目标输出：Executive Summary、市场格局概览、竞品功能矩阵、定价与商业模式对比、技术趋势分析、风险与不确定性、未来 12 个月判断、References。
+目标输出结构：Executive Summary、市场格局概览、竞品功能矩阵、定价与商业模式对比、技术趋势分析、风险与不确定性、未来 12 个月判断、Citation Support、References。
+
+---
+
+## 脚本
+
+| 脚本 | 用途 |
+|------|------|
+| `scripts/run_research.py` | 命令行执行研究任务 |
+| `scripts/benchmark_research.py` | 运行 offline benchmark，支持 Markdown 输出 |
+| `scripts/summarize_eval_report.py` | 汇总 Eval JSON 报告 |
+| `scripts/append_eval_history.py` | 追加 CI eval history artifact |
+| `scripts/validate_document_reader.py` | 验证本地 document reader 行为 |
+| `scripts/validate_github_search.py` | 验证 GitHub search provider 行为 |
+| `scripts/validate_sources.py` | 验证 source URL / source data |
+
+---
 
 ## 文档入口
 
@@ -399,6 +557,8 @@ python -m insight_graph.cli research "README.md"
 - [Research job repository contract](docs/research-job-repository-contract.md)：research jobs 稳定契约和存储后端要求。
 - [Roadmap](docs/roadmap.md)：当前路线入口和已完成工程优先级。
 - [Changelog](CHANGELOG.md)：版本变更记录。
+
+---
 
 ## License
 
