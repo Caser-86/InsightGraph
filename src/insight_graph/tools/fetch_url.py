@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from io import BytesIO
@@ -14,7 +15,8 @@ from pypdf.errors import PdfReadError
 
 from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
-from insight_graph.tools.http_client import fetch_text
+from insight_graph.tools.http_client import FetchedPage, FetchError, fetch_text
+from insight_graph.tools.rendered_fetch import render_page
 
 MAX_FETCHED_EVIDENCE = 5
 MAX_SNIPPET_CHARS = 500
@@ -37,7 +39,7 @@ class FetchUrlQuery:
 
 def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
     parsed_query = _parse_fetch_url_query(url)
-    page = fetch_text(parsed_query.url)
+    page = _fetch_page(parsed_query.url)
     if _is_pdf_response(page.content_type, page.url):
         return _pdf_evidence(page, subtask_id, parsed_query.retrieval_query)
 
@@ -63,6 +65,19 @@ def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
         )
         for index, chunk in enumerate(chunks[:MAX_FETCHED_EVIDENCE])
     ]
+
+
+def _fetch_page(url: str) -> FetchedPage:
+    if _is_truthy_env("INSIGHT_GRAPH_FETCH_RENDERED"):
+        try:
+            return render_page(url)
+        except FetchError:
+            pass
+    return fetch_text(url)
+
+
+def _is_truthy_env(name: str) -> bool:
+    return os.getenv(name, "").lower() in {"1", "true", "yes"}
 
 
 def _parse_fetch_url_query(query: str) -> FetchUrlQuery:

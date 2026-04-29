@@ -133,6 +133,36 @@ def test_fetch_url_ranks_chunks_from_json_query(monkeypatch) -> None:
     assert "roadmap details" in evidence[0].snippet
 
 
+def test_fetch_url_uses_rendered_fetch_when_enabled(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        raise AssertionError(f"fetch_text should not be called for rendered fetch: {url}")
+
+    def fake_render_page(url: str):
+        assert url == "https://example.com/app"
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text="""
+            <html>
+              <head><title>Rendered App</title></head>
+              <body><main><p>Client rendered evidence text.</p></main></body>
+            </html>
+            """,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setenv("INSIGHT_GRAPH_FETCH_RENDERED", "1")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+    monkeypatch.setattr(fetch_url_module, "render_page", fake_render_page, raising=False)
+
+    evidence = fetch_url("https://example.com/app", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].title == "Rendered App"
+    assert evidence[0].snippet == "Client rendered evidence text."
+
+
 def test_fetch_url_reads_remote_pdf_with_page_metadata(monkeypatch) -> None:
     pdf_bytes = write_minimal_pdf_bytes("Remote PDF evidence text.")
 

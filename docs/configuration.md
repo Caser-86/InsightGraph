@@ -2,7 +2,7 @@
 
 InsightGraph defaults to deterministic/offline behavior. Live search, live LLM, GitHub API access, and local file/document tools require explicit opt-in environment variables.
 
-Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, and `INSIGHT_GRAPH_RELEVANCE_JUDGE=deterministic` without enabling LLM Analyst or Reporter. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. Use `--preset live-llm` or explicit LLM environment variables when model-generated analysis/reporting is desired.
+Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, and `INSIGHT_GRAPH_RELEVANCE_JUDGE=deterministic` without enabling LLM Analyst or Reporter. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately. Use `--preset live-llm` or explicit LLM environment variables when model-generated analysis/reporting is desired.
 
 ## Search Provider 配置
 
@@ -39,6 +39,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_USE_WRITE_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用 create-only `write_file`；搜索工具、`document_reader`、`read_file` 和 `list_directory` 优先 | 未启用 |
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
+| `INSIGHT_GRAPH_FETCH_RENDERED` | `1` / `true` / `yes` 时 `fetch_url` 优先尝试 optional Playwright rendered fetch，失败时回退到 bounded HTTP fetch | 未启用 |
 | `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider，支持默认离线 `mock` 或 opt-in GitHub API `live` | `mock` |
 | `INSIGHT_GRAPH_GITHUB_LIMIT` | live GitHub repository search 返回数量，范围 `1` 到 `10` | `3` |
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | 可选 GitHub API token；未设置时回退到 `GITHUB_TOKEN`，仍可匿名请求 | - |

@@ -11,8 +11,8 @@
 4. Done: section-aware query generation.
 5. Done: report template tightening.
 6. Done: long-document retrieval v2.
-7. Next: opt-in rendered-page fetch.
-8. Financial analysis tools beyond recent filing discovery.
+7. Done: opt-in rendered-page fetch.
+8. Next: financial analysis tools beyond recent filing discovery.
 9. PostgreSQL checkpoint resume and pgvector memory.
 
 **Rules:**
