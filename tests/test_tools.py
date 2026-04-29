@@ -867,7 +867,11 @@ def test_registry_runs_web_search_tool(monkeypatch) -> None:
     assert evidence[0].subtask_id == "s1"
 
 
-def test_registry_runs_github_search_tool() -> None:
+def test_registry_runs_github_search_tool(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_PROVIDER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_LIMIT", raising=False)
+
     evidence = ToolRegistry().run("github_search", "Compare AI coding agents", "s1")
 
     assert len(evidence) == 3

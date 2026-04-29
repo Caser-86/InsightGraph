@@ -103,6 +103,56 @@ def test_executor_deduplicates_evidence(monkeypatch) -> None:
     assert updated.tool_call_log[0].evidence_count == 2
 
 
+def test_executor_collects_multiple_suggested_tools(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    web = Evidence(
+        id="web",
+        subtask_id="collect",
+        title="Web Evidence",
+        source_url="https://example.com/web",
+        snippet="Web evidence.",
+        source_type="official_site",
+        verified=True,
+    )
+    github = Evidence(
+        id="github",
+        subtask_id="collect",
+        title="GitHub Evidence",
+        source_url="https://github.com/example/project",
+        snippet="GitHub evidence.",
+        source_type="github",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            if name == "web_search":
+                return [web]
+            if name == "github_search":
+                return [github]
+            raise AssertionError(f"unexpected tool: {name}")
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        subtasks=[
+            Subtask(
+                id="collect",
+                description="Collect",
+                suggested_tools=["web_search", "github_search"],
+            )
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["web", "github"]
+    assert [record.tool_name for record in updated.tool_call_log] == [
+        "web_search",
+        "github_search",
+    ]
+
+
 def test_executor_logs_tool_failure_and_continues(monkeypatch) -> None:
     registry_module = importlib.import_module("insight_graph.agents.executor")
 

@@ -27,6 +27,9 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_WEB_SEARCH",
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
         "INSIGHT_GRAPH_SEARCH_LIMIT",
+        "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
+        "INSIGHT_GRAPH_GITHUB_PROVIDER",
+        "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
         "OPENAI_API_KEY",
@@ -95,6 +98,9 @@ def test_apply_live_research_preset_sets_network_defaults(monkeypatch) -> None:
     assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
     assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
     assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "5"
+    assert os.environ["INSIGHT_GRAPH_USE_GITHUB_SEARCH"] == "1"
+    assert os.environ["INSIGHT_GRAPH_GITHUB_PROVIDER"] == "live"
+    assert os.environ["INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "deterministic"
     assert "INSIGHT_GRAPH_ANALYST_PROVIDER" not in os.environ

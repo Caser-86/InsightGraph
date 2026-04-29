@@ -446,7 +446,7 @@ Acceptance criteria:
 
 Goal: add heavier capabilities only after phases 1-9 are stable.
 
-Initial implementation adds a `live-research` runtime preset for reference-style networked research. The preset explicitly enables DuckDuckGo-backed web search, a larger live search limit, and deterministic relevance filtering while preserving offline defaults for tests and CI. LLM Analyst/Reporter remain separately opt-in through `live-llm` or explicit environment variables.
+Initial implementation adds a `live-research` runtime preset for reference-style networked research. The preset explicitly enables DuckDuckGo-backed web search, GitHub live repository search, multi-source collection, a larger live search limit, and deterministic relevance filtering while preserving offline defaults for tests and CI. LLM Analyst/Reporter remain separately opt-in through `live-llm` or explicit environment variables.
 
 Deferred items:
 

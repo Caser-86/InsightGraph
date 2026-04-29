@@ -504,6 +504,17 @@ def test_planner_prefers_web_search_over_github_search(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["web_search"]
 
 
+def test_planner_uses_multiple_live_sources_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search", "github_search"]
+
+
 def test_planner_prefers_github_search_over_news_search(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")

@@ -31,7 +31,7 @@ def plan_research(state: GraphState) -> GraphState:
             ),
             subtask_type="research",
             dependencies=["scope"],
-            suggested_tools=[_collection_tool_name()],
+            suggested_tools=_collection_tool_names(),
         ),
         Subtask(
             id="analyze",
@@ -47,6 +47,21 @@ def plan_research(state: GraphState) -> GraphState:
         ),
     ]
     return state
+
+
+def _collection_tool_names() -> list[str]:
+    if _is_truthy_env("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"):
+        tools = []
+        if _is_truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"):
+            tools.append("web_search")
+        if _is_truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"):
+            tools.append("github_search")
+        if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
+            tools.append("news_search")
+        if tools:
+            return tools
+
+    return [_collection_tool_name()]
 
 
 def _collection_tool_name() -> str:

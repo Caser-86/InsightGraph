@@ -62,7 +62,7 @@ src/insight_graph/
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
 | **可选实时数据源** | DuckDuckGo web search 和 GitHub REST Search 均为显式 opt-in；默认测试不访问公网 |
-| **Live Research Preset** | `--preset live-research` 一键启用联网搜索、较高候选数量和 deterministic relevance filtering |
+| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、多源采集和 deterministic relevance filtering |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
@@ -478,6 +478,7 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 | `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | Planner collect subtask 使用 `github_search` | 未启用 |
 | `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider：`mock` 或 `live` | `mock` |
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | GitHub API token，可选 | - |
+| `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION` | Planner collect subtask 同时使用多个启用的采集工具 | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | 使用 deterministic news evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | 使用 cwd 内 document reader | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | 使用 cwd 内只读文本文件工具 | 未启用 |
@@ -500,7 +501,7 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
 ```
 
-该 preset 会启用 DuckDuckGo-backed `web_search`、提高搜索候选数量，并打开 deterministic relevance filtering；不会自动启用 LLM Analyst/Reporter。
+该 preset 会启用 DuckDuckGo-backed `web_search`、GitHub live repository search、多源采集、较高搜索候选数量和 deterministic relevance filtering；不会自动启用 LLM Analyst/Reporter。
 
 启用 live LLM preset：
 

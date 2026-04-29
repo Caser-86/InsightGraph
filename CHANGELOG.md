@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Expanded `live-research` to use multi-source web and GitHub live collection.
 - Added a `live-research` preset for opt-in networked research runs.
 - Added Reporter citation support summaries from verified citation metadata.
 - Added structured Critic replan request metadata.
