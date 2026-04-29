@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.19 - 2026-04-29
+
 - Added Eval Bench report summary script.
 
 ## v0.1.18 - 2026-04-29
