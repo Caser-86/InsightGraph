@@ -30,6 +30,37 @@ def test_executor_collects_evidence_and_records_success() -> None:
     assert updated.tool_call_log[0].error is None
 
 
+def test_executor_records_section_collection_status() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        section_research_plan=[
+            {
+                "section_id": "executive-summary",
+                "title": "Executive Summary",
+                "questions": ["What matters?"],
+                "required_source_types": ["official_site"],
+                "min_evidence": 2,
+                "budget": 3,
+                "entity_ids": [],
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["mock_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.section_collection_status == [
+        {
+            "section_id": "executive-summary",
+            "round": 1,
+            "evidence_count": 3,
+            "min_evidence": 2,
+            "sufficient": True,
+            "missing_evidence": 0,
+        }
+    ]
+
+
 def test_executor_deduplicates_evidence(monkeypatch) -> None:
     registry_module = importlib.import_module("insight_graph.agents.executor")
 

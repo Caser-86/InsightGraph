@@ -338,6 +338,8 @@ Acceptance criteria:
 
 Goal: collect enough evidence per section before analysis.
 
+Initial implementation records deterministic per-section collection sufficiency on `GraphState.section_collection_status` after the existing tool pass. It does not add follow-up tool rounds yet; later iterations can use this status to generate missing-evidence queries.
+
 Loop shape:
 
 ```text

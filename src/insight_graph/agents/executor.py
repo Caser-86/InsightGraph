@@ -36,7 +36,33 @@ def execute_subtasks(state: GraphState) -> GraphState:
     state.evidence_pool = deduped
     state.global_evidence_pool = deduped
     state.tool_call_log = records
+    state.section_collection_status = _build_section_collection_status(
+        state.section_research_plan,
+        deduped,
+    )
     return state
+
+
+def _build_section_collection_status(
+    section_plan: list[dict[str, object]],
+    evidence: list[Evidence],
+) -> list[dict[str, object]]:
+    statuses: list[dict[str, object]] = []
+    evidence_count = len(evidence)
+    for section in section_plan:
+        min_evidence = int(section.get("min_evidence", 1))
+        missing_evidence = max(0, min_evidence - evidence_count)
+        statuses.append(
+            {
+                "section_id": str(section.get("section_id", "")),
+                "round": 1,
+                "evidence_count": evidence_count,
+                "min_evidence": min_evidence,
+                "sufficient": missing_evidence == 0,
+                "missing_evidence": missing_evidence,
+            }
+        )
+    return statuses
 
 
 def _run_tool_with_fallback(
