@@ -471,6 +471,18 @@ Deferred items:
 - pgvector long-term memory.
 - Conversation compression for very long live runs.
 
+Next work queue:
+
+1. Replan-driven follow-up collection: consume `replan_requests` to issue targeted follow-up queries for missing section/source evidence before the existing one retry returns to analysis.
+2. Section evidence attribution: attach evidence to likely section IDs using source requirements, query terms, entity mentions, and source types instead of treating every section as covered by the same global pool.
+3. Collection budgets and caps: enforce per-run/per-tool/per-section evidence caps so live multi-source collection remains bounded as more providers are added.
+4. Section-aware query generation: build deterministic queries from `section_research_plan`, resolved entities, and missing source types so each source receives narrower prompts.
+5. Report template tightening: map domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
+6. Long-document retrieval v2: improve local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
+7. Rendered-page fetch: add opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
+8. Financial analysis tools: extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
+9. Persistence and memory: defer PostgreSQL checkpoint resume and pgvector long-term memory until the grounded evidence loop produces consistently useful reports.
+
 Acceptance criteria:
 
 - These items must not be started before the route has a stable quality baseline and grounded report pipeline.
@@ -515,4 +527,5 @@ Phases 1-9 are implemented and Phase 10 is active. Next work should continue the
 - Keep docs aligned with implemented live/document/filings behavior.
 - Add safety and quality bounds around live fetches.
 - Use evidence scores and section source requirements more directly during collection.
+- Implement the next work queue in order unless the user explicitly reprioritizes.
 - Defer Playwright, pgvector, PostgreSQL checkpoint resume, and long-term memory until the bounded evidence path is stable.
