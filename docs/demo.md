@@ -105,8 +105,9 @@ insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-
 Use `docs/evals/default.json` for the checked-in default case set, or pass
 `--case-file path/to/cases.json` to run a custom JSON case set.
 
-GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`
-and `reports/eval.md` for each CI run.
+GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`,
+`reports/eval.md`, `reports/eval-summary.json`, and `reports/eval-summary.md`
+for each CI run.
 
 Summarize a downloaded or local eval JSON report:
 

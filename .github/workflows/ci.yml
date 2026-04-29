@@ -32,6 +32,8 @@ jobs:
           mkdir -p reports
           insight-graph-eval --case-file docs/evals/default.json --output reports/eval.json
           insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
+          python scripts/summarize_eval_report.py reports/eval.json > reports/eval-summary.json
+          python scripts/summarize_eval_report.py reports/eval.json --markdown > reports/eval-summary.md
 
       - name: Eval Gate
         run: insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
@@ -41,4 +43,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: eval-reports
-          path: reports/eval.*
+          path: |
+            reports/eval.json
+            reports/eval.md
+            reports/eval-summary.json
+            reports/eval-summary.md
