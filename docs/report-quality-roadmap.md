@@ -478,6 +478,8 @@ Rendered-page fetch is now opt-in. `fetch_url` uses lazy Playwright rendering on
 
 SEC financial evidence now extends beyond recent filing discovery. The opt-in `sec_financials` tool reads SEC companyfacts JSON for known public-company targets and emits deterministic revenue, net income, and assets evidence without claiming full financial modeling.
 
+PostgreSQL checkpoint resume and pgvector long-term memory are deferred to a later infrastructure phase. Phase 10 closes without adding heavy persistence dependencies; future work must first specify resume semantics, migration paths, embedding cost controls, privacy/deletion behavior, and report-quality gains.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
@@ -497,7 +499,7 @@ Next work queue:
 6. Done: long-document retrieval v2 improves local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
 7. Done: rendered-page fetch adds opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
 8. Done: financial analysis tools extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
-9. Next: persistence and memory defers PostgreSQL checkpoint resume and pgvector long-term memory until the grounded evidence loop produces consistently useful reports.
+9. Done: persistence and memory defers PostgreSQL checkpoint resume and pgvector long-term memory until a separate infrastructure phase.
 
 Acceptance criteria:
 

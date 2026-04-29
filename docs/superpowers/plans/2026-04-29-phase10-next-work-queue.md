@@ -13,7 +13,9 @@
 6. Done: long-document retrieval v2.
 7. Done: opt-in rendered-page fetch.
 8. Done: financial analysis tools beyond recent filing discovery.
-9. Next: PostgreSQL checkpoint resume and pgvector memory.
+9. Done: PostgreSQL checkpoint resume and pgvector memory deferred to a future infrastructure phase.
+
+**Status:** Phase 10 next-work queue is complete.
 
 **Rules:**
 - Preserve deterministic/offline defaults.

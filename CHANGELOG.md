@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Closed the Phase 10 queue by documenting PostgreSQL/pgvector deferral criteria.
 - Added deterministic SEC companyfacts financial evidence.
 - Added opt-in rendered-page fetch support for JavaScript-heavy pages.
 - Improved long-document chunk ranking for local documents and fetched pages.
