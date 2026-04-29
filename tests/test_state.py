@@ -85,6 +85,17 @@ def test_tool_call_record_defaults_to_success() -> None:
     assert record.error is None
 
 
+def test_collection_depth_metadata_defaults_are_backward_compatible() -> None:
+    record = ToolCallRecord(subtask_id="collect", tool_name="mock_search", query="q")
+    state = GraphState(user_request="q")
+
+    assert record.round_index == 1
+    assert record.section_id is None
+    assert record.stop_reason is None
+    assert state.collection_rounds == []
+    assert state.collection_stop_reason is None
+
+
 def test_graph_state_starts_with_executor_collections() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 

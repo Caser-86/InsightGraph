@@ -258,6 +258,8 @@ def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dic
         if claim_count == 0
         else _percentage(supported_claim_count, claim_count),
         "duplicate_source_rate": duplicate_source_rate,
+        "collection_round_count": len(state.collection_rounds),
+        "collection_stop_reason": state.collection_stop_reason or "unknown",
     }
 
 
@@ -281,6 +283,8 @@ def _empty_report_quality_metrics() -> dict[str, Any]:
         "unsupported_claim_count": 0,
         "citation_support_score": 0,
         "duplicate_source_rate": 0,
+        "collection_round_count": 0,
+        "collection_stop_reason": "unknown",
     }
 
 
@@ -424,6 +428,9 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             for item in case_results
         ),
         "average_duplicate_source_rate": _average_quality(case_results, "duplicate_source_rate"),
+        "average_collection_round_count": _average_quality(
+            case_results, "collection_round_count"
+        ),
     }
 
 
@@ -480,8 +487,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
             "",
             "| Query | Section coverage | Report depth | Source diversity | Citation support "
             "| Evidence/section | Official source coverage | Unsupported claims "
-            "| Duplicate source rate |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Duplicate source rate | Collection rounds | Stop reason |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     for item in payload["cases"]:
@@ -499,6 +506,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
                     str(quality.get("official_source_coverage_score", 0)),
                     str(quality.get("unsupported_claim_count", 0)),
                     str(quality.get("duplicate_source_rate", 0)),
+                    str(quality.get("collection_round_count", 0)),
+                    _markdown_table_cell(str(quality.get("collection_stop_reason", "unknown"))),
                 ]
             )
             + " |"
@@ -538,8 +547,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
             "",
             "| Avg section coverage | Avg report depth | Avg source diversity "
             "| Avg citation support | Avg evidence/section | Avg official source coverage "
-            "| Unsupported claims | Avg duplicate source rate |",
-            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Unsupported claims | Avg duplicate source rate | Avg collection rounds |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             "| "
             + " | ".join(
                 [
@@ -551,6 +560,7 @@ def format_markdown(payload: dict[str, Any]) -> str:
                     str(summary.get("average_official_source_coverage_score", 0)),
                     str(summary.get("total_unsupported_claims", 0)),
                     str(summary.get("average_duplicate_source_rate", 0)),
+                    str(summary.get("average_collection_round_count", 0)),
                 ]
             )
             + " |",

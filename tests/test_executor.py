@@ -30,6 +30,27 @@ def test_executor_collects_evidence_and_records_success() -> None:
     assert updated.tool_call_log[0].error is None
 
 
+def test_max_collection_rounds_defaults_to_one(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.delenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", raising=False)
+
+    assert executor_module._max_collection_rounds() == 1
+
+
+def test_max_collection_rounds_reads_positive_integer(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", "3")
+
+    assert executor_module._max_collection_rounds() == 3
+
+
+def test_max_collection_rounds_ignores_invalid_values(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", "0")
+
+    assert executor_module._max_collection_rounds() == 1
+
+
 def test_executor_records_section_collection_status() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
@@ -62,6 +83,99 @@ def test_executor_records_section_collection_status() -> None:
             "missing_evidence": 0,
         }
     ]
+
+
+def test_executor_runs_additional_round_for_insufficient_section(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", "2")
+    observed_queries: list[str] = []
+
+    official = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+    news = Evidence(
+        id="news",
+        subtask_id="collect",
+        title="News Evidence",
+        source_url="https://example.com/news",
+        snippet="News evidence has enough words for relevance.",
+        source_type="news",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed_queries.append(query)
+            if len(observed_queries) == 1:
+                return [official]
+            return [news]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        section_research_plan=[
+            {
+                "section_id": "market-signals",
+                "title": "Market Signals",
+                "questions": ["What market news exists?"],
+                "required_source_types": ["official_site", "news"],
+                "min_evidence": 2,
+                "budget": 3,
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [record.round_index for record in updated.tool_call_log] == [1, 2]
+    assert "missing source types: news" in observed_queries[1]
+    assert {item.id for item in updated.evidence_pool} == {"official", "news"}
+    assert updated.section_collection_status[0]["sufficient"] is True
+    assert updated.collection_stop_reason == "sufficient"
+
+
+def test_executor_stops_when_follow_up_adds_no_new_evidence(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", "3")
+    duplicate = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [duplicate]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        section_research_plan=[
+            {
+                "section_id": "market-signals",
+                "required_source_types": ["official_site", "news"],
+                "min_evidence": 2,
+                "budget": 3,
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [record.round_index for record in updated.tool_call_log] == [1, 2]
+    assert updated.collection_stop_reason == "no_new_evidence"
 
 
 def test_executor_marks_section_insufficient_when_required_source_type_missing(

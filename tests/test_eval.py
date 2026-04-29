@@ -156,6 +156,29 @@ def test_build_eval_payload_includes_report_quality_metrics(monkeypatch) -> None
     assert quality["duplicate_source_rate"] == 0
 
 
+def test_build_eval_payload_includes_collection_depth_metrics(monkeypatch) -> None:
+    monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
+
+    def state_with_collection_depth(query: str) -> GraphState:
+        state = make_eval_state(query)
+        state.collection_rounds = [
+            {"round": 1, "new_evidence_count": 1},
+            {"round": 2, "new_evidence_count": 1},
+        ]
+        state.collection_stop_reason = "sufficient"
+        return state
+
+    payload = eval_module.build_eval_payload(
+        [eval_module.EvalCase(query="Compare Cursor", min_references=2)],
+        run_research_func=state_with_collection_depth,
+    )
+
+    quality = payload["cases"][0]["quality"]
+    assert quality["collection_round_count"] == 2
+    assert quality["collection_stop_reason"] == "sufficient"
+    assert payload["summary"]["average_collection_round_count"] == 2
+
+
 def test_eval_summary_includes_report_quality_aggregates(monkeypatch) -> None:
     monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
 
@@ -283,6 +306,8 @@ def test_format_markdown_includes_eval_score_columns() -> None:
                     "unsupported_claim_count": 0,
                     "citation_support_score": 100,
                     "duplicate_source_rate": 0,
+                    "collection_round_count": 2,
+                    "collection_stop_reason": "sufficient",
                 },
             }
         ],
@@ -307,6 +332,7 @@ def test_format_markdown_includes_eval_score_columns() -> None:
             "average_citation_support_score": 100,
             "total_unsupported_claims": 0,
             "average_duplicate_source_rate": 0,
+            "average_collection_round_count": 2,
         },
     }
 
@@ -320,14 +346,14 @@ def test_format_markdown_includes_eval_score_columns() -> None:
     assert (
         "| Query | Section coverage | Report depth | Source diversity | Citation support "
         "| Evidence/section | Official source coverage | Unsupported claims "
-        "| Duplicate source rate |"
+        "| Duplicate source rate | Collection rounds | Stop reason |"
     ) in markdown
-    assert "| Compare Cursor | 100 | 17 | 67 | 100 | 1 | 67 | 0 | 0 |" in markdown
+    assert "| Compare Cursor | 100 | 17 | 67 | 100 | 1 | 67 | 0 | 0 | 2 | sufficient |" in markdown
     assert "## Report Quality Summary" in markdown
     assert (
         "| Avg section coverage | Avg report depth | Avg source diversity "
         "| Avg citation support | Avg evidence/section | Avg official source coverage "
-        "| Unsupported claims | Avg duplicate source rate |"
+        "| Unsupported claims | Avg duplicate source rate | Avg collection rounds |"
     ) in markdown
 
 

@@ -62,6 +62,9 @@ class ToolCallRecord(BaseModel):
     filtered_count: int = 0
     success: bool = True
     error: str | None = None
+    round_index: int = 1
+    section_id: str | None = None
+    stop_reason: str | None = None
 
 
 class LLMCallRecord(BaseModel):
@@ -100,3 +103,5 @@ class GraphState(BaseModel):
     critique: Critique | None = None
     report_markdown: str | None = None
     iterations: int = 0
+    collection_rounds: list[dict[str, object]] = Field(default_factory=list)
+    collection_stop_reason: str | None = None

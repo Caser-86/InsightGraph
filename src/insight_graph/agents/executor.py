@@ -1,3 +1,4 @@
+import os
 import re
 
 from insight_graph.agents.relevance import (
@@ -16,6 +17,7 @@ WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
 WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 MAX_EVIDENCE_PER_TOOL = 5
 MAX_EVIDENCE_PER_RUN = 20
+MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
 TOOL_SOURCE_TYPES = {
     "github_search": {"github"},
     "news_search": {"news"},
@@ -25,26 +27,77 @@ TOOL_SOURCE_TYPES = {
 }
 
 
+def _max_collection_rounds() -> int:
+    raw_value = os.environ.get(MAX_COLLECTION_ROUNDS_ENV, "1")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return 1
+    return value if value > 0 else 1
+
+
 def execute_subtasks(state: GraphState) -> GraphState:
     registry = ToolRegistry()
     collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
+    max_rounds = _max_collection_rounds()
+    previous_evidence_keys: set[tuple[str, str]] = set()
+    round_summaries: list[dict[str, object]] = []
+    stop_reason = "max_rounds"
 
-    for subtask in state.subtasks:
-        for tool_name in subtask.suggested_tools:
-            query = _collection_query(state, tool_name)
-            kept_results, new_records = _run_tool_with_fallback(
-                registry,
-                tool_name,
-                query,
-                subtask,
-                filter_enabled,
-                state.llm_call_log,
-            )
-            collected.extend(kept_results)
-            records.extend(new_records)
+    for round_index in range(1, max_rounds + 1):
+        section_focus = _section_focus_for_round(state, round_index)
+        for subtask in state.subtasks:
+            for tool_name in subtask.suggested_tools:
+                query = _collection_query(state, tool_name, section_focus)
+                section_id = _focused_section_id(section_focus)
+                kept_results, new_records = _run_tool_with_fallback(
+                    registry,
+                    tool_name,
+                    query,
+                    subtask,
+                    filter_enabled,
+                    state.llm_call_log,
+                    round_index=round_index,
+                    section_id=section_id,
+                )
+                collected.extend(kept_results)
+                records.extend(new_records)
 
+        state = _finalize_collected_evidence(state, collected, records)
+        current_evidence_keys = {(item.id, item.source_url) for item in state.evidence_pool}
+        new_evidence_count = len(current_evidence_keys - previous_evidence_keys)
+        previous_evidence_keys = current_evidence_keys
+        sufficient = _all_sections_sufficient(state.section_collection_status)
+        round_summaries.append(
+            {
+                "round": round_index,
+                "new_evidence_count": new_evidence_count,
+                "total_evidence_count": len(state.evidence_pool),
+                "sufficient": sufficient,
+            }
+        )
+        if sufficient:
+            stop_reason = "sufficient"
+            break
+        if not state.section_research_plan:
+            stop_reason = "no_section_plan"
+            break
+        if round_index > 1 and new_evidence_count == 0:
+            stop_reason = "no_new_evidence"
+            break
+
+    state.collection_rounds = round_summaries
+    state.collection_stop_reason = stop_reason
+    return state
+
+
+def _finalize_collected_evidence(
+    state: GraphState,
+    collected: list[Evidence],
+    records: list[ToolCallRecord],
+) -> GraphState:
     deduped = _assign_section_ids(
         _deduplicate_evidence(collected),
         state.section_research_plan,
@@ -63,6 +116,29 @@ def execute_subtasks(state: GraphState) -> GraphState:
     return state
 
 
+def _section_focus_for_round(
+    state: GraphState,
+    round_index: int,
+) -> dict[str, object] | None:
+    if round_index <= 1:
+        return None
+    for status in state.section_collection_status:
+        if not bool(status.get("sufficient", False)):
+            return status
+    return None
+
+
+def _focused_section_id(section_focus: dict[str, object] | None) -> str | None:
+    if section_focus is None:
+        return None
+    section_id = section_focus.get("section_id")
+    return section_id if isinstance(section_id, str) and section_id else None
+
+
+def _all_sections_sufficient(statuses: list[dict[str, object]]) -> bool:
+    return bool(statuses) and all(bool(status.get("sufficient", False)) for status in statuses)
+
+
 def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
     if state.iterations <= 0 or not state.replan_requests:
         return []
@@ -70,12 +146,26 @@ def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
     return [Evidence.model_validate(item) for item in existing]
 
 
-def _collection_query(state: GraphState, tool_name: str) -> str:
+def _collection_query(
+    state: GraphState,
+    tool_name: str,
+    section_focus: dict[str, object] | None = None,
+) -> str:
     base_query = _section_aware_query(state, tool_name)
-    if state.iterations <= 0 or not state.replan_requests:
-        return base_query
-
     parts = [base_query]
+    if section_focus is not None:
+        focused_section_id = _focused_section_id(section_focus)
+        missing_evidence = int(section_focus.get("missing_evidence", 0))
+        missing_source_types = _string_list(section_focus.get("missing_source_types", []))
+        if focused_section_id:
+            parts.append(f"section: {focused_section_id}")
+        if missing_source_types:
+            parts.append(f"missing source types: {', '.join(missing_source_types)}")
+        if missing_evidence > 0:
+            parts.append(f"missing evidence: {missing_evidence}")
+    if state.iterations <= 0 or not state.replan_requests:
+        return " | ".join(parts)
+
     for request in state.replan_requests:
         if request.get("type") != "missing_section_evidence":
             continue
@@ -267,6 +357,9 @@ def _run_tool_with_fallback(
     subtask: Subtask,
     filter_enabled: bool,
     llm_call_log: list[LLMCallRecord],
+    *,
+    round_index: int = 1,
+    section_id: str | None = None,
 ) -> tuple[list[Evidence], list[ToolCallRecord]]:
     try:
         results = registry.run(tool_name, query, subtask.id)
@@ -277,11 +370,19 @@ def _run_tool_with_fallback(
             query=query,
             success=False,
             error=str(exc),
+            round_index=round_index,
+            section_id=section_id,
         )
         if tool_name != WEB_SEARCH_TOOL:
             return [], [failed_record]
         fallback_results, fallback_records = _run_mock_search_fallback(
-            registry, query, subtask, filter_enabled, llm_call_log
+            registry,
+            query,
+            subtask,
+            filter_enabled,
+            llm_call_log,
+            round_index=round_index,
+            section_id=section_id,
         )
         return fallback_results, [failed_record, *fallback_records]
 
@@ -292,9 +393,17 @@ def _run_tool_with_fallback(
             query=query,
             success=False,
             error=WEB_SEARCH_EMPTY_FALLBACK_ERROR,
+            round_index=round_index,
+            section_id=section_id,
         )
         fallback_results, fallback_records = _run_mock_search_fallback(
-            registry, query, subtask, filter_enabled, llm_call_log
+            registry,
+            query,
+            subtask,
+            filter_enabled,
+            llm_call_log,
+            round_index=round_index,
+            section_id=section_id,
         )
         return fallback_results, [failed_record, *fallback_records]
 
@@ -309,6 +418,8 @@ def _run_tool_with_fallback(
             query=query,
             evidence_count=len(results),
             filtered_count=filtered_count + cap_filtered_count,
+            round_index=round_index,
+            section_id=section_id,
         )
     ]
 
@@ -337,6 +448,9 @@ def _run_mock_search_fallback(
     subtask: Subtask,
     filter_enabled: bool,
     llm_call_log: list[LLMCallRecord],
+    *,
+    round_index: int = 1,
+    section_id: str | None = None,
 ) -> tuple[list[Evidence], list[ToolCallRecord]]:
     try:
         results = registry.run(MOCK_SEARCH_TOOL, query, subtask.id)
@@ -348,6 +462,8 @@ def _run_mock_search_fallback(
                 query=query,
                 success=False,
                 error=f"fallback for web_search failed: {exc}",
+                round_index=round_index,
+                section_id=section_id,
             )
         ]
 
@@ -363,6 +479,8 @@ def _run_mock_search_fallback(
             evidence_count=len(results),
             filtered_count=filtered_count + cap_filtered_count,
             error=WEB_SEARCH_FALLBACK_NOTE,
+            round_index=round_index,
+            section_id=section_id,
         )
     ]
 

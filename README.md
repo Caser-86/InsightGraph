@@ -2,7 +2,7 @@
 
 基于 LangGraph 的多智能体商业情报研究引擎，面向竞品分析、技术趋势、市场机会识别、公司研究和产业洞察等场景。系统通过 Planner、Collector、Analyst、Critic、Reporter 协作完成任务分解、证据采集、分析归纳、质量评审和引用报告生成，默认产出带可验证 References 的结构化 Markdown 报告。
 
-Phase 10 report-quality queue is complete. PostgreSQL checkpoint resume and pgvector memory are intentionally deferred to a later infrastructure phase.
+Phase 10 report-quality queue is complete, and Phase 11 has started the reference-quality deep-research route with bounded multi-round collection for live research. PostgreSQL checkpoint resume and pgvector memory are intentionally deferred to a later infrastructure phase.
 
 当前项目已完成可运行 MVP 和 Report Quality Roadmap Phase 1-9：支持 domain profile、实体解析、section research plan、section evidence status、evidence scoring、citation support metadata、critic replan requests 和 Reporter citation support summary。默认运行模式是 deterministic/offline，适合本地开发、测试和 CI；真实搜索、真实 GitHub API、真实 LLM 都需要显式 opt-in。
 
@@ -67,12 +67,12 @@ src/insight_graph/
 | **竞品矩阵** | Analyst 可从 verified evidence 生成 competitive matrix，Reporter 只渲染可引用行 |
 | **可选 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible provider；默认不调用真实 LLM |
 | **可选实时数据源** | DuckDuckGo web search、GitHub REST Search、SEC filings 和 direct URL/PDF fetch 均为显式 opt-in；默认测试不访问公网 |
-| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch 和 deterministic relevance filtering |
+| **Live Research Preset** | `--preset live-research` 一键启用 DuckDuckGo web search、GitHub live search、SEC filings、多源采集、bounded fetch、deterministic relevance filtering 和最多 3 轮 section follow-up collection |
 | **API + Dashboard** | FastAPI 同步研究、异步 jobs、WebSocket stream、Markdown/HTML report export、静态 Dashboard |
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：Playwright 渲染、pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG、SEC 财务分析工具。这些属于 Phase 10 deferred items，后续按需推进。
+未实现或未默认启用的高级能力：pgvector 长期记忆、PostgreSQL checkpoint resume、向量语义 RAG、conversation compression、全局 token/step/tool-call budget、MCP 工具接入和沙箱代码执行。这些属于后续 reference-quality phases，必须单独设计和验证。
 
 ---
 
