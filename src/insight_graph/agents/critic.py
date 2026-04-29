@@ -41,6 +41,7 @@ def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
                     "type": "missing_section_evidence",
                     "section_id": str(status.get("section_id", "")),
                     "missing_evidence": int(status.get("missing_evidence", 0)),
+                    "missing_source_types": _missing_source_types(status),
                 }
             )
     for item in state.citation_support:
@@ -53,3 +54,10 @@ def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
                 }
             )
     return requests
+
+
+def _missing_source_types(status: dict[str, object]) -> list[str]:
+    values = status.get("missing_source_types", [])
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str)]

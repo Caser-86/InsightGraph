@@ -55,7 +55,58 @@ def test_executor_records_section_collection_status() -> None:
             "round": 1,
             "evidence_count": 3,
             "min_evidence": 2,
+            "required_source_types": ["official_site"],
+            "covered_source_types": ["official_site"],
+            "missing_source_types": [],
             "sufficient": True,
+            "missing_evidence": 0,
+        }
+    ]
+
+
+def test_executor_marks_section_insufficient_when_required_source_type_missing(
+    monkeypatch,
+) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    official = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [official]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        section_research_plan=[
+            {
+                "section_id": "market-signals",
+                "required_source_types": ["official_site", "news"],
+                "min_evidence": 1,
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.section_collection_status == [
+        {
+            "section_id": "market-signals",
+            "round": 1,
+            "evidence_count": 1,
+            "min_evidence": 1,
+            "required_source_types": ["official_site", "news"],
+            "covered_source_types": ["official_site"],
+            "missing_source_types": ["news"],
+            "sufficient": False,
             "missing_evidence": 0,
         }
     ]

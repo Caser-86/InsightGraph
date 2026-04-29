@@ -460,6 +460,8 @@ Live HTTP fetches now reject oversized `Content-Length` responses before body re
 
 Collected evidence is now ordered by deterministic evidence scores before downstream analysis and reporting, so official/docs/filings sources are preferred when evidence competes for attention.
 
+Section collection status now records required, covered, and missing source types, and Critic replan requests carry missing source type hints. This makes section sufficiency closer to the roadmap source-policy target without adding another collection loop yet.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.

@@ -55,17 +55,46 @@ def _build_section_collection_status(
     for section in section_plan:
         min_evidence = int(section.get("min_evidence", 1))
         missing_evidence = max(0, min_evidence - evidence_count)
+        required_source_types = _required_source_types(section)
+        covered_source_types = _covered_source_types(required_source_types, evidence)
+        missing_source_types = [
+            source_type
+            for source_type in required_source_types
+            if source_type not in covered_source_types
+        ]
         statuses.append(
             {
                 "section_id": str(section.get("section_id", "")),
                 "round": 1,
                 "evidence_count": evidence_count,
                 "min_evidence": min_evidence,
-                "sufficient": missing_evidence == 0,
+                "required_source_types": required_source_types,
+                "covered_source_types": covered_source_types,
+                "missing_source_types": missing_source_types,
+                "sufficient": missing_evidence == 0 and not missing_source_types,
                 "missing_evidence": missing_evidence,
             }
         )
     return statuses
+
+
+def _required_source_types(section: dict[str, object]) -> list[str]:
+    raw_values = section.get("required_source_types", [])
+    if not isinstance(raw_values, list):
+        return []
+    return [value for value in raw_values if isinstance(value, str) and value]
+
+
+def _covered_source_types(
+    required_source_types: list[str],
+    evidence: list[Evidence],
+) -> list[str]:
+    available_source_types = {item.source_type for item in evidence if item.verified}
+    return [
+        source_type
+        for source_type in required_source_types
+        if source_type in available_source_types
+    ]
 
 
 def _run_tool_with_fallback(

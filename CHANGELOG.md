@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added section-level required source type coverage metadata and replan hints.
 - Ordered collected evidence by deterministic evidence scores before analysis/reporting.
 - Suppressed noisy pypdf logs during remote PDF evidence extraction.
 - Added Content-Length preflight rejection for oversized live URL responses.

@@ -1939,6 +1939,7 @@ def test_critic_creates_missing_evidence_replan_requests() -> None:
             "type": "missing_section_evidence",
             "section_id": "pricing",
             "missing_evidence": 2,
+            "missing_source_types": [],
         },
         {
             "type": "unsupported_claim",
@@ -1946,6 +1947,34 @@ def test_critic_creates_missing_evidence_replan_requests() -> None:
             "reason": "missing verified evidence",
         },
     ]
+
+
+def test_critic_includes_missing_source_types_in_replan_requests() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        section_collection_status=[
+            {
+                "section_id": "market-signals",
+                "round": 1,
+                "evidence_count": 2,
+                "min_evidence": 2,
+                "sufficient": False,
+                "missing_evidence": 0,
+                "missing_source_types": ["news"],
+            }
+        ],
+        evidence_pool=[],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.replan_requests[0] == {
+        "type": "missing_section_evidence",
+        "section_id": "market-signals",
+        "missing_evidence": 0,
+        "missing_source_types": ["news"],
+    }
 
 
 def test_reporter_excludes_unverified_sources(monkeypatch) -> None:
