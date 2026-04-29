@@ -10,7 +10,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Domain profiles from `domains/*.md` | Markdown-backed domain profiles implemented | Add more domain files over time | Medium |
 | Entity resolver and query expansion | Implemented | Needs file-backed domain hints | Medium |
 | Per-subtask multi-round tool loop | Implemented with configurable tool rounds | Expand query strategy diversity over time | Medium |
-| Pre-search fetch pipeline | Search/fetch tools exist | Need automatic top-N fetch pipeline per search results | High |
+| Pre-search fetch pipeline | Implemented with bounded fetch fan-out | Add cache/retry policies only if needed | Medium |
 | LLM relevance filtering | Implemented and opt-in | Needs tighter integration with pre-fetch loop | Medium |
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
@@ -35,7 +35,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 3. Planner consumption of memory context and tried strategies. **Implemented.**
 4. Generic per-subtask multi-round tool loop. **Implemented.**
 5. Automatic conversation compression in long-running loops. **Implemented.**
-6. Pre-search fetch pipeline hardening.
+6. Pre-search fetch pipeline hardening. **Implemented.**
 7. Reporter URL revalidation.
 8. Snippet-level citation support tightening.
 9. Opt-in full LLM trace writer.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 6 starts with pre-search fetch pipeline hardening. The first implementation should wire top-N search result fetching into collection behind explicit live/search opt-in while keeping default tests offline and deterministic.
+Phase 7 starts with Reporter URL revalidation. The first implementation should add an opt-in final URL validation pass that never fabricates citations and does not make default tests or CLI runs access the network.

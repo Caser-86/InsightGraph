@@ -18,10 +18,11 @@ def test_mock_web_search_returns_deterministic_results() -> None:
 def test_web_search_prefetches_results(monkeypatch) -> None:
     captured = {}
 
-    def fake_pre_fetch_results(results, subtask_id: str, limit: int):
+    def fake_pre_fetch_results(results, subtask_id: str, limit: int, query: str | None = None):
         captured["urls"] = [result.url for result in results]
         captured["subtask_id"] = subtask_id
         captured["limit"] = limit
+        captured["query"] = query
         return [
             Evidence(
                 id="prefetched",
@@ -47,6 +48,7 @@ def test_web_search_prefetches_results(monkeypatch) -> None:
         ],
         "subtask_id": "s1",
         "limit": 3,
+        "query": "agentic coding tools",
     }
     assert [item.id for item in evidence] == ["prefetched"]
 
@@ -73,10 +75,11 @@ def test_web_search_uses_configured_provider_and_limit(monkeypatch) -> None:
                 ),
             ]
 
-    def fake_pre_fetch_results(results, subtask_id: str, limit: int):
+    def fake_pre_fetch_results(results, subtask_id: str, limit: int, query: str | None = None):
         captured["prefetch_urls"] = [result.url for result in results]
         captured["subtask_id"] = subtask_id
         captured["prefetch_limit"] = limit
+        captured["query"] = query
         return [
             Evidence(
                 id="provider-prefetched",
@@ -100,5 +103,6 @@ def test_web_search_uses_configured_provider_and_limit(monkeypatch) -> None:
         "prefetch_urls": ["https://example.com/one", "https://example.com/two"],
         "subtask_id": "s1",
         "prefetch_limit": 2,
+        "query": "agentic coding tools",
     }
     assert [item.id for item in evidence] == ["provider-prefetched"]

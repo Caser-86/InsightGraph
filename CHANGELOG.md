@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Hardened the pre-fetch pipeline with fetch-budget caps, per-result failure isolation, and retrieval-query propagation.
 - Added opt-in Executor conversation compression summaries for long-running collection loops.
 - Added configurable per-subtask tool rounds via `INSIGHT_GRAPH_MAX_TOOL_ROUNDS`.
 - Added opt-in planner memory context injection and planning hints for tried strategies.

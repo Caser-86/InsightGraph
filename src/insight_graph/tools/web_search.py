@@ -18,7 +18,7 @@ def mock_web_search(query: str) -> list[SearchResult]:
 def web_search(query: str, subtask_id: str = "collect") -> list[Evidence]:
     limit = parse_search_limit()
     results = get_search_provider().search(query, limit)
-    return pre_fetch_results(results, subtask_id, limit=limit)
+    return pre_fetch_results(results, subtask_id, limit=limit, query=query)
 
 
 class _CallableWebSearchModule(ModuleType):

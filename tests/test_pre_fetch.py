@@ -61,3 +61,76 @@ def test_pre_fetch_results_skips_empty_evidence(monkeypatch) -> None:
     evidence = pre_fetch_module.pre_fetch_results(results, "s1")
 
     assert [item.id for item in evidence] == ["kept"]
+
+
+def test_pre_fetch_results_continues_after_fetch_error(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        if url.endswith("broken"):
+            raise RuntimeError("fetch failed")
+        return [
+            Evidence(
+                id="kept",
+                subtask_id=subtask_id,
+                title="Kept",
+                source_url=url,
+                snippet="Kept evidence snippet.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title="Broken", url="https://example.com/broken", snippet="broken"),
+        SearchResult(title="Kept", url="https://example.com/kept", snippet="kept"),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1")
+
+    assert [item.id for item in evidence] == ["kept"]
+
+
+def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    fetched_urls = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        fetched_urls.append(url)
+        return []
+
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_FETCHES", "1")
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title="One", url="https://example.com/one", snippet="one"),
+        SearchResult(title="Two", url="https://example.com/two", snippet="two"),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
+
+    assert evidence == []
+    assert fetched_urls == ["https://example.com/one"]
+
+
+def test_pre_fetch_results_passes_query_to_fetch_url(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    observed_queries = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        observed_queries.append(url)
+        return []
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [SearchResult(title="One", url="https://example.com/one", snippet="one")]
+
+    evidence = pre_fetch_module.pre_fetch_results(
+        results,
+        "s1",
+        limit=1,
+        query="pricing strategy",
+    )
+
+    assert evidence == []
+    assert observed_queries == [
+        '{"url":"https://example.com/one","query":"pricing strategy"}'
+    ]

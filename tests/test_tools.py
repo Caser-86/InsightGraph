@@ -1045,7 +1045,13 @@ def test_registry_runs_fetch_url_tool(monkeypatch) -> None:
 
 
 def test_registry_runs_web_search_tool(monkeypatch) -> None:
-    def fake_pre_fetch_results(results, subtask_id: str, limit: int = 3):
+    def fake_pre_fetch_results(
+        results,
+        subtask_id: str,
+        limit: int = 3,
+        query: str | None = None,
+    ):
+        assert query == "Compare AI coding agents"
         return [
             Evidence(
                 id="web-search-evidence",
