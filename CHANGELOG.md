@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Reporter citation support summaries from verified citation metadata.
 - Added structured Critic replan request metadata.
 - Added deterministic citation support metadata in Critic.
 - Added deterministic evidence scoring metadata after collection.

@@ -427,6 +427,8 @@ Acceptance criteria:
 
 Goal: produce long-form reports from approved section drafts and verified citations.
 
+Initial implementation appends a deterministic `Citation Support` table to final reports when Critic metadata is present. The table exposes claim status, reason, and only verified evidence IDs so unsupported or unverified sources are not promoted as report references.
+
 Rules:
 
 - Reporter must not introduce new facts.

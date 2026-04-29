@@ -1913,3 +1913,63 @@ def test_reporter_excludes_unverified_sources(monkeypatch) -> None:
     assert "https://example.com/unverified" not in updated.report_markdown
     assert "[1]" in updated.report_markdown
     assert "[2]" not in updated.report_markdown
+
+
+def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor offers pricing and packaging information.",
+                verified=True,
+            ),
+            Evidence(
+                id="unverified-source",
+                subtask_id="collect",
+                title="Unverified Source",
+                source_url="https://example.com/unverified",
+                snippet="Unverified evidence snippet.",
+                verified=False,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Pricing and packaging differ",
+                summary="Cursor pricing and packaging differ from competitors.",
+                evidence_ids=["cursor-pricing"],
+            )
+        ],
+    )
+    state.citation_support = [
+        {
+            "claim": "Pricing and packaging differ",
+            "status": "supported",
+            "evidence_ids": ["cursor-pricing", "unverified-source"],
+            "reason": "verified snippet overlap",
+        },
+        {
+            "claim": "Unsupported claim",
+            "status": "unsupported",
+            "evidence_ids": [],
+            "reason": "missing verified evidence",
+        },
+    ]
+
+    updated = write_report(state)
+
+    assert "## Citation Support" in updated.report_markdown
+    assert "| Claim | Status | Evidence | Reason |" in updated.report_markdown
+    assert (
+        "| Pricing and packaging differ | supported | cursor-pricing | "
+        "verified snippet overlap |"
+    ) in updated.report_markdown
+    assert (
+        "| Unsupported claim | unsupported |  | missing verified evidence |"
+    ) in updated.report_markdown
+    support_section = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
+    assert "unverified-source" not in support_section

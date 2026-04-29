@@ -85,6 +85,7 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
 
     lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     lines.extend(_build_critic_assessment_section(state))
+    lines.extend(_build_citation_support_section(state, reference_numbers))
     lines.extend(_build_references_section(verified_evidence, reference_numbers))
 
     state.report_markdown = "\n".join(lines) + "\n"
@@ -197,6 +198,7 @@ def _write_report_with_llm(
     lines = [body.rstrip(), ""]
     if state.critique is not None and "## Critic Assessment" not in body:
         lines.extend(_build_critic_assessment_section(state))
+    lines.extend(_build_citation_support_section(state, reference_numbers))
     lines.extend(_build_references_section(verified_evidence, reference_numbers))
 
     state.report_markdown = "\n".join(lines).rstrip() + "\n"
@@ -469,6 +471,52 @@ def _build_critic_assessment_section(state: GraphState) -> list[str]:
     if state.critique is None:
         return []
     return ["## Critic Assessment", "", state.critique.reason, ""]
+
+
+def _build_citation_support_section(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+) -> list[str]:
+    if not state.citation_support:
+        return []
+
+    rows = []
+    has_verified_support = False
+    for item in state.citation_support:
+        claim = str(item.get("claim", ""))
+        status = str(item.get("status", "unknown"))
+        reason = str(item.get("reason", ""))
+        evidence_ids = item.get("evidence_ids", [])
+        verified_ids = [
+            evidence_id
+            for evidence_id in evidence_ids
+            if isinstance(evidence_id, str) and evidence_id in reference_numbers
+        ]
+        has_verified_support = has_verified_support or bool(verified_ids)
+        rows.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(claim),
+                    _markdown_table_cell(status),
+                    _markdown_table_cell(", ".join(verified_ids)),
+                    _markdown_table_cell(reason),
+                ]
+            )
+            + " |"
+        )
+
+    if not has_verified_support:
+        return []
+
+    return [
+        "## Citation Support",
+        "",
+        "| Claim | Status | Evidence | Reason |",
+        "| --- | --- | --- | --- |",
+        *rows,
+        "",
+    ]
 
 
 def _build_references_section(
