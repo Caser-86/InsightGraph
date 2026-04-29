@@ -44,7 +44,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider，支持默认离线 `mock` 或 opt-in GitHub API `live` | `mock` |
 | `INSIGHT_GRAPH_GITHUB_LIMIT` | live GitHub repository search 返回数量，范围 `1` 到 `10` | `3` |
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | 可选 GitHub API token；未设置时回退到 `GITHUB_TOKEN`，仍可匿名请求 | - |
-| `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `document_reader` long-document retrieval mode，支持默认 `deterministic` 或 opt-in `vector` boundary | `deterministic` |
+| `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `document_reader` long-document retrieval mode，支持默认 lexical `deterministic` 或 opt-in deterministic embedding `vector` ranking | `deterministic` |
 
 ## Research Budgets
 

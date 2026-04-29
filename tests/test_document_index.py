@@ -1,3 +1,4 @@
+import insight_graph.report_quality.document_index as document_index
 from insight_graph.report_quality.document_index import (
     DocumentIndexChunk,
     get_document_retrieval_mode,
@@ -44,6 +45,33 @@ def test_rank_document_chunks_uses_vector_ranker_only_when_opted_in(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", "vector")
     vector_ranked = rank_document_chunks(chunks, "alpha", vector_ranker=vector_ranker)
     assert [chunk.index for chunk in vector_ranked] == [1]
+
+
+def test_rank_document_chunks_uses_deterministic_vector_fallback(monkeypatch) -> None:
+    chunks = [
+        DocumentIndexChunk(text="alpha lexical match", index=0),
+        DocumentIndexChunk(text="beta semantic match", index=1),
+    ]
+
+    def fake_embedding(text: str, *, dimensions: int = 64):
+        if text == "alpha":
+            return [0.0, 1.0]
+        if "beta" in text:
+            return [0.0, 1.0]
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(
+        document_index,
+        "deterministic_text_embedding",
+        fake_embedding,
+        raising=False,
+    )
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", "vector")
+
+    ranked = rank_document_chunks(chunks, "alpha")
+
+    assert [chunk.index for chunk in ranked[:1]] == [1]
+    assert ranked[0].score > 0
 
 
 def test_get_document_retrieval_mode_defaults_to_deterministic(monkeypatch) -> None:
