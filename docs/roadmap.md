@@ -22,11 +22,12 @@
 4. Improve release workflow
 - Done: CI runs `python -m pytest` and `python -m ruff check .` on pushes to `master` and pull requests.
 - Done: CI runs the default Eval Bench gate with `docs/evals/default.json`.
-- Done: CI uploads `eval-reports` containing Eval Bench JSON and Markdown reports.
+- Done: CI uploads `eval-reports` containing Eval Bench full, summary, and history reports.
+- Done: deployment hardening checklist documents public demo boundaries.
 - Manual: tags/releases remain manual after `master` merges.
 - Manual: keep `CHANGELOG.md` updated for each released tag.
 
 ## Deferred work
 
 - Add automatic job resume semantics only after persistence contract is stable; manual retry is already implemented.
-- Add auth/rate limits only when API moves beyond local MVP usage.
+- Add built-in rate limits only when API moves beyond local MVP usage; public demos should use reverse proxy or API gateway limits.

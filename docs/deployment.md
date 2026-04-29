@@ -236,6 +236,63 @@ Built-in API key auth is a minimal shared-secret gate. For public demos, still e
 
 Do not bind the MVP API directly to `0.0.0.0` on a public host without an external auth layer.
 
+## Public Demo Hardening Checklist
+
+Before exposing a demo beyond a private machine or VPN, verify:
+
+- `uvicorn` binds to `127.0.0.1`; only the reverse proxy listens on public interfaces.
+- TLS terminates at the reverse proxy or gateway.
+- `INSIGHT_GRAPH_API_KEY` is set to a high-entropy value and stored outside the repo.
+- API keys are rotated by updating `/etc/insightgraph/auth.env` and restarting the service.
+- Provider secrets live in `/etc/insightgraph/secrets.env` with mode `600`.
+- Request bodies, headers, query strings, and provider payloads are not logged by the proxy.
+- SQLite or JSON job-store files are owned by the service user and not world-readable.
+- SQLite/job-store backups exclude provider API keys and are protected like application data.
+- Reverse proxy or API gateway rate limits are enabled for `/research` and `/research/jobs/*`.
+- `/health` remains reachable for uptime checks but does not expose secrets or job details.
+
+Built-in rate limiting is not part of this MVP. Use Nginx, Caddy, a cloud load balancer,
+or an API gateway to enforce request limits for public demos.
+
+## Reverse Proxy Requirements
+
+Minimum reverse proxy behavior:
+
+- Forward `Authorization` and `X-API-Key` headers unchanged.
+- Preserve WebSocket upgrade headers for `/research/jobs/<job_id>/stream`.
+- Set conservative request body size limits; research queries are text prompts, not uploads.
+- Disable access-log capture of sensitive headers and full request bodies.
+- Return generic upstream error pages instead of raw backend tracebacks.
+
+If the dashboard is used through the proxy, confirm WebSocket streaming works from the
+browser. If WebSockets are blocked, the dashboard falls back to REST polling but live
+event latency increases.
+
+## Storage and Backup Notes
+
+For SQLite deployments:
+
+- Keep `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` under a directory owned by the service user.
+- Back up the SQLite file with the service stopped, or use SQLite backup tooling.
+- Treat job metadata as operational data; reports may include research queries and summaries.
+- Use filesystem permissions to prevent unrelated local users from reading job history.
+
+For JSON metadata storage:
+
+- Use it only for single-process demos.
+- Do not share the JSON file between multiple API workers.
+- Back up the file with the service stopped to avoid copying a partially replaced file.
+
+## Secret Handling Notes
+
+Never pass provider keys or the shared API key in request bodies, dashboard URLs, shell
+history snippets, or issue reports. Configure them through environment files or your
+deployment platform's secret manager.
+
+The application intentionally keeps LLM observability metadata safe: it records provider,
+model, router, duration, success state, and sanitized errors, not prompts, completions,
+headers, raw provider payloads, or API keys.
+
 ## Operational Checks
 
 Health:
