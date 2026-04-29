@@ -286,6 +286,31 @@ def test_sec_filings_maps_recent_company_filings(monkeypatch) -> None:
     assert observed["headers"]["User-Agent"] == "InsightGraph contact@example.com"
 
 
+def test_sec_filings_accepts_company_name_alias(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        observed["url"] = url
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K"],
+                    "accessionNumber": ["0000320193-23-000106"],
+                    "filingDate": ["2023-11-03"],
+                    "primaryDocument": ["aapl-20230930.htm"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = sec_filings("Analyze Apple filings and competitive risks", "s1")
+
+    assert [item.id for item in evidence] == ["sec-aapl-10-k-2023-11-03"]
+    assert observed["url"] == "https://data.sec.gov/submissions/CIK0000320193.json"
+
+
 def test_sec_filings_returns_empty_for_unknown_ticker() -> None:
     assert sec_filings("not-a-known-ticker", "s1") == []
 

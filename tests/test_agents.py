@@ -545,6 +545,38 @@ def test_planner_adds_sec_filings_to_multi_source_for_public_ticker(
     ]
 
 
+def test_planner_adds_sec_filings_to_multi_source_for_public_company_name(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_SEC_FILINGS", "1")
+    state = GraphState(user_request="Analyze Apple filings and competitive risks")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == [
+        "web_search",
+        "github_search",
+        "sec_filings",
+    ]
+
+
+def test_planner_skips_sec_filings_without_public_company_target(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_SEC_FILINGS", "1")
+    state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
+
+    updated = plan_research(state)
+
+    assert updated.subtasks[1].suggested_tools == ["web_search", "github_search"]
+
+
 def test_planner_prefers_github_search_over_news_search(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_USE_WEB_SEARCH", raising=False)
     monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")

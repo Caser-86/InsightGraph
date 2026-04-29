@@ -24,9 +24,22 @@ KNOWN_TICKER_CIKS = {
     "TSLA": "0001318605",
 }
 
+KNOWN_COMPANY_TICKERS = {
+    "APPLE": "AAPL",
+    "APPLE INC": "AAPL",
+    "MICROSOFT": "MSFT",
+    "MICROSOFT CORP": "MSFT",
+    "ALPHABET": "GOOGL",
+    "GOOGLE": "GOOGL",
+    "AMAZON": "AMZN",
+    "META": "META",
+    "NVIDIA": "NVDA",
+    "TESLA": "TSLA",
+}
+
 
 def sec_filings(query: str, subtask_id: str = "collect") -> list[Evidence]:
-    ticker = _extract_ticker(query)
+    ticker = resolve_sec_ticker(query)
     if ticker is None:
         return []
     cik = KNOWN_TICKER_CIKS.get(ticker)
@@ -43,6 +56,17 @@ def sec_filings(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     return _filings_to_evidence(payload, ticker, cik, subtask_id)
+
+
+def has_sec_filing_target(query: str) -> bool:
+    return resolve_sec_ticker(query) is not None
+
+
+def resolve_sec_ticker(query: str) -> str | None:
+    ticker = _extract_ticker(query)
+    if ticker is not None:
+        return ticker
+    return _extract_company_ticker(query)
 
 
 def fetch_sec_json(url: str, headers: dict[str, str], timeout: float) -> dict[str, Any]:
@@ -65,6 +89,14 @@ def _extract_ticker(query: str) -> str | None:
     for token in tokens:
         if token in KNOWN_TICKER_CIKS:
             return token
+    return None
+
+
+def _extract_company_ticker(query: str) -> str | None:
+    normalized = re.sub(r"[^A-Z0-9]+", " ", query.upper()).strip()
+    for company, ticker in KNOWN_COMPANY_TICKERS.items():
+        if re.search(rf"(?<!\w){re.escape(company)}(?!\w)", normalized):
+            return ticker
     return None
 
 

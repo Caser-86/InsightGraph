@@ -4,6 +4,7 @@ from insight_graph.report_quality.domain_profiles import detect_domain_profile, 
 from insight_graph.report_quality.entity_resolver import resolve_entities
 from insight_graph.report_quality.research_plan import build_section_research_plan
 from insight_graph.state import GraphState, Subtask
+from insight_graph.tools.sec_filings import has_sec_filing_target
 
 
 def plan_research(state: GraphState) -> GraphState:
@@ -31,7 +32,7 @@ def plan_research(state: GraphState) -> GraphState:
             ),
             subtask_type="research",
             dependencies=["scope"],
-            suggested_tools=_collection_tool_names(),
+            suggested_tools=_collection_tool_names(state.user_request),
         ),
         Subtask(
             id="analyze",
@@ -49,7 +50,7 @@ def plan_research(state: GraphState) -> GraphState:
     return state
 
 
-def _collection_tool_names() -> list[str]:
+def _collection_tool_names(user_request: str) -> list[str]:
     if _is_truthy_env("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"):
         tools = []
         if _is_truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"):
@@ -58,22 +59,26 @@ def _collection_tool_names() -> list[str]:
             tools.append("github_search")
         if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
             tools.append("news_search")
-        if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS"):
+        if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS") and has_sec_filing_target(
+            user_request
+        ):
             tools.append("sec_filings")
         if tools:
             return tools
 
-    return [_collection_tool_name()]
+    return [_collection_tool_name(user_request)]
 
 
-def _collection_tool_name() -> str:
+def _collection_tool_name(user_request: str) -> str:
     if _is_truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"):
         return "web_search"
     if _is_truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"):
         return "github_search"
     if _is_truthy_env("INSIGHT_GRAPH_USE_NEWS_SEARCH"):
         return "news_search"
-    if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS"):
+    if _is_truthy_env("INSIGHT_GRAPH_USE_SEC_FILINGS") and has_sec_filing_target(
+        user_request
+    ):
         return "sec_filings"
     if _is_truthy_env("INSIGHT_GRAPH_USE_DOCUMENT_READER"):
         return "document_reader"

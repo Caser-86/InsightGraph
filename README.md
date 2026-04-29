@@ -274,7 +274,7 @@ flowchart TB
 | `content_extract` | 从 HTML 提取 title/text/snippet | 本地解析 |
 | `github_search` | GitHub repository evidence | mock provider；GitHub API 需 opt-in |
 | `news_search` | 新闻和产品公告风格 evidence | deterministic/offline |
-| `sec_filings` | SEC EDGAR recent filings evidence | opt-in，known ticker → SEC submissions JSON |
+| `sec_filings` | SEC EDGAR recent filings evidence | opt-in，known ticker/company name → SEC submissions JSON |
 | `document_reader` | 读取 cwd 内 TXT/Markdown/HTML/PDF，记录 chunk/page/section metadata | opt-in，本地文件，不读 cwd 外路径 |
 | `read_file` | 读取 cwd 内安全文本文件 | opt-in，只读 |
 | `list_directory` | 列出 cwd 内一层目录 | opt-in，只读 |
@@ -480,7 +480,7 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 | `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider：`mock` 或 `live` | `mock` |
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | GitHub API token，可选 | - |
 | `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION` | Planner collect subtask 同时使用多个启用的采集工具 | 未启用 |
-| `INSIGHT_GRAPH_USE_SEC_FILINGS` | 使用 SEC EDGAR recent filings evidence | 未启用 |
+| `INSIGHT_GRAPH_USE_SEC_FILINGS` | 对已知上市公司 ticker/name 使用 SEC EDGAR recent filings evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | 使用 deterministic news evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | 使用 cwd 内 document reader | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | 使用 cwd 内只读文本文件工具 | 未启用 |

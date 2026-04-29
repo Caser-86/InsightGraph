@@ -31,7 +31,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_USE_WEB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 `web_search` | 未启用 |
 | `INSIGHT_GRAPH_USE_GITHUB_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 `github_search`；若同时启用 web search，则 web search 优先 | 未启用 |
 | `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION` | `1` / `true` / `yes` 时 Planner collect subtask 可同时使用 web、GitHub、news 等多个采集工具 | 未启用 |
-| `INSIGHT_GRAPH_USE_SEC_FILINGS` | `1` / `true` / `yes` 时 Planner 可使用 SEC EDGAR filings evidence | 未启用 |
+| `INSIGHT_GRAPH_USE_SEC_FILINGS` | `1` / `true` / `yes` 时 Planner 可为已知上市公司 ticker/name 使用 SEC EDGAR filings evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `news_search`；若同时启用 web 或 GitHub search，则前者优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `document_reader`；若同时启用搜索工具，则搜索工具优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `read_file`；搜索工具和 `document_reader` 优先 | 未启用 |
