@@ -27,5 +27,18 @@ jobs:
       - name: Test
         run: python -m pytest
 
+      - name: Generate Eval Reports
+        run: |
+          mkdir -p reports
+          insight-graph-eval --case-file docs/evals/default.json --output reports/eval.json
+          insight-graph-eval --case-file docs/evals/default.json --markdown --output reports/eval.md
+
       - name: Eval Gate
         run: insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
+
+      - name: Upload Eval Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: eval-reports
+          path: reports/eval.*

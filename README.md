@@ -81,6 +81,8 @@ insight-graph-eval --case-file docs/evals/default.json --markdown --output repor
 # CI-ready eval gate
 insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
 
+# CI uploads eval-reports with reports/eval.json and reports/eval.md.
+
 # Offline validators
 python scripts/validate_sources.py report.md
 python scripts/validate_document_reader.py --markdown

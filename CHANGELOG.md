@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added CI Eval Bench report artifacts.
+
 ## v0.1.16 - 2026-04-28
 
 - Added Eval Bench case-file loading, a checked-in default case set, CI gate exit codes, and a default CI Eval Gate.

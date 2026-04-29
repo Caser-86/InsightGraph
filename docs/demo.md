@@ -105,6 +105,9 @@ insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-
 Use `docs/evals/default.json` for the checked-in default case set, or pass
 `--case-file path/to/cases.json` to run a custom JSON case set.
 
+GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`
+and `reports/eval.md` for each CI run.
+
 The eval bench clears live search and LLM opt-in environment variables while cases
 run. It reports per-case score, pass/fail status, failed rules, references,
 findings, matrix rows, tool calls, and LLM calls without using an LLM judge.
