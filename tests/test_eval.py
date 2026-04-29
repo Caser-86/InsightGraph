@@ -564,6 +564,80 @@ def test_main_returns_one_when_unsupported_claims_exceed_maximum(monkeypatch, ca
     assert "Eval gate failed: unsupported claims 2 > 0" in captured.err
 
 
+def test_main_returns_one_when_remaining_quality_metric_below_minimum(
+    monkeypatch, capsys
+) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 0,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+            "average_source_diversity_score": 67,
+            "average_report_depth_score": 55,
+            "average_evidence_per_section": 1,
+            "average_duplicate_source_rate": 0,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(
+        [
+            "--min-source-diversity",
+            "80",
+            "--min-report-depth",
+            "75",
+            "--min-evidence-per-section",
+            "2",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: average source diversity 67 < 80" in captured.err
+    assert "Eval gate failed: average report depth 55 < 75" in captured.err
+    assert "Eval gate failed: average evidence per section 1 < 2" in captured.err
+
+
+def test_main_returns_one_when_duplicate_source_rate_exceeds_maximum(
+    monkeypatch, capsys
+) -> None:
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 0,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+            "average_duplicate_source_rate": 34,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--max-duplicate-source-rate", "20"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: average duplicate source rate 34 > 20" in captured.err
+
+
 def test_main_writes_output_before_gate_failure(monkeypatch, tmp_path) -> None:
     payload = {
         "cases": [],

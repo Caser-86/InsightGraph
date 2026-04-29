@@ -506,18 +506,18 @@ Acceptance criteria:
 
 Report-quality work must expand Eval Bench instead of relying only on manual inspection.
 
-Initial post-Phase 10 expansion adds evidence-per-section and official-source coverage metrics to Eval Bench case quality, summary aggregates, and Markdown reports. These metrics use `Evidence.section_id`, `section_research_plan`, and `section_collection_status` so eval output can detect sparse section grounding and missing required source types. Eval Bench also exposes opt-in gates for section coverage, citation support, official-source coverage, and unsupported claims while preserving deterministic offline defaults.
+Initial post-Phase 10 expansion adds evidence-per-section and official-source coverage metrics to Eval Bench case quality, summary aggregates, and Markdown reports. These metrics use `Evidence.section_id`, `section_research_plan`, and `section_collection_status` so eval output can detect sparse section grounding and missing required source types. Eval Bench also exposes opt-in gates for section coverage, citation support, official-source coverage, unsupported claims, source diversity, report depth, evidence density, and duplicate source rate while preserving deterministic offline defaults.
 
 Required future metrics:
 
 - Section coverage score. (gate implemented)
-- Evidence per section. (implemented)
-- Source diversity score.
+- Evidence per section. (gate implemented)
+- Source diversity score. (gate implemented)
 - Official-source coverage where required. (gate implemented)
 - Citation support score. (gate implemented)
 - Unsupported claim count. (gate implemented)
-- Duplicate source rate.
-- Report depth score.
+- Duplicate source rate. (gate implemented)
+- Report depth score. (gate implemented)
 
 The route should keep deterministic offline evals as the default. Live evals may exist later but must be opt-in.
 

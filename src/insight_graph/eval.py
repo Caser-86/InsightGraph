@@ -625,9 +625,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Fail when average official source coverage is below this value.",
     )
     parser.add_argument(
+        "--min-source-diversity",
+        type=float,
+        help="Fail when average source diversity is below this value.",
+    )
+    parser.add_argument(
+        "--min-report-depth",
+        type=float,
+        help="Fail when average report depth is below this value.",
+    )
+    parser.add_argument(
+        "--min-evidence-per-section",
+        type=float,
+        help="Fail when average evidence per section is below this value.",
+    )
+    parser.add_argument(
         "--max-unsupported-claims",
         type=int,
         help="Fail when unsupported claims exceed this value.",
+    )
+    parser.add_argument(
+        "--max-duplicate-source-rate",
+        type=float,
+        help="Fail when average duplicate source rate exceeds this value.",
     )
     parser.add_argument(
         "--fail-on-case-failure",
@@ -658,7 +678,11 @@ def main(argv: list[str] | None = None) -> int:
         min_section_coverage=args.min_section_coverage,
         min_citation_support=args.min_citation_support,
         min_official_source_coverage=args.min_official_source_coverage,
+        min_source_diversity=args.min_source_diversity,
+        min_report_depth=args.min_report_depth,
+        min_evidence_per_section=args.min_evidence_per_section,
         max_unsupported_claims=args.max_unsupported_claims,
+        max_duplicate_source_rate=args.max_duplicate_source_rate,
         fail_on_case_failure=args.fail_on_case_failure,
     )
     for failure in gate_failures:
@@ -673,7 +697,11 @@ def _gate_failures(
     min_section_coverage: float | None,
     min_citation_support: float | None,
     min_official_source_coverage: float | None,
+    min_source_diversity: float | None,
+    min_report_depth: float | None,
+    min_evidence_per_section: float | None,
     max_unsupported_claims: int | None,
+    max_duplicate_source_rate: float | None,
     fail_on_case_failure: bool,
 ) -> list[str]:
     failures: list[str] = []
@@ -706,6 +734,27 @@ def _gate_failures(
         label="average official source coverage",
         threshold=min_official_source_coverage,
     )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_source_diversity_score",
+        label="average source diversity",
+        threshold=min_source_diversity,
+    )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_report_depth_score",
+        label="average report depth",
+        threshold=min_report_depth,
+    )
+    _add_minimum_gate_failure(
+        failures,
+        summary,
+        key="average_evidence_per_section",
+        label="average evidence per section",
+        threshold=min_evidence_per_section,
+    )
     if max_unsupported_claims is not None:
         unsupported_claims = int(summary.get("total_unsupported_claims", 0))
         if unsupported_claims > max_unsupported_claims:
@@ -713,6 +762,13 @@ def _gate_failures(
                 "Eval gate failed: "
                 f"unsupported claims {unsupported_claims} > {max_unsupported_claims}"
             )
+    _add_maximum_gate_failure(
+        failures,
+        summary,
+        key="average_duplicate_source_rate",
+        label="average duplicate source rate",
+        threshold=max_duplicate_source_rate,
+    )
     failed_count = int(summary["failed_count"])
     if fail_on_case_failure and failed_count > 0:
         failures.append(f"Eval gate failed: {failed_count} case(s) failed")
@@ -733,6 +789,23 @@ def _add_minimum_gate_failure(
     if actual < threshold:
         failures.append(
             f"Eval gate failed: {label} {_format_number(actual)} < {_format_number(threshold)}"
+        )
+
+
+def _add_maximum_gate_failure(
+    failures: list[str],
+    summary: dict[str, Any],
+    *,
+    key: str,
+    label: str,
+    threshold: float | None,
+) -> None:
+    if threshold is None:
+        return
+    actual = float(summary.get(key, 0))
+    if actual > threshold:
+        failures.append(
+            f"Eval gate failed: {label} {_format_number(actual)} > {_format_number(threshold)}"
         )
 
 

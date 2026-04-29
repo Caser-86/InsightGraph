@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in Eval Bench gates for source diversity, report depth, evidence density, and duplicate source rate.
 - Added opt-in Eval Bench gates for section coverage, citation support, official-source coverage, and unsupported claims.
 - Added Eval Bench metrics for evidence per section and official-source coverage.
 - Aligned the roadmap with the completed Phase 10 work queue.
