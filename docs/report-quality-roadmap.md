@@ -450,6 +450,8 @@ Initial implementation adds a `live-research` runtime preset for reference-style
 
 The document retrieval baseline records optional chunk index, PDF page number, and Markdown section heading metadata on `Evidence`. This gives local document/PDF evidence a TOC/page-aware foundation without adding pgvector, OCR, or remote PDF storage.
 
+Live fetched HTML pages now use the same bounded evidence chunking model: long pages produce multiple verified `Evidence` records with chunk index and nearest HTML heading metadata. This connects the networked `web_search -> pre_fetch -> fetch_url` path to the long-document evidence model.
+
 Deferred items:
 
 - Long-document RAG with TOC/page-aware retrieval.
