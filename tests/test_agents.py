@@ -1839,6 +1839,7 @@ def test_critic_rejects_findings_without_verified_evidence() -> None:
     assert updated.critique is not None
     assert updated.critique.passed is False
     assert "citation support" in updated.critique.missing_topics
+    assert updated.citation_support[0]["support_status"] == "unsupported"
 
 
 def test_reporter_excludes_unverified_sources(monkeypatch) -> None:

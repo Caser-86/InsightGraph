@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic citation support metadata in Critic.
 - Added deterministic evidence scoring metadata after collection.
 - Added deterministic section collection status metadata.
 - Added deterministic section research plans to Planner state.

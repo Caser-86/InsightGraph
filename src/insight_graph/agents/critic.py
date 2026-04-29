@@ -1,7 +1,9 @@
+from insight_graph.report_quality.citation_support import validate_citation_support
 from insight_graph.state import Critique, GraphState
 
 
 def critique_analysis(state: GraphState) -> GraphState:
+    state.citation_support = validate_citation_support(state.findings, state.evidence_pool)
     verified_count = sum(1 for item in state.evidence_pool if item.verified)
     has_findings = bool(state.findings)
     verified_ids = {item.id for item in state.evidence_pool if item.verified}

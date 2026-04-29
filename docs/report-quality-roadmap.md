@@ -390,6 +390,8 @@ Acceptance criteria:
 
 Goal: validate claim-to-snippet grounding before the final report.
 
+Initial implementation lives in `src/insight_graph/report_quality/citation_support.py` and records deterministic finding support metadata on `GraphState.citation_support` during Critic.
+
 Checks:
 
 - Claim has at least one evidence ID.
