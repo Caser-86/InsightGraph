@@ -51,6 +51,98 @@ def test_max_collection_rounds_ignores_invalid_values(monkeypatch) -> None:
     assert executor_module._max_collection_rounds() == 1
 
 
+def test_max_tool_rounds_defaults_to_collection_rounds(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.delenv("INSIGHT_GRAPH_MAX_TOOL_ROUNDS", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", "2")
+
+    assert executor_module._max_tool_rounds() == 2
+
+
+def test_max_tool_rounds_reads_positive_integer(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOOL_ROUNDS", "3")
+
+    assert executor_module._max_tool_rounds() == 3
+
+
+def test_executor_runs_additional_tool_round_without_section_plan(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOOL_ROUNDS", "2")
+
+    first = Evidence(
+        id="first",
+        subtask_id="collect",
+        title="First Evidence",
+        source_url="https://example.com/first",
+        snippet="First evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+    second = Evidence(
+        id="second",
+        subtask_id="collect",
+        title="Second Evidence",
+        source_url="https://example.com/second",
+        snippet="Second evidence has enough words for relevance.",
+        source_type="news",
+        verified=True,
+    )
+    calls = 0
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            nonlocal calls
+            calls += 1
+            assert name == "fake"
+            assert query == "query"
+            assert subtask_id == "collect"
+            return [first] if calls == 1 else [second]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [record.round_index for record in updated.tool_call_log] == [1, 2]
+    assert {item.id for item in updated.evidence_pool} == {"first", "second"}
+    assert updated.collection_stop_reason == "max_rounds"
+
+
+def test_executor_stops_tool_rounds_without_section_plan_when_no_new_evidence(
+    monkeypatch,
+) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOOL_ROUNDS", "3")
+    duplicate = Evidence(
+        id="duplicate",
+        subtask_id="collect",
+        title="Duplicate Evidence",
+        source_url="https://example.com/duplicate",
+        snippet="Duplicate evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [duplicate]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [record.round_index for record in updated.tool_call_log] == [1, 2]
+    assert updated.collection_stop_reason == "no_new_evidence"
+
+
 def test_executor_records_section_collection_status() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",

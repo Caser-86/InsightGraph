@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added configurable per-subtask tool rounds via `INSIGHT_GRAPH_MAX_TOOL_ROUNDS`.
 - Added opt-in planner memory context injection and planning hints for tried strategies.
 - Added file-backed Markdown domain profiles with keyword-based detection.
 - Added opt-in API/background research job checkpoint resume wiring.

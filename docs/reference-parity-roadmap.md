@@ -9,7 +9,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Planner -> Executor -> Critic -> Reporter loop | Implemented as Planner -> Collector/Executor -> Analyst -> Critic -> Reporter | Mostly parity; graph naming differs | Low |
 | Domain profiles from `domains/*.md` | Markdown-backed domain profiles implemented | Add more domain files over time | Medium |
 | Entity resolver and query expansion | Implemented | Needs file-backed domain hints | Medium |
-| Per-subtask multi-round tool loop | Section follow-up rounds implemented | Need generic per-subtask tool rounds | High |
+| Per-subtask multi-round tool loop | Implemented with configurable tool rounds | Expand query strategy diversity over time | Medium |
 | Pre-search fetch pipeline | Search/fetch tools exist | Need automatic top-N fetch pipeline per search results | High |
 | LLM relevance filtering | Implemented and opt-in | Needs tighter integration with pre-fetch loop | Medium |
 | Conversation compression | Deterministic helper implemented | Need automatic long-run integration | High |
@@ -33,7 +33,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 1. File-backed domain profiles. **Implemented.**
 2. Planner memory context injection. **Implemented.**
 3. Planner consumption of memory context and tried strategies. **Implemented.**
-4. Generic per-subtask multi-round tool loop.
+4. Generic per-subtask multi-round tool loop. **Implemented.**
 5. Automatic conversation compression in long-running loops.
 6. Pre-search fetch pipeline hardening.
 7. Reporter URL revalidation.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 2 starts with file-backed domain profiles. The first implementation should add a loader for `src/insight_graph/report_quality/domains/*.md`, keep existing code-backed profiles as defaults, and prove that a Markdown profile can change report sections, source policies, and required questions without modifying Python code.
+Phase 5 starts with automatic conversation compression in long-running loops. The first implementation should wire the deterministic compressor into bounded agent loops without changing default offline behavior or losing evidence IDs, source URLs, tool-call counts, and findings.

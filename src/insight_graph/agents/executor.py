@@ -18,6 +18,7 @@ WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
 WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
 MAX_EVIDENCE_PER_TOOL = 5
 MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
+MAX_TOOL_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_TOOL_ROUNDS"
 TOOL_SOURCE_TYPES = {
     "github_search": {"github"},
     "news_search": {"news"},
@@ -36,13 +37,24 @@ def _max_collection_rounds() -> int:
     return value if value > 0 else 1
 
 
+def _max_tool_rounds() -> int:
+    raw_value = os.environ.get(MAX_TOOL_ROUNDS_ENV)
+    if raw_value is None:
+        return _max_collection_rounds()
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return _max_collection_rounds()
+    return value if value > 0 else _max_collection_rounds()
+
+
 def execute_subtasks(state: GraphState) -> GraphState:
     registry = ToolRegistry()
     collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
     budgets = get_research_budgets()
-    max_rounds = _max_collection_rounds()
+    max_rounds = _max_tool_rounds()
     previous_evidence_keys: set[tuple[str, str]] = set()
     round_summaries: list[dict[str, object]] = []
     stop_reason = "max_rounds"
@@ -98,7 +110,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
         if sufficient:
             stop_reason = "sufficient"
             break
-        if not state.section_research_plan:
+        if not state.section_research_plan and max_rounds == 1:
             stop_reason = "no_section_plan"
             break
         if round_index > 1 and new_evidence_count == 0:
