@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Content-Length preflight rejection for oversized live URL responses.
 - Aligned architecture and README documentation with implemented Phase 10 live evidence features.
 - Added a default response size guard for live URL fetching.
 - Added remote PDF extraction with page metadata for fetched URL evidence.

@@ -38,6 +38,9 @@ def fetch_text(
             status_code = getattr(response, "status", 200)
             if status_code < 200 or status_code >= 300:
                 raise FetchError(f"Unexpected HTTP status: {status_code}")
+            content_length = _content_length_from_headers(response.headers)
+            if content_length is not None and content_length > max_bytes:
+                raise FetchError(f"Response body too large: {content_length} bytes")
             body = response.read()
             if not body:
                 raise FetchError("Empty response body")
@@ -65,6 +68,15 @@ def _encoding_from_content_type(content_type: str) -> str:
         if key.lower() == "charset" and value:
             return value
     return "utf-8"
+
+
+def _content_length_from_headers(headers) -> int | None:
+    value = headers.get("Content-Length", "")
+    try:
+        content_length = int(value)
+    except (TypeError, ValueError):
+        return None
+    return content_length if content_length >= 0 else None
 
 
 def _decode_body(body: bytes, encoding: str) -> str:

@@ -68,6 +68,31 @@ def test_fetch_text_rejects_response_over_max_bytes(monkeypatch) -> None:
         fetch_text("https://example.com/large", max_bytes=5)
 
 
+def test_fetch_text_rejects_content_length_over_max_bytes_before_reading(
+    monkeypatch,
+) -> None:
+    class NoReadResponse(FakeResponse):
+        def __init__(self) -> None:
+            super().__init__(b"abcdef")
+            self.headers["Content-Length"] = "6"
+            self.read_called = False
+
+        def read(self) -> bytes:
+            self.read_called = True
+            raise AssertionError("body should not be read")
+
+    response = NoReadResponse()
+
+    def fake_urlopen(request, timeout):
+        return response
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
+
+    with pytest.raises(FetchError, match="Response body too large: 6 bytes"):
+        fetch_text("https://example.com/large", max_bytes=5)
+    assert response.read_called is False
+
+
 def test_fetch_text_rejects_non_success_status(monkeypatch) -> None:
     def fake_urlopen(request, timeout):
         response = FakeResponse(b"error")
