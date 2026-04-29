@@ -49,7 +49,9 @@ def resolve_llm_config(
     wire_api: str | None = None,
 ) -> LLMConfig:
     resolved_provider = (
-        provider or os.getenv("INSIGHT_GRAPH_LLM_PROVIDER") or DEFAULT_LLM_PROVIDER
+        provider
+        if provider is not None
+        else os.getenv("INSIGHT_GRAPH_LLM_PROVIDER") or DEFAULT_LLM_PROVIDER
     )
     qwen_selected = resolved_provider == QWEN_LLM_PROVIDER
 
@@ -62,8 +64,7 @@ def resolve_llm_config(
         base_url=base_url
         if base_url is not None
         else os.getenv("INSIGHT_GRAPH_LLM_BASE_URL")
-        or os.getenv("OPENAI_BASE_URL")
-        or (QWEN_DASHSCOPE_BASE_URL if qwen_selected else None),
+        or (QWEN_DASHSCOPE_BASE_URL if qwen_selected else os.getenv("OPENAI_BASE_URL")),
         model=model
         if model is not None
         else os.getenv("INSIGHT_GRAPH_LLM_MODEL")

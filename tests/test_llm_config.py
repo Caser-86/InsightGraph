@@ -96,6 +96,35 @@ def test_resolve_llm_config_rejects_unknown_provider(monkeypatch) -> None:
         resolve_llm_config()
 
 
+def test_resolve_llm_config_rejects_explicit_empty_provider(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+
+    with pytest.raises(ValueError, match="provider"):
+        resolve_llm_config(provider="")
+
+
+def test_resolve_llm_config_qwen_provider_ignores_openai_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "qwen")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+
+    config = resolve_llm_config()
+
+    assert config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def test_resolve_llm_config_openai_compatible_reads_openai_base_url(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_PROVIDER", "openai_compatible")
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+
+    config = resolve_llm_config()
+
+    assert config.base_url == "https://openai.example/v1"
+
+
 def test_resolve_llm_config_defaults_to_chat_completions(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_LLM_WIRE_API", raising=False)
 
