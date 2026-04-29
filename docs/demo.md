@@ -108,6 +108,12 @@ Use `docs/evals/default.json` for the checked-in default case set, or pass
 GitHub Actions uploads an `eval-reports` artifact containing `reports/eval.json`
 and `reports/eval.md` for each CI run.
 
+Summarize a downloaded or local eval JSON report:
+
+```bash
+python scripts/summarize_eval_report.py reports/eval.json --markdown
+```
+
 The Dashboard Overview tab also shows the active Eval Gate case file, threshold,
 artifact name, and report paths for quick operator reference.
 

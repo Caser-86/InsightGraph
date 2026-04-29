@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Eval Bench report summary script.
+
 ## v0.1.18 - 2026-04-29
 
 - Added Dashboard Eval Gate visibility.
