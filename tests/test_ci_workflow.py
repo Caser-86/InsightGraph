@@ -25,3 +25,12 @@ def test_ci_uploads_eval_summary_artifacts() -> None:
     assert "--markdown reports/eval-history.md" in workflow
     assert "reports/eval-history.json" in workflow
     assert "reports/eval-history.md" in workflow
+
+
+def test_ci_validates_deployment_smoke_script_without_network() -> None:
+    workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Validate Deployment Smoke Script" in workflow
+    assert "python scripts/smoke_deployment.py --help" in workflow

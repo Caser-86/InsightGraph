@@ -24,6 +24,7 @@
 - Done: CI runs the default Eval Bench gate with `docs/evals/default.json`.
 - Done: CI uploads `eval-reports` containing Eval Bench full, summary, and history reports.
 - Done: deployment hardening checklist documents public demo boundaries.
+- Done: CI validates the deployment smoke test script entry point without network access.
 - Manual: tags/releases remain manual after `master` merges.
 - Manual: keep `CHANGELOG.md` updated for each released tag.
 

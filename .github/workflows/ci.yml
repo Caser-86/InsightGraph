@@ -27,6 +27,9 @@ jobs:
       - name: Test
         run: python -m pytest
 
+      - name: Validate Deployment Smoke Script
+        run: python scripts/smoke_deployment.py --help
+
       - name: Generate Eval Reports
         run: |
           mkdir -p reports

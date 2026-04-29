@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added CI validation for the deployment smoke test script entry point.
+
 ## v0.1.26 - 2026-04-29
 
 - Added a deployment smoke test script for API and dashboard checks.
