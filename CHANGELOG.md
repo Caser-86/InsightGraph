@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.28 - 2026-04-29
+
 - Added the `insight-graph-smoke` console script for deployment smoke checks.
 
 ## v0.1.27 - 2026-04-29
