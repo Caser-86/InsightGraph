@@ -19,7 +19,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
-| Qwen/Minimax providers | Qwen provider config is implemented; OpenAI-compatible provider exists | Need named Minimax provider adapter | Medium |
+| LLM provider presets | Local/self-hosted presets plus Qwen/DashScope config are implemented on the OpenAI-compatible client | Add Minimax preset if needed | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
 | Code execution | Restricted expression boundary | Need real sandbox only if approved | Low |
 | API parity | `/research/jobs` API exists | Need `/tasks` compatibility aliases if required | Medium |
@@ -43,8 +43,8 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ### Phase B: Provider And Long-Document Parity
 
-11. Named Qwen/DashScope LLM adapter. **Implemented.**
-12. Named Minimax LLM adapter.
+11. Multi-provider LLM config presets. **Implemented.**
+12. Named Minimax LLM preset.
 13. Stage-aware model routing policy.
 14. Persisted document vector index.
 15. External embedding provider boundary.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 12 starts with the named Minimax LLM adapter. The first implementation should add provider naming/config sugar on top of the existing OpenAI-compatible client without changing default deterministic behavior.
+Phase 12 starts with the named Minimax LLM preset if a Minimax-compatible endpoint is needed. The first implementation should add one provider preset on top of the existing OpenAI-compatible client without changing default deterministic behavior.

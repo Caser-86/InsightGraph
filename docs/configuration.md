@@ -113,8 +113,9 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 |------|------|--------|
 | `INSIGHT_GRAPH_RELEVANCE_FILTER` | `1` / `true` / `yes` 时启用 Executor evidence relevance filtering | 未启用 |
 | `INSIGHT_GRAPH_RELEVANCE_JUDGE` | Relevance judge 类型，支持 `deterministic` 或 `openai_compatible` | `deterministic` |
-| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；未设置时回退到 `OPENAI_API_KEY` | - |
-| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时回退到 `OPENAI_BASE_URL` | - |
+| `INSIGHT_GRAPH_LLM_PROVIDER` | LLM endpoint preset；支持 `openai_compatible`、`ollama`、`lmstudio`、`vllm`、`localai`、`qwen` | `openai_compatible` |
+| `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible provider API key；local presets provide dummy keys；`openai_compatible` 未设置时回退到 `OPENAI_API_KEY` | - |
+| `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint；未设置时使用 provider preset；`openai_compatible` 回退到 `OPENAI_BASE_URL` | - |
 | `INSIGHT_GRAPH_LLM_MODEL` | OpenAI-compatible relevance model | `gpt-4o-mini` |
 | `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
@@ -174,11 +175,20 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 
 LLM Analyst 只接受引用当前 verified evidence ID 的 JSON findings；`competitive_matrix` 可由 LLM 提供，但每一行必须引用当前 verified evidence ID。缺少矩阵时会用 deterministic 矩阵补齐并保留有效 LLM findings；缺少 key/API、LLM 返回非 JSON、schema 不合法或矩阵引用未 verified/current evidence ID 时，会 fallback 到 deterministic Analyst。测试不调用外部 LLM。
 
-### Qwen/DashScope Provider
+### LLM Provider Presets
 
-Set `INSIGHT_GRAPH_LLM_PROVIDER=qwen` to use DashScope's OpenAI-compatible endpoint. The provider supplies `https://dashscope.aliyuncs.com/compatible-mode/v1` and `qwen-plus` when `INSIGHT_GRAPH_LLM_BASE_URL` and `INSIGHT_GRAPH_LLM_MODEL` are unset. API key resolution is `INSIGHT_GRAPH_LLM_API_KEY`, then `DASHSCOPE_API_KEY`, then `OPENAI_API_KEY`.
+Set `INSIGHT_GRAPH_LLM_PROVIDER` to choose an OpenAI-compatible endpoint preset. This only resolves `api_key`, `base_url`, and `model`; it does not enable live LLM calls. To call an LLM, also use `--preset live-llm` or explicitly set `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`, `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`, or `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`.
 
-Explicit `resolve_llm_config(...)` arguments and `INSIGHT_GRAPH_LLM_*` environment variables override provider defaults. `OPENAI_BASE_URL` is not used as a Qwen endpoint fallback; set `INSIGHT_GRAPH_LLM_BASE_URL` if you need a DashScope-compatible relay. This does not change offline defaults; live LLM use still requires explicit provider/preset configuration.
+| Provider | Default base URL | Default model | Default API key |
+|---|---|---|---|
+| `openai_compatible` | `OPENAI_BASE_URL` if set | `gpt-4o-mini` | `OPENAI_API_KEY` if set |
+| `ollama` | `http://localhost:11434/v1` | `qwen2.5:7b` | `ollama` |
+| `lmstudio` | `http://localhost:1234/v1` | `local-model` | `lm-studio` |
+| `vllm` | `http://localhost:8000/v1` | `local-model` | `vllm` |
+| `localai` | `http://localhost:8080/v1` | `local-model` | `localai` |
+| `qwen` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | `DASHSCOPE_API_KEY`, then `OPENAI_API_KEY` |
+
+Explicit `resolve_llm_config(...)` arguments and `INSIGHT_GRAPH_LLM_*` environment variables override provider defaults. Named providers do not use stale `OPENAI_BASE_URL` as an endpoint fallback; set `INSIGHT_GRAPH_LLM_BASE_URL` if you need a relay or non-default local port.
 
 ## LLM Reporter 配置
 
@@ -290,10 +300,10 @@ JSON output includes `user_request`, `report_markdown`, `findings`, `competitive
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `DEFAULT_LLM_PROVIDER` | LLM 提供方（openai / anthropic / qwen / compatible） | openai |
+| `DEFAULT_LLM_PROVIDER` | LLM provider preset；当前实际配置使用 `INSIGHT_GRAPH_LLM_PROVIDER` | `openai_compatible` |
 | `OPENAI_API_KEY` | OpenAI API Key | - |
 | `ANTHROPIC_API_KEY` | Anthropic API Key | - |
-| `QWEN_API_KEY` | Qwen / DashScope API Key | - |
+| `DASHSCOPE_API_KEY` | Qwen / DashScope API Key；`INSIGHT_GRAPH_LLM_PROVIDER=qwen` 时作为 fallback | - |
 | `SEARCH_PROVIDER` | 搜索提供方（duckduckgo / tavily / serpapi） | duckduckgo |
 | `SEARCH_API_KEY` | 搜索服务 API Key | - |
 | `DATABASE_URL` | PostgreSQL 连接字符串 | postgresql+asyncpg://localhost/insightgraph |
