@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added structured Critic replan request metadata.
 - Added deterministic citation support metadata in Critic.
 - Added deterministic evidence scoring metadata after collection.
 - Added deterministic section collection status metadata.

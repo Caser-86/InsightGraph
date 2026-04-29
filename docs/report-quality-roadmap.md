@@ -408,6 +408,8 @@ Acceptance criteria:
 
 Goal: make Critic drive targeted evidence collection.
 
+Initial implementation records structured missing-evidence and unsupported-claim requests on `GraphState.replan_requests`. The existing one-retry LangGraph loop remains unchanged; later collector work can consume these requests for targeted follow-up queries.
+
 Critic outputs:
 
 - Missing section.

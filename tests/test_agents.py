@@ -1842,6 +1842,39 @@ def test_critic_rejects_findings_without_verified_evidence() -> None:
     assert updated.citation_support[0]["support_status"] == "unsupported"
 
 
+def test_critic_creates_missing_evidence_replan_requests() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        section_collection_status=[
+            {
+                "section_id": "pricing",
+                "round": 1,
+                "evidence_count": 1,
+                "min_evidence": 3,
+                "sufficient": False,
+                "missing_evidence": 2,
+            }
+        ],
+        evidence_pool=[],
+        findings=[Finding(title="Unsupported", summary="Unsupported claim", evidence_ids=[])],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.replan_requests == [
+        {
+            "type": "missing_section_evidence",
+            "section_id": "pricing",
+            "missing_evidence": 2,
+        },
+        {
+            "type": "unsupported_claim",
+            "claim": "Unsupported",
+            "reason": "missing verified evidence",
+        },
+    ]
+
+
 def test_reporter_excludes_unverified_sources(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     state = GraphState(

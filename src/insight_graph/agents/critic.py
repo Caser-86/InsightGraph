@@ -4,6 +4,7 @@ from insight_graph.state import Critique, GraphState
 
 def critique_analysis(state: GraphState) -> GraphState:
     state.citation_support = validate_citation_support(state.findings, state.evidence_pool)
+    state.replan_requests = _build_replan_requests(state)
     verified_count = sum(1 for item in state.evidence_pool if item.verified)
     has_findings = bool(state.findings)
     verified_ids = {item.id for item in state.evidence_pool if item.verified}
@@ -29,3 +30,26 @@ def critique_analysis(state: GraphState) -> GraphState:
         missing_topics=missing_topics,
     )
     return state
+
+
+def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
+    requests: list[dict[str, object]] = []
+    for status in state.section_collection_status:
+        if status.get("sufficient") is False:
+            requests.append(
+                {
+                    "type": "missing_section_evidence",
+                    "section_id": str(status.get("section_id", "")),
+                    "missing_evidence": int(status.get("missing_evidence", 0)),
+                }
+            )
+    for item in state.citation_support:
+        if item.get("support_status") == "unsupported":
+            requests.append(
+                {
+                    "type": "unsupported_claim",
+                    "claim": str(item.get("claim", "")),
+                    "reason": str(item.get("unsupported_reason", "")),
+                }
+            )
+    return requests
