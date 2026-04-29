@@ -46,6 +46,12 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_GITHUB_TOKEN` | 可选 GitHub API token；未设置时回退到 `GITHUB_TOKEN`，仍可匿名请求 | - |
 | `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `document_reader` long-document retrieval mode，支持默认 lexical `deterministic` 或 opt-in deterministic embedding `vector` ranking | `deterministic` |
 
+## Domain Profiles
+
+Code-backed domain profiles are extended by Markdown files under `src/insight_graph/report_quality/domains/*.md`. Each file uses simple frontmatter for IDs/source policy and Markdown lists for report sections, required questions, and detection keywords. The default test/runtime path remains offline and deterministic.
+
+Built-in Markdown profile example: `biotech_finance`, used for biotech/clinical/FDA/pipeline finance-style reports.
+
 ## Research Budgets
 
 全局 research budgets 用于约束长跑采集任务。无效、空值或小于等于 0 的值会回退到默认值。

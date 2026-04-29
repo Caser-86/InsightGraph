@@ -7,7 +7,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Reference capability | InsightGraph status | Gap | Priority |
 |---|---|---|---|
 | Planner -> Executor -> Critic -> Reporter loop | Implemented as Planner -> Collector/Executor -> Analyst -> Critic -> Reporter | Mostly parity; graph naming differs | Low |
-| Domain profiles from `domains/*.md` | Domain profiles are code-backed | Need file-backed pluggable profiles | High |
+| Domain profiles from `domains/*.md` | Markdown-backed domain profiles implemented | Add more domain files over time | Medium |
 | Entity resolver and query expansion | Implemented | Needs file-backed domain hints | Medium |
 | Per-subtask multi-round tool loop | Section follow-up rounds implemented | Need generic per-subtask tool rounds | High |
 | Pre-search fetch pipeline | Search/fetch tools exist | Need automatic top-N fetch pipeline per search results | High |
@@ -30,7 +30,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ### Phase A: Report Quality And Control Loop
 
-1. File-backed domain profiles.
+1. File-backed domain profiles. **Implemented.**
 2. Planner memory context injection.
 3. Planner consumption of memory context and tried strategies.
 4. Generic per-subtask multi-round tool loop.

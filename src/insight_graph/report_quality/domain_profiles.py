@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -12,9 +13,10 @@ class DomainProfile:
     priority_source_types: tuple[str, ...]
     min_evidence_per_section: int
     expected_tables: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
 
 
-DOMAIN_PROFILES: dict[str, DomainProfile] = {
+_CODE_DOMAIN_PROFILES: dict[str, DomainProfile] = {
     "competitive_intel": DomainProfile(
         id="competitive_intel",
         display_name="Competitive Intelligence",
@@ -113,6 +115,7 @@ DOMAIN_PROFILES: dict[str, DomainProfile] = {
     ),
 }
 
+
 _DOMAIN_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "competitive_intel",
@@ -182,8 +185,97 @@ def get_domain_profile(profile_id: str | None) -> DomainProfile:
     return DOMAIN_PROFILES.get(profile_id, DOMAIN_PROFILES["generic"])
 
 
+def load_domain_profiles_from_directory(path: str | Path) -> dict[str, DomainProfile]:
+    directory = Path(path)
+    profiles: dict[str, DomainProfile] = {}
+    for profile_path in sorted(directory.glob("*.md")):
+        profile = _load_domain_profile_from_markdown(profile_path)
+        profiles[profile.id] = profile
+    return profiles
+
+
+def _load_domain_profile_from_markdown(path: Path) -> DomainProfile:
+    text = path.read_text(encoding="utf-8")
+    frontmatter, body = _split_frontmatter(text)
+    metadata = _parse_frontmatter(frontmatter)
+    profile_id = _required_metadata(metadata, "id")
+    return DomainProfile(
+        id=profile_id,
+        display_name=metadata.get("display_name", profile_id.replace("_", " ").title()),
+        report_sections=tuple(_section_list(body, "Report Sections")),
+        required_questions=tuple(_section_list(body, "Required Questions")),
+        priority_source_types=tuple(metadata.get("priority_source_types", [])),
+        min_evidence_per_section=int(metadata.get("min_evidence_per_section", "1")),
+        expected_tables=tuple(metadata.get("expected_tables", [])),
+        keywords=tuple(_section_list(body, "Keywords")),
+    )
+
+
+def _split_frontmatter(text: str) -> tuple[str, str]:
+    if not text.startswith("---\n"):
+        return "", text
+    _, frontmatter, body = text.split("---", 2)
+    return frontmatter, body
+
+
+def _parse_frontmatter(text: str) -> dict[str, object]:
+    metadata: dict[str, object] = {}
+    current_key: str | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            continue
+        if line.startswith("  - ") and current_key is not None:
+            value = line[4:].strip()
+            metadata.setdefault(current_key, [])
+            values = metadata[current_key]
+            if isinstance(values, list):
+                values.append(value)
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        current_key = key.strip()
+        value = value.strip()
+        metadata[current_key] = value if value else []
+    return metadata
+
+
+def _required_metadata(metadata: dict[str, object], key: str) -> str:
+    value = metadata.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Domain profile missing required metadata: {key}")
+    return value.strip()
+
+
+def _section_list(body: str, heading: str) -> list[str]:
+    lines = body.splitlines()
+    items: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_section = stripped == f"## {heading}"
+            continue
+        if in_section and stripped.startswith("- "):
+            items.append(stripped[2:].strip())
+    return items
+
+
+def _build_domain_profiles() -> dict[str, DomainProfile]:
+    profiles = dict(_CODE_DOMAIN_PROFILES)
+    profiles.update(load_domain_profiles_from_directory(Path(__file__).with_name("domains")))
+    return profiles
+
+
+DOMAIN_PROFILES: dict[str, DomainProfile] = _build_domain_profiles()
+
+
 def detect_domain_profile(user_request: str) -> DomainProfile:
     normalized = f" {user_request.lower()} "
+    for profile in DOMAIN_PROFILES.values():
+        if any(keyword.lower() in normalized for keyword in profile.keywords):
+            return profile
     for profile_id, keywords in _DOMAIN_KEYWORDS:
         if any(keyword in normalized for keyword in keywords):
             return DOMAIN_PROFILES[profile_id]

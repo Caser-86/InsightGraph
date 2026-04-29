@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added file-backed Markdown domain profiles with keyword-based detection.
 - Added opt-in API/background research job checkpoint resume wiring.
 - Added deterministic vector fallback ranking for opt-in long-document retrieval.
 - Added deterministic offline embeddings for research memory records.
