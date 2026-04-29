@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.24 - 2026-04-29
+
 - Added deployment hardening guidance for public demos.
 
 ## v0.1.23 - 2026-04-29
