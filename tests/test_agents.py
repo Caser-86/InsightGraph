@@ -1314,6 +1314,51 @@ def test_reporter_renders_competitive_matrix() -> None:
     )
 
 
+def test_reporter_uses_section_research_plan_for_deterministic_body(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot pricing",
+        section_research_plan=[
+            {"section_id": "executive-summary", "title": "Executive Summary"},
+            {"section_id": "pricing-and-packaging", "title": "Pricing and Packaging"},
+            {"section_id": "references", "title": "References"},
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor lists Pro and Business pricing tiers.",
+                source_type="official_site",
+                verified=True,
+                section_id="pricing-and-packaging",
+            )
+        ],
+        findings=[
+            Finding(
+                title="Pricing model is explicit",
+                summary="Cursor pricing evidence shows named paid tiers.",
+                evidence_ids=["cursor-pricing"],
+            )
+        ],
+    )
+
+    updated = write_report(state)
+
+    assert "## Key Findings" not in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
+    assert "## Pricing and Packaging" in updated.report_markdown
+    assert "## References" in updated.report_markdown
+    assert updated.report_markdown.index("## Executive Summary") < updated.report_markdown.index(
+        "## Pricing and Packaging"
+    )
+    pricing_index = updated.report_markdown.index("## Pricing and Packaging")
+    finding_index = updated.report_markdown.index("### Pricing model is explicit")
+    assert pricing_index < finding_index
+    assert "Cursor pricing evidence shows named paid tiers. [1]" in updated.report_markdown
+
+
 def test_reporter_omits_competitive_matrix_without_citable_rows() -> None:
     state = make_reporter_state()
     state.competitive_matrix = [

@@ -315,7 +315,7 @@ flowchart TB
 
 ### 5. Reporter
 
-- **deterministic 默认**：生成 Markdown report、Competitive Matrix、Critic Assessment、Citation Support Summary 和 References。
+- **deterministic 默认**：生成 Markdown report；有 section plan 时按 planned domain sections 输出，否则使用 legacy Key Findings；同时生成 Competitive Matrix、Critic Assessment、Citation Support Summary 和 References。
 - **LLM opt-in**：设置 `INSIGHT_GRAPH_REPORTER_PROVIDER=llm` 后可用 OpenAI-compatible LLM 生成正文。
 - **引用安全**：最终 References 由系统从 verified evidence 重建；support summary 只暴露 verified evidence ID。
 
@@ -342,7 +342,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 |------|------|
 | `# InsightGraph Research Report` | 报告标题 |
 | `Research Request` | 原始用户请求 |
-| `Key Findings` | 带编号引用的核心发现 |
+| `Planned Sections` / `Key Findings` | 有 section plan 时按 domain section 输出，否则输出带编号引用的核心发现 |
 | `Competitive Matrix` | 可引用的竞品对比表，只有 evidence 可验证时输出 |
 | `Critic Assessment` | Critic 质量评审摘要 |
 | `Citation Support` | claim support 状态、verified evidence ID 和原因 |

@@ -9,7 +9,7 @@ from insight_graph.llm.observability import (
     complete_json_with_observability,
     get_llm_wire_api,
 )
-from insight_graph.state import CompetitiveMatrixRow, Evidence, GraphState
+from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
 REFERENCE_HEADING_PATTERN = re.compile(
@@ -70,18 +70,8 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
         "",
         f"**Research Request:** {state.user_request}",
         "",
-        "## Key Findings",
-        "",
     ]
-    for finding in state.findings:
-        citations = " ".join(
-            f"[{reference_numbers[eid]}]"
-            for eid in finding.evidence_ids
-            if eid in reference_numbers
-        )
-        if not citations:
-            continue
-        lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
+    lines.extend(_build_deterministic_body(state, verified_evidence, reference_numbers))
 
     lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     lines.extend(_build_critic_assessment_section(state))
@@ -90,6 +80,93 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
 
     state.report_markdown = "\n".join(lines) + "\n"
     return state
+
+
+def _build_deterministic_body(
+    state: GraphState,
+    verified_evidence: list[Evidence],
+    reference_numbers: dict[str, int],
+) -> list[str]:
+    if state.section_research_plan:
+        return _build_planned_section_body(state, verified_evidence, reference_numbers)
+    return _build_key_findings_body(state, reference_numbers)
+
+
+def _build_key_findings_body(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+) -> list[str]:
+    lines = ["## Key Findings", ""]
+    for finding in state.findings:
+        citations = _finding_citations(finding.evidence_ids, reference_numbers)
+        if not citations:
+            continue
+        lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
+    return lines
+
+
+def _build_planned_section_body(
+    state: GraphState,
+    verified_evidence: list[Evidence],
+    reference_numbers: dict[str, int],
+) -> list[str]:
+    evidence_sections = {item.id: item.section_id for item in verified_evidence}
+    assigned_findings = _assign_findings_to_sections(
+        state.findings,
+        evidence_sections,
+        reference_numbers,
+    )
+    lines: list[str] = []
+    for section in state.section_research_plan:
+        section_id = str(section.get("section_id", "")).strip()
+        title = str(section.get("title", "")).strip()
+        if not title or title.lower() == "references":
+            continue
+        lines.extend([f"## {title}", ""])
+        section_findings = assigned_findings.get(section_id, [])
+        if not section_findings:
+            lines.extend(["No verified findings were available for this section.", ""])
+            continue
+        for finding in section_findings:
+            citations = _finding_citations(finding.evidence_ids, reference_numbers)
+            lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
+    return lines
+
+
+def _assign_findings_to_sections(
+    findings: list[Finding],
+    evidence_sections: dict[str, str | None],
+    reference_numbers: dict[str, int],
+) -> dict[str, list[Finding]]:
+    assigned: dict[str, list[Finding]] = {}
+    for finding in findings:
+        if not _finding_citations(finding.evidence_ids, reference_numbers):
+            continue
+        section_id = _first_finding_section_id(finding.evidence_ids, evidence_sections)
+        if section_id is None:
+            continue
+        assigned.setdefault(section_id, []).append(finding)
+    return assigned
+
+
+def _first_finding_section_id(
+    evidence_ids: list[str],
+    evidence_sections: dict[str, str | None],
+) -> str | None:
+    for evidence_id in evidence_ids:
+        section_id = evidence_sections.get(evidence_id)
+        if section_id:
+            return section_id
+    return None
+
+
+def _finding_citations(
+    evidence_ids: list[str],
+    reference_numbers: dict[str, int],
+) -> str:
+    return " ".join(
+        f"[{reference_numbers[eid]}]" for eid in evidence_ids if eid in reference_numbers
+    )
 
 
 def _write_report_with_llm(

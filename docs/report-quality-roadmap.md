@@ -470,6 +470,8 @@ Executor now enforces deterministic evidence caps: at most five retained records
 
 Executor now builds section-aware per-tool collection queries. Tool queries include the original request, resolved entity names, and up to two matching planned sections based on the tool's source type coverage, while retry queries still include replan hints.
 
+Deterministic Reporter now follows `section_research_plan` when present. Planned section titles replace the fixed `Key Findings` body, and findings are placed under the section matching their cited evidence's `section_id`; states without a plan keep the legacy `Key Findings` output.
+
 Deferred items:
 
 - Long-document RAG with TOC-aware retrieval and vector ranking.
@@ -485,8 +487,8 @@ Next work queue:
 2. Done: section evidence attribution attaches evidence to likely section IDs using source requirements, query terms, entity mentions, and source types instead of treating every section as covered by the same global pool.
 3. Done: collection budgets and caps enforce per-run/per-tool/per-section evidence caps so live multi-source collection remains bounded as more providers are added.
 4. Done: section-aware query generation builds deterministic queries from `section_research_plan`, resolved entities, and missing source types so each source receives narrower prompts.
-5. Next: report template tightening maps domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
-6. Long-document retrieval v2: improve local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
+5. Done: report template tightening maps domain profile sections to deterministic Reporter sections so output structure follows the selected domain instead of a mostly fixed report body.
+6. Next: long-document retrieval v2 improves local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
 7. Rendered-page fetch: add opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
 8. Financial analysis tools: extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
 9. Persistence and memory: defer PostgreSQL checkpoint resume and pgvector long-term memory until the grounded evidence loop produces consistently useful reports.
