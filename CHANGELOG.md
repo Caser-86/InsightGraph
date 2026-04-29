@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.30 - 2026-04-29
+
 - Added `--output` support for `insight-graph-smoke` JSON and Markdown reports.
 
 ## v0.1.29 - 2026-04-29
