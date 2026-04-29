@@ -381,6 +381,16 @@ Open `https://insightgraph.example.com/dashboard`, save the API key in the dashb
 start a short research job, and confirm the status line reports `WebSocket: connected`.
 If it stays on polling, review the proxy WebSocket upgrade configuration.
 
+You can also run the deployment smoke test script against the public URL:
+
+```bash
+INSIGHT_GRAPH_API_KEY=change-me python scripts/smoke_deployment.py https://insightgraph.example.com
+```
+
+The script checks `/health`, `/dashboard`, and `/research/jobs/summary`. It exits `0`
+when all checks pass, `1` when any endpoint check fails, and `2` for invalid CLI input.
+It emits JSON and does not print the API key.
+
 ## Storage and Backup Notes
 
 For SQLite deployments:
@@ -407,6 +417,12 @@ model, router, duration, success state, and sanitized errors, not prompts, compl
 headers, raw provider payloads, or API keys.
 
 ## Operational Checks
+
+Deployment smoke test:
+
+```bash
+INSIGHT_GRAPH_API_KEY=change-me python scripts/smoke_deployment.py http://127.0.0.1:8000
+```
 
 Health:
 

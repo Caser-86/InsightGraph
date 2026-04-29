@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a deployment smoke test script for API and dashboard checks.
+
 ## v0.1.25 - 2026-04-29
 
 - Added reverse proxy deployment examples for Nginx and Caddy.
