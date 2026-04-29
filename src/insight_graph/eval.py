@@ -48,6 +48,13 @@ RULE_IDS = [
     "findings_cite_evidence",
     "matrix_rows_cite_evidence",
 ]
+REQUIRED_REPORT_SECTIONS = [
+    "Key Findings",
+    "Competitive Matrix",
+    "References",
+]
+SECTION_HEADING_PATTERN = re.compile(r"(?m)^##\s+(.+?)\s*$")
+WORD_PATTERN = re.compile(r"[\w]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -167,6 +174,7 @@ def _case_result_from_state(case: EvalCase, duration_ms: int, state: GraphState)
     report_markdown = state.report_markdown or ""
     rules = _score_rules(case, state, report_markdown)
     score = _score_from_rules(rules)
+    quality = build_report_quality_metrics(state, report_markdown)
     return {
         "query": case.query,
         "duration_ms": duration_ms,
@@ -180,6 +188,7 @@ def _case_result_from_state(case: EvalCase, duration_ms: int, state: GraphState)
         "llm_call_count": len(state.llm_call_log),
         "critique_passed": bool(state.critique and state.critique.passed),
         "report_has_competitive_matrix": "## Competitive Matrix" in report_markdown,
+        "quality": quality,
     }
 
 
@@ -205,6 +214,99 @@ def _score_from_rules(rules: list[dict[str, Any]]) -> int:
     return round(sum(float(rule["points"]) for rule in rules))
 
 
+def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dict[str, Any]:
+    verified_evidence = [item for item in state.evidence_pool if item.verified]
+    verified_ids = {item.id for item in verified_evidence}
+    headings = _section_headings(report_markdown)
+    required_present = [section for section in REQUIRED_REPORT_SECTIONS if section in headings]
+    missing_required = [section for section in REQUIRED_REPORT_SECTIONS if section not in headings]
+    unsupported_finding_count = sum(
+        1
+        for finding in state.findings
+        if not _evidence_ids_supported(finding.evidence_ids, verified_ids)
+    )
+    unsupported_matrix_row_count = sum(
+        1
+        for row in state.competitive_matrix
+        if not _evidence_ids_supported(row.evidence_ids, verified_ids)
+    )
+    claim_count = len(state.findings) + len(state.competitive_matrix)
+    unsupported_claim_count = unsupported_finding_count + unsupported_matrix_row_count
+    supported_claim_count = max(0, claim_count - unsupported_claim_count)
+    unique_source_types = {item.source_type for item in verified_evidence}
+    duplicate_source_rate = _duplicate_source_rate(verified_evidence)
+
+    return {
+        "section_count": len(headings),
+        "required_sections_present": required_present,
+        "missing_required_sections": missing_required,
+        "section_coverage_score": _percentage(len(required_present), len(REQUIRED_REPORT_SECTIONS)),
+        "report_word_count": len(WORD_PATTERN.findall(report_markdown)),
+        "report_depth_score": _report_depth_score(report_markdown),
+        "unique_source_domain_count": len({item.source_domain for item in verified_evidence}),
+        "unique_source_type_count": len(unique_source_types),
+        "source_diversity_score": min(100, round(len(unique_source_types) / 3 * 100)),
+        "verified_evidence_count": len(verified_evidence),
+        "unsupported_finding_count": unsupported_finding_count,
+        "unsupported_matrix_row_count": unsupported_matrix_row_count,
+        "unsupported_claim_count": unsupported_claim_count,
+        "citation_support_score": 100
+        if claim_count == 0
+        else _percentage(supported_claim_count, claim_count),
+        "duplicate_source_rate": duplicate_source_rate,
+    }
+
+
+def _empty_report_quality_metrics() -> dict[str, Any]:
+    return {
+        "section_count": 0,
+        "required_sections_present": [],
+        "missing_required_sections": list(REQUIRED_REPORT_SECTIONS),
+        "section_coverage_score": 0,
+        "report_word_count": 0,
+        "report_depth_score": 0,
+        "unique_source_domain_count": 0,
+        "unique_source_type_count": 0,
+        "source_diversity_score": 0,
+        "verified_evidence_count": 0,
+        "unsupported_finding_count": 0,
+        "unsupported_matrix_row_count": 0,
+        "unsupported_claim_count": 0,
+        "citation_support_score": 0,
+        "duplicate_source_rate": 0,
+    }
+
+
+def _section_headings(report_markdown: str) -> list[str]:
+    return [
+        match.group(1).strip().rstrip("#").strip()
+        for match in SECTION_HEADING_PATTERN.finditer(report_markdown)
+    ]
+
+
+def _evidence_ids_supported(evidence_ids: list[str], verified_ids: set[str]) -> bool:
+    return bool(evidence_ids) and all(evidence_id in verified_ids for evidence_id in evidence_ids)
+
+
+def _percentage(numerator: int, denominator: int) -> int:
+    if denominator <= 0:
+        return 100
+    return round(numerator / denominator * 100)
+
+
+def _report_depth_score(report_markdown: str) -> int:
+    word_count = len(WORD_PATTERN.findall(report_markdown))
+    return min(100, round(word_count / 250 * 100))
+
+
+def _duplicate_source_rate(evidence: list[Any]) -> int:
+    if not evidence:
+        return 0
+    urls = [item.source_url for item in evidence]
+    duplicate_count = len(urls) - len(set(urls))
+    return _percentage(duplicate_count, len(urls))
+
+
 def _error_case_result(query: str, duration_ms: int) -> dict[str, Any]:
     rules = [{"id": rule_id, "passed": False, "points": 0} for rule_id in RULE_IDS]
     return {
@@ -220,6 +322,7 @@ def _error_case_result(query: str, duration_ms: int) -> dict[str, Any]:
         "llm_call_count": 0,
         "critique_passed": False,
         "report_has_competitive_matrix": False,
+        "quality": _empty_report_quality_metrics(),
         "error": SAFE_WORKFLOW_ERROR,
     }
 
@@ -251,6 +354,21 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "total_references": sum(int(item["reference_count"]) for item in case_results),
         "total_tool_calls": sum(int(item["tool_call_count"]) for item in case_results),
         "total_llm_calls": sum(int(item["llm_call_count"]) for item in case_results),
+        "average_section_coverage_score": _average_quality(
+            case_results, "section_coverage_score"
+        ),
+        "average_report_depth_score": _average_quality(case_results, "report_depth_score"),
+        "average_source_diversity_score": _average_quality(
+            case_results, "source_diversity_score"
+        ),
+        "average_citation_support_score": _average_quality(
+            case_results, "citation_support_score"
+        ),
+        "total_unsupported_claims": sum(
+            int(item.get("quality", {}).get("unsupported_claim_count", 0))
+            for item in case_results
+        ),
+        "average_duplicate_source_rate": _average_quality(case_results, "duplicate_source_rate"),
     }
 
 
@@ -261,6 +379,14 @@ def _failed_rule_counts(case_results: list[dict[str, Any]]) -> dict[str, int]:
             if not rule["passed"]:
                 counts[rule["id"]] = counts.get(rule["id"], 0) + 1
     return counts
+
+
+def _average_quality(case_results: list[dict[str, Any]], key: str) -> int:
+    if not case_results:
+        return 0
+    return round(
+        sum(int(item.get("quality", {}).get(key, 0)) for item in case_results) / len(case_results)
+    )
 
 
 def format_markdown(payload: dict[str, Any]) -> str:
@@ -292,6 +418,34 @@ def format_markdown(payload: dict[str, Any]) -> str:
             + " |"
         )
 
+    lines.extend(
+        [
+            "",
+            "## Report Quality",
+            "",
+            "| Query | Section coverage | Report depth | Source diversity | Citation support "
+            "| Unsupported claims | Duplicate source rate |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for item in payload["cases"]:
+        quality = item.get("quality", {})
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(str(item["query"])),
+                    str(quality.get("section_coverage_score", 0)),
+                    str(quality.get("report_depth_score", 0)),
+                    str(quality.get("source_diversity_score", 0)),
+                    str(quality.get("citation_support_score", 0)),
+                    str(quality.get("unsupported_claim_count", 0)),
+                    str(quality.get("duplicate_source_rate", 0)),
+                ]
+            )
+            + " |"
+        )
+
     summary = payload["summary"]
     lines.extend(
         [
@@ -314,6 +468,28 @@ def format_markdown(payload: dict[str, Any]) -> str:
                     str(summary["total_references"]),
                     str(summary["total_tool_calls"]),
                     str(summary["total_llm_calls"]),
+                ]
+            )
+            + " |",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "## Report Quality Summary",
+            "",
+            "| Avg section coverage | Avg report depth | Avg source diversity "
+            "| Avg citation support | Unsupported claims | Avg duplicate source rate |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| "
+            + " | ".join(
+                [
+                    str(summary.get("average_section_coverage_score", 0)),
+                    str(summary.get("average_report_depth_score", 0)),
+                    str(summary.get("average_source_diversity_score", 0)),
+                    str(summary.get("average_citation_support_score", 0)),
+                    str(summary.get("total_unsupported_claims", 0)),
+                    str(summary.get("average_duplicate_source_rate", 0)),
                 ]
             )
             + " |",

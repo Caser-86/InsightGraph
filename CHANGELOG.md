@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic report-quality metrics to Eval Bench outputs.
 - Added the canonical report-quality roadmap for future development.
 - Redesigned the README around the current MVP capabilities and report-quality route.
 

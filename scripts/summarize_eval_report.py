@@ -12,6 +12,14 @@ SUMMARY_FIELDS = [
     "failed_rules",
     "total_duration_ms",
 ]
+QUALITY_SUMMARY_FIELDS = [
+    "average_section_coverage_score",
+    "average_report_depth_score",
+    "average_source_diversity_score",
+    "average_citation_support_score",
+    "total_unsupported_claims",
+    "average_duplicate_source_rate",
+]
 
 
 class EvalSummaryError(ValueError):
@@ -30,6 +38,8 @@ def summarize_eval_report(payload: dict[str, Any]) -> dict[str, Any]:
     result = {field: summary[field] for field in SUMMARY_FIELDS}
     if not isinstance(result["failed_rules"], dict):
         raise EvalSummaryError("failed_rules must be an object")
+    for field in QUALITY_SUMMARY_FIELDS:
+        result[field] = summary.get(field, 0)
     return result
 
 
@@ -45,6 +55,25 @@ def format_markdown(summary: dict[str, Any]) -> str:
             f"{summary['total_duration_ms']} |"
         ),
     ]
+
+    lines.extend(
+        [
+            "",
+            "## Report Quality",
+            "",
+            "| Avg section coverage | Avg report depth | Avg source diversity "
+            "| Avg citation support | Unsupported claims | Avg duplicate source rate |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: |",
+            (
+                f"| {summary['average_section_coverage_score']} | "
+                f"{summary['average_report_depth_score']} | "
+                f"{summary['average_source_diversity_score']} | "
+                f"{summary['average_citation_support_score']} | "
+                f"{summary['total_unsupported_claims']} | "
+                f"{summary['average_duplicate_source_rate']} |"
+            ),
+        ]
+    )
 
     failed_rules = summary["failed_rules"]
     if failed_rules:

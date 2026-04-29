@@ -102,6 +102,98 @@ def test_build_eval_payload_scores_case_rules(monkeypatch) -> None:
     assert payload["summary"]["failed_count"] == 0
 
 
+def test_build_eval_payload_includes_report_quality_metrics(monkeypatch) -> None:
+    monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
+
+    payload = eval_module.build_eval_payload(
+        [eval_module.EvalCase(query="Compare Cursor", min_references=2)],
+        run_research_func=make_eval_state,
+    )
+
+    quality = payload["cases"][0]["quality"]
+    assert quality["section_count"] == 3
+    assert quality["required_sections_present"] == [
+        "Key Findings",
+        "Competitive Matrix",
+        "References",
+    ]
+    assert quality["missing_required_sections"] == []
+    assert quality["section_coverage_score"] == 100
+    assert quality["report_word_count"] > 0
+    assert 0 < quality["report_depth_score"] <= 100
+    assert quality["unique_source_domain_count"] == 2
+    assert quality["unique_source_type_count"] == 2
+    assert quality["source_diversity_score"] == 67
+    assert quality["verified_evidence_count"] == 2
+    assert quality["unsupported_finding_count"] == 0
+    assert quality["unsupported_matrix_row_count"] == 0
+    assert quality["unsupported_claim_count"] == 0
+    assert quality["citation_support_score"] == 100
+    assert quality["duplicate_source_rate"] == 0
+
+
+def test_eval_summary_includes_report_quality_aggregates(monkeypatch) -> None:
+    monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
+
+    payload = eval_module.build_eval_payload(
+        [eval_module.EvalCase(query="Compare Cursor", min_references=2)],
+        run_research_func=make_eval_state,
+    )
+
+    summary = payload["summary"]
+    assert summary["average_section_coverage_score"] == 100
+    assert summary["average_report_depth_score"] == payload["cases"][0]["quality"][
+        "report_depth_score"
+    ]
+    assert summary["average_source_diversity_score"] == 67
+    assert summary["average_citation_support_score"] == 100
+    assert summary["total_unsupported_claims"] == 0
+    assert summary["average_duplicate_source_rate"] == 0
+
+
+def test_report_quality_metrics_detect_unsupported_claims_and_missing_sections() -> None:
+    state = GraphState(
+        user_request="Weak report",
+        evidence_pool=[
+            Evidence(
+                id="source-1",
+                subtask_id="collect",
+                title="Only Source",
+                source_url="https://example.com/source",
+                snippet="Only source evidence.",
+                source_type="blog",
+                verified=True,
+            )
+        ],
+        findings=[
+            Finding(
+                title="Unsupported finding",
+                summary="This finding points to missing evidence.",
+                evidence_ids=["missing-evidence"],
+            )
+        ],
+        competitive_matrix=[
+            CompetitiveMatrixRow(
+                product="Example",
+                positioning="No cited positioning.",
+                strengths=[],
+                evidence_ids=[],
+            )
+        ],
+        critique=Critique(passed=False, reason="Weak evidence."),
+        report_markdown="# Weak Report\n\n## Key Findings\n\nUnsupported claim. [1]\n",
+    )
+
+    quality = eval_module.build_report_quality_metrics(state, state.report_markdown or "")
+
+    assert quality["missing_required_sections"] == ["Competitive Matrix", "References"]
+    assert quality["section_coverage_score"] == 33
+    assert quality["unsupported_finding_count"] == 1
+    assert quality["unsupported_matrix_row_count"] == 1
+    assert quality["unsupported_claim_count"] == 2
+    assert quality["citation_support_score"] == 0
+
+
 def test_build_eval_payload_records_failed_rules() -> None:
     def weak_state(query: str) -> GraphState:
         state = make_eval_state(query)
@@ -139,6 +231,27 @@ def test_format_markdown_includes_eval_score_columns() -> None:
                 "critique_passed": True,
                 "report_has_competitive_matrix": True,
                 "rules": [],
+                "quality": {
+                    "section_count": 3,
+                    "required_sections_present": [
+                        "Key Findings",
+                        "Competitive Matrix",
+                        "References",
+                    ],
+                    "missing_required_sections": [],
+                    "section_coverage_score": 100,
+                    "report_word_count": 42,
+                    "report_depth_score": 17,
+                    "unique_source_domain_count": 2,
+                    "unique_source_type_count": 2,
+                    "source_diversity_score": 67,
+                    "verified_evidence_count": 2,
+                    "unsupported_finding_count": 0,
+                    "unsupported_matrix_row_count": 0,
+                    "unsupported_claim_count": 0,
+                    "citation_support_score": 100,
+                    "duplicate_source_rate": 0,
+                },
             }
         ],
         "summary": {
@@ -154,6 +267,12 @@ def test_format_markdown_includes_eval_score_columns() -> None:
             "total_references": 2,
             "total_tool_calls": 1,
             "total_llm_calls": 0,
+            "average_section_coverage_score": 100,
+            "average_report_depth_score": 17,
+            "average_source_diversity_score": 67,
+            "average_citation_support_score": 100,
+            "total_unsupported_claims": 0,
+            "average_duplicate_source_rate": 0,
         },
     }
 
@@ -163,6 +282,17 @@ def test_format_markdown_includes_eval_score_columns() -> None:
     assert "| Query | Score | Passed | Duration ms |" in markdown
     assert "| Compare Cursor | 100 | true | 25 |" in markdown
     assert "| Cases | Average score | Passed | Failed |" in markdown
+    assert "## Report Quality" in markdown
+    assert (
+        "| Query | Section coverage | Report depth | Source diversity | Citation support "
+        "| Unsupported claims | Duplicate source rate |"
+    ) in markdown
+    assert "| Compare Cursor | 100 | 17 | 67 | 100 | 0 | 0 |" in markdown
+    assert "## Report Quality Summary" in markdown
+    assert (
+        "| Avg section coverage | Avg report depth | Avg source diversity "
+        "| Avg citation support | Unsupported claims | Avg duplicate source rate |"
+    ) in markdown
 
 
 def test_main_writes_json_output_file(monkeypatch, tmp_path, capsys) -> None:

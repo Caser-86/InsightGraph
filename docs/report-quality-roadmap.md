@@ -256,6 +256,8 @@ Acceptance criteria:
 
 Goal: define measurable report quality before changing the research chain.
 
+Initial implementation adds deterministic Eval Bench metrics: section coverage, report depth, source diversity, citation support, unsupported claim count, and duplicate source rate. These metrics are measured first and are not yet hard gates in `RULE_IDS`.
+
 Required outputs:
 
 - Target report rubric with section coverage, evidence density, source diversity, and unsupported claim metrics.

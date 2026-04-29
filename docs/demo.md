@@ -129,6 +129,8 @@ The eval bench clears live search and LLM opt-in environment variables while cas
 run. It reports per-case score, pass/fail status, failed rules, references,
 findings, matrix rows, tool calls, and LLM calls without using an LLM judge.
 
+Report-quality metrics also appear in Eval Bench JSON and Markdown reports. They track section coverage, report depth, source diversity, citation support, unsupported claims, and duplicate source rate. These metrics are deterministic and offline by default.
+
 ## Validate the Showcase Report
 
 Run the offline source validator:
