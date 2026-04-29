@@ -1409,6 +1409,53 @@ def test_reporter_renders_competitive_matrix() -> None:
     )
 
 
+def test_reporter_does_not_validate_urls_by_default(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    reporter_module = __import__("insight_graph.agents.reporter", fromlist=["reporter"])
+
+    def fake_validate_evidence_url(evidence):
+        raise AssertionError("URL validation should be opt-in")
+
+    monkeypatch.delenv("INSIGHT_GRAPH_REPORTER_VALIDATE_URLS", raising=False)
+    monkeypatch.setattr(reporter_module, "validate_evidence_url", fake_validate_evidence_url)
+
+    updated = write_report(make_reporter_state())
+
+    assert updated.url_validation == []
+
+
+def test_reporter_validates_urls_when_enabled(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    reporter_module = __import__("insight_graph.agents.reporter", fromlist=["reporter"])
+
+    def fake_validate_evidence_url(evidence):
+        return {
+            "evidence_id": evidence.id,
+            "source_url": evidence.source_url,
+            "valid": evidence.id != "copilot-docs",
+            "status_code": 200 if evidence.id != "copilot-docs" else None,
+            "error": None if evidence.id != "copilot-docs" else "Network error",
+        }
+
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_VALIDATE_URLS", "1")
+    monkeypatch.setattr(reporter_module, "validate_evidence_url", fake_validate_evidence_url)
+
+    updated = write_report(make_reporter_state())
+
+    assert [item["evidence_id"] for item in updated.url_validation] == [
+        "cursor-pricing",
+        "copilot-docs",
+    ]
+    assert (
+        "[1] Cursor Pricing. https://cursor.com/pricing (URL validated)"
+        in updated.report_markdown
+    )
+    assert (
+        "[2] GitHub Copilot Documentation. https://docs.github.com/en/copilot "
+        "(URL validation failed: Network error)"
+    ) in updated.report_markdown
+
+
 def test_reporter_uses_section_research_plan_for_deterministic_body(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     state = GraphState(

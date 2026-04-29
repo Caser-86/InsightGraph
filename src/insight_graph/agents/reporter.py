@@ -10,6 +10,7 @@ from insight_graph.llm.observability import (
     get_llm_wire_api,
 )
 from insight_graph.report_quality.budgeting import can_start_llm_call
+from insight_graph.report_quality.url_validation import validate_evidence_url
 from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
 
 CITATION_PATTERN = re.compile(r"\[(\d+)]")
@@ -36,6 +37,7 @@ SMART_PUNCTUATION_TRANSLATION = str.maketrans(
         "\u2026": "...",
     }
 )
+REPORTER_VALIDATE_URLS_ENV = "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"
 
 
 class ReporterFallbackError(ValueError):
@@ -67,6 +69,7 @@ def write_report(
 
 def _write_report_deterministic(state: GraphState) -> GraphState:
     verified_evidence = [item for item in state.evidence_pool if item.verified]
+    _maybe_validate_reference_urls(state, verified_evidence)
     reference_numbers = _build_reference_numbers(verified_evidence)
     lines = [
         "# InsightGraph Research Report",
@@ -79,7 +82,9 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
     lines.extend(_build_competitive_matrix_section(state.competitive_matrix, reference_numbers))
     lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_citation_support_section(state, reference_numbers))
-    lines.extend(_build_references_section(verified_evidence, reference_numbers))
+    lines.extend(
+        _build_references_section(verified_evidence, reference_numbers, state.url_validation)
+    )
 
     state.report_markdown = "\n".join(lines) + "\n"
     return state
@@ -177,6 +182,7 @@ def _write_report_with_llm(
     llm_client: ChatCompletionClient | None = None,
 ) -> GraphState:
     verified_evidence = [item for item in state.evidence_pool if item.verified]
+    _maybe_validate_reference_urls(state, verified_evidence)
     reference_numbers = _build_reference_numbers(verified_evidence)
     if not reference_numbers:
         raise ReporterFallbackError("Verified references are required")
@@ -279,10 +285,22 @@ def _write_report_with_llm(
     if state.critique is not None and "## Critic Assessment" not in body:
         lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_citation_support_section(state, reference_numbers))
-    lines.extend(_build_references_section(verified_evidence, reference_numbers))
+    lines.extend(
+        _build_references_section(verified_evidence, reference_numbers, state.url_validation)
+    )
 
     state.report_markdown = "\n".join(lines).rstrip() + "\n"
     return state
+
+
+def _url_validation_enabled() -> bool:
+    return os.getenv(REPORTER_VALIDATE_URLS_ENV, "").lower() in {"1", "true", "yes"}
+
+
+def _maybe_validate_reference_urls(state: GraphState, evidence: list[Evidence]) -> None:
+    if not _url_validation_enabled():
+        return
+    state.url_validation = [validate_evidence_url(item) for item in evidence]
 
 
 def _build_reporter_messages(
@@ -600,10 +618,29 @@ def _build_citation_support_section(
 
 
 def _build_references_section(
-    verified_evidence: list[Evidence], reference_numbers: dict[str, int]
+    verified_evidence: list[Evidence],
+    reference_numbers: dict[str, int],
+    url_validation: list[dict[str, object]] | None = None,
 ) -> list[str]:
     lines = ["## References", ""]
+    validation_by_id = {
+        str(item.get("evidence_id")): item
+        for item in url_validation or []
+        if isinstance(item.get("evidence_id"), str)
+    }
     for item in verified_evidence:
         number = reference_numbers[item.id]
-        lines.append(f"[{number}] {item.title}. {item.source_url}")
+        note = _reference_validation_note(validation_by_id.get(item.id))
+        lines.append(f"[{number}] {item.title}. {item.source_url}{note}")
     return lines
+
+
+def _reference_validation_note(validation: dict[str, object] | None) -> str:
+    if validation is None:
+        return ""
+    if validation.get("valid") is True:
+        return " (URL validated)"
+    error = validation.get("error")
+    if isinstance(error, str) and error:
+        return f" (URL validation failed: {error})"
+    return " (URL validation failed)"

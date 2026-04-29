@@ -2,7 +2,7 @@
 
 InsightGraph defaults to deterministic/offline behavior. Live search, live LLM, GitHub API access, and local file/document tools require explicit opt-in environment variables.
 
-Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, and `INSIGHT_GRAPH_RELEVANCE_JUDGE=deterministic` without enabling LLM Analyst or Reporter. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately. Use `--preset live-llm` or explicit LLM environment variables when model-generated analysis/reporting is desired.
+Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, and `INSIGHT_GRAPH_RELEVANCE_JUDGE=deterministic` without enabling LLM Analyst or Reporter. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately. Use `--preset live-llm` or explicit LLM environment variables when model-generated analysis/reporting is desired.
 
 ## Search Provider 配置
 
@@ -119,6 +119,10 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 | `INSIGHT_GRAPH_LLM_WIRE_API` | OpenAI-compatible wire API，支持 `chat_completions` 或 `responses`；`responses` 需 provider 支持 `/v1/responses` | `chat_completions` |
 
 默认 `deterministic` judge 不调用真实 LLM，适合离线过滤：未 verified 或缺少 title/source URL/snippet 的 evidence 会被丢弃。需要真实 LLM relevance 判断时，可设置 `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`，并通过 API key、base URL 和 model 指向 OpenAI-compatible provider。
+
+## Reporter URL Revalidation
+
+Reporter URL revalidation 默认关闭；`--preset live-research` 会启用它。也可显式设置 `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`。启用后，Reporter 在最终 References 前用 bounded HTTP fetch 验证 verified evidence URLs，将结果写入 `GraphState.url_validation`，并在 References 中标注 `(URL validated)` 或 `(URL validation failed: ...)`。验证失败不会生成替代 URL，也不会伪造引用。
 
 ```bash
 INSIGHT_GRAPH_RELEVANCE_FILTER=1 \
