@@ -79,6 +79,7 @@ class LLMCallRecord(BaseModel):
 
 class GraphState(BaseModel):
     user_request: str
+    domain_profile: str | None = None
     subtasks: list[Subtask] = Field(default_factory=list)
     evidence_pool: list[Evidence] = Field(default_factory=list)
     global_evidence_pool: list[Evidence] = Field(default_factory=list)

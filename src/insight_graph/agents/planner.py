@@ -1,9 +1,11 @@
 import os
 
+from insight_graph.report_quality.domain_profiles import detect_domain_profile
 from insight_graph.state import GraphState, Subtask
 
 
 def plan_research(state: GraphState) -> GraphState:
+    state.domain_profile = detect_domain_profile(state.user_request).id
     state.subtasks = [
         Subtask(
             id="scope",

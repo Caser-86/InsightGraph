@@ -243,6 +243,33 @@ def test_planner_creates_core_research_subtasks(monkeypatch) -> None:
     assert updated.subtasks[1].suggested_tools == ["mock_search"]
 
 
+def test_planner_sets_competitive_domain_profile() -> None:
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot pricing")
+
+    updated = plan_research(state)
+
+    assert updated.domain_profile == "competitive_intel"
+    assert len(updated.subtasks) == 4
+
+
+def test_planner_sets_technology_domain_profile() -> None:
+    state = GraphState(user_request="Analyze AI agent architecture trends")
+
+    updated = plan_research(state)
+
+    assert updated.domain_profile == "technology_trends"
+    assert len(updated.subtasks) == 4
+
+
+def test_planner_uses_generic_domain_profile_as_fallback() -> None:
+    state = GraphState(user_request="Summarize this research topic")
+
+    updated = plan_research(state)
+
+    assert updated.domain_profile == "generic"
+    assert len(updated.subtasks) == 4
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")

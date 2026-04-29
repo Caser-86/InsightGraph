@@ -272,6 +272,8 @@ Acceptance criteria:
 
 Goal: make research strategy domain-aware.
 
+Initial implementation lives in `src/insight_graph/report_quality/domain_profiles.py`, selects a deterministic profile in Planner, and stores the selected profile ID on `GraphState.domain_profile`. This does not change the workflow behavior yet; later phases consume the profile for section plans and collection budgets.
+
 Required domains:
 
 - `competitive_intel`
