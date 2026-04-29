@@ -547,10 +547,11 @@ Phases 1-10 are implemented. The next approved direction is the reference-qualit
 - Conversation compression now has deterministic evidence-preserving summaries, ready for later long-running agent loops.
 - Long-document retrieval now has a deterministic document index layer and an opt-in vector retrieval boundary.
 - Checkpoint persistence now has memory and opt-in PostgreSQL store adapters for GraphState payloads.
+- Long-term memory now has in-memory and opt-in pgvector storage/search adapters.
 - Default offline behavior remains one collection round; `live-research` opts into deeper collection.
 
 - PostgreSQL checkpoint resume still needs full LangGraph resume wiring after the checkpoint store adapter.
-- pgvector memory requires opt-in embeddings, privacy/deletion controls, and eval proof that memory improves grounded reports.
+- pgvector memory still needs embedding generation, privacy/deletion controls, and eval proof that memory improves grounded reports.
 - Vector retrieval still needs a concrete embedding backend and persisted index before becoming production RAG.
 - Conversation compression still needs long-run trace integration after the deterministic summary helper.
 - Eval Bench should be expanded before infrastructure work if report-quality regression detection is the priority.

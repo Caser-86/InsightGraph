@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added long-term research memory interfaces with opt-in pgvector persistence.
 - Added checkpoint store interfaces with opt-in PostgreSQL checkpoint persistence.
 - Added a deterministic document index layer with an opt-in vector retrieval boundary.
 - Added centralized research budgets for tool calls, steps, fetches, and per-run evidence caps.

@@ -50,6 +50,7 @@ src/insight_graph/
 ├── research_jobs_store.py          # JSON persistence adapter
 ├── research_jobs_sqlite_backend.py # opt-in SQLite job metadata backend
 ├── persistence/                    # opt-in checkpoint persistence adapters
+├── memory/                         # opt-in long-term research memory adapters
 ├── smoke.py                        # deployment smoke CLI
 └── state.py                        # GraphState、Evidence、Finding、Critique 等模型
 ```
@@ -74,7 +75,7 @@ src/insight_graph/
 | **Eval Gate** | Offline Eval Bench 输出 JSON/Markdown，包含 report quality metrics，可在 CI 中按分数 gate |
 | **工程质量门** | pytest、ruff、CI Eval Gate、deployment smoke entry point、repository hygiene tests |
 
-未实现或未默认启用的高级能力：pgvector 长期记忆、完整 LangGraph 自动 resume、真实 embedding/vector RAG、token budget、MCP 工具接入和沙箱代码执行。PostgreSQL checkpoint store 目前是 opt-in persistence adapter；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。
+未实现或未默认启用的高级能力：完整 LangGraph 自动 resume、真实 embedding/vector RAG、token budget、MCP 工具接入和沙箱代码执行。PostgreSQL checkpoint store 目前是 opt-in persistence adapter；pgvector memory 目前是 opt-in storage/search adapter，尚未接入 embeddings pipeline；Document retrieval 目前有 deterministic index 和 opt-in vector ranker boundary；Conversation compression 目前是 deterministic evidence-preserving summary helper，尚未接入长跑 agent memory loop。
 
 ---
 
