@@ -1,38 +1,38 @@
-# Qwen/DashScope Adapter Design
+# Multi-Provider LLM Config Design
 
 ## Goal
 
-Add a named Qwen/DashScope LLM provider without changing InsightGraph's offline deterministic defaults. The provider is config sugar over the existing OpenAI-compatible client because DashScope exposes an OpenAI-compatible API surface for chat completions.
+Add a general LLM provider preset layer that supports local/self-hosted OpenAI-compatible runtimes first, while keeping Qwen/DashScope as one optional cloud preset. InsightGraph remains offline and deterministic by default; selecting a provider only resolves config and does not enable live LLM calls by itself.
 
-## User-Facing Behavior
+## Providers
 
-Users can select Qwen with `INSIGHT_GRAPH_LLM_PROVIDER=qwen`. When selected, config resolution supplies Qwen defaults only for fields the user did not explicitly set:
+`INSIGHT_GRAPH_LLM_PROVIDER` supports:
 
-- `base_url`: `https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `model`: `qwen-plus`
-- `api_key`: `INSIGHT_GRAPH_LLM_API_KEY`, then `DASHSCOPE_API_KEY`, then existing OpenAI fallback
-- `wire_api`: existing default, unless `INSIGHT_GRAPH_LLM_WIRE_API` or explicit args override it
+- `openai_compatible`: existing generic behavior; reads `OPENAI_API_KEY` and `OPENAI_BASE_URL` fallbacks.
+- `ollama`: local default `http://localhost:11434/v1`, model `qwen2.5:7b`, dummy API key `ollama`.
+- `lmstudio`: local default `http://localhost:1234/v1`, model `local-model`, dummy API key `lm-studio`.
+- `vllm`: self-hosted default `http://localhost:8000/v1`, model `local-model`, dummy API key `vllm`.
+- `localai`: self-hosted default `http://localhost:8080/v1`, model `local-model`, dummy API key `localai`.
+- `qwen`: DashScope default `https://dashscope.aliyuncs.com/compatible-mode/v1`, model `qwen-plus`, API key from `DASHSCOPE_API_KEY` when `INSIGHT_GRAPH_LLM_API_KEY` is unset.
 
-Existing env vars and explicit function arguments continue to win. `INSIGHT_GRAPH_LLM_BASE_URL` and `INSIGHT_GRAPH_LLM_MODEL` override Qwen defaults. `OPENAI_API_KEY` remains a final fallback for compatibility, but Qwen-specific `DASHSCOPE_API_KEY` is preferred when provider is `qwen`.
+All providers continue to use the existing OpenAI-compatible client. No provider adds network calls by default.
+
+## Override Rules
+
+Explicit `resolve_llm_config(...)` arguments win over all environment variables. `INSIGHT_GRAPH_LLM_API_KEY`, `INSIGHT_GRAPH_LLM_BASE_URL`, and `INSIGHT_GRAPH_LLM_MODEL` override provider defaults.
+
+Provider-specific defaults apply only after explicit args and `INSIGHT_GRAPH_LLM_*` env vars are absent. `OPENAI_API_KEY` and `OPENAI_BASE_URL` remain compatibility fallbacks for `openai_compatible`; `OPENAI_API_KEY` may be a final API-key fallback for cloud-compatible providers, but `OPENAI_BASE_URL` must not override named provider endpoints.
 
 ## Architecture
 
-`LLMConfig` gains a `provider` field. `resolve_llm_config()` reads an explicit `provider` argument or `INSIGHT_GRAPH_LLM_PROVIDER`, defaults to `openai_compatible`, validates supported names, and resolves provider defaults in one place.
+`LLMConfig` keeps a `provider` field. `resolve_llm_config()` validates provider names and resolves defaults from a small in-module preset table. This avoids one-off provider conditionals and makes adding Minimax or other OpenAI-compatible providers a data change.
 
-No separate client class is added. `OpenAICompatibleChatClient` keeps using `LLMConfig.base_url`, `model`, `api_key`, and `wire_api`. This keeps network behavior unchanged and avoids duplicating the OpenAI SDK wrapper.
+The existing `OpenAICompatibleChatClient` remains unchanged. It consumes the resolved `api_key`, `base_url`, `model`, and `wire_api` values.
 
 ## Error Handling
 
-Unknown providers raise `ValueError` during config resolution, matching existing `wire_api` validation behavior. Missing API keys continue to fail at client call time with `LLM api_key is required`.
+Unknown providers raise `ValueError` during config resolution. Missing API keys continue to fail at client call time, except local providers provide dummy keys because many local OpenAI-compatible runtimes require a syntactic key but do not authenticate it.
 
 ## Testing
 
-Tests cover:
-
-- default provider remains OpenAI-compatible behavior
-- `INSIGHT_GRAPH_LLM_PROVIDER=qwen` applies DashScope base URL and `qwen-plus`
-- explicit args and `INSIGHT_GRAPH_LLM_*` env vars override provider defaults
-- Qwen provider reads `DASHSCOPE_API_KEY`
-- unknown provider is rejected
-
-All tests remain offline and use config-only assertions.
+Tests cover default behavior, all local provider defaults, Qwen/DashScope defaults, override precedence, stale `OPENAI_BASE_URL` isolation for named providers, and unknown provider rejection. Tests are config-only and never call external services.
