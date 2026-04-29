@@ -174,11 +174,34 @@ def test_main_can_print_markdown_summary() -> None:
     assert "Base URL: `https://insightgraph.example.com`" in markdown
     assert "Created at:" in markdown
     assert "Duration ms:" in markdown
-    assert "| Check | Status | HTTP | Duration ms |" in markdown
+    assert "| Check | Status | HTTP | Duration ms | Error |" in markdown
     assert "| health | PASS | 200 |" in markdown
     assert "| dashboard | PASS | 200 |" in markdown
     assert "| jobs_summary | PASS | 200 |" in markdown
     assert stderr.getvalue() == ""
+
+
+def test_markdown_summary_includes_failure_error_details() -> None:
+    markdown = smoke_module.format_markdown(
+        {
+            "ok": False,
+            "base_url": "https://insightgraph.example.com",
+            "created_at": "2026-04-29T04:00:00Z",
+            "duration_ms": 42,
+            "checks": [
+                {
+                    "name": "health",
+                    "ok": False,
+                    "status_code": 503,
+                    "duration_ms": 10,
+                    "error": "bad | status\ntry proxy logs",
+                }
+            ],
+        }
+    )
+
+    assert "| Check | Status | HTTP | Duration ms | Error |" in markdown
+    assert "| health | FAIL | 503 | 10 | bad \\| status try proxy logs |" in markdown
 
 
 def test_main_can_write_json_output_file(tmp_path) -> None:

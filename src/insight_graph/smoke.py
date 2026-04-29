@@ -152,8 +152,8 @@ def format_markdown(result: dict[str, object]) -> str:
         f"Duration ms: `{result.get('duration_ms', '')}`",
         f"Overall: {'PASS' if result.get('ok') else 'FAIL'}",
         "",
-        "| Check | Status | HTTP | Duration ms |",
-        "| --- | --- | ---: | ---: |",
+        "| Check | Status | HTTP | Duration ms | Error |",
+        "| --- | --- | ---: | ---: | --- |",
     ]
     for check in checks:
         if not isinstance(check, dict):
@@ -162,7 +162,8 @@ def format_markdown(result: dict[str, object]) -> str:
         status = "PASS" if check.get("ok") else "FAIL"
         status_code = "" if check.get("status_code") is None else str(check.get("status_code"))
         duration_ms = "" if check.get("duration_ms") is None else str(check.get("duration_ms"))
-        lines.append(f"| {name} | {status} | {status_code} | {duration_ms} |")
+        error = _markdown_cell(str(check.get("error", "")))
+        lines.append(f"| {name} | {status} | {status_code} | {duration_ms} | {error} |")
     return "\n".join(lines) + "\n"
 
 

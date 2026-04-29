@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added failure error details to `insight-graph-smoke --markdown` reports.
+
 ## v0.1.31 - 2026-04-29
 
 - Added timestamp and duration metadata to `insight-graph-smoke` reports.
