@@ -270,6 +270,25 @@ def test_planner_uses_generic_domain_profile_as_fallback() -> None:
     assert len(updated.subtasks) == 4
 
 
+def test_planner_resolves_known_entities() -> None:
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot")
+
+    updated = plan_research(state)
+
+    assert [entity["id"] for entity in updated.resolved_entities] == [
+        "cursor",
+        "github-copilot",
+    ]
+
+
+def test_planner_leaves_generic_request_without_entities() -> None:
+    state = GraphState(user_request="Summarize this research topic")
+
+    updated = plan_research(state)
+
+    assert updated.resolved_entities == []
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")

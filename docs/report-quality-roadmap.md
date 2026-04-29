@@ -299,6 +299,8 @@ Acceptance criteria:
 
 Goal: improve query precision by resolving entities before collection.
 
+Initial implementation lives in `src/insight_graph/report_quality/entity_resolver.py`, resolves known products/companies and simple unknown capitalized entities, and stores serializable payloads on `GraphState.resolved_entities`. This does not change collection behavior yet.
+
 Required outputs:
 
 - Canonical entity name.

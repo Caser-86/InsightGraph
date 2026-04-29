@@ -41,6 +41,11 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
     assert "## Competitive Matrix" in result.report_markdown
     assert "https://cursor.com/pricing" in result.report_markdown
     assert result.domain_profile == "competitive_intel"
+    assert [entity["id"] for entity in result.resolved_entities] == [
+        "cursor",
+        "opencode",
+        "github-copilot",
+    ]
     assert result.competitive_matrix
     assert result.llm_call_log == []
 

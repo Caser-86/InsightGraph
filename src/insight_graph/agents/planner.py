@@ -1,11 +1,15 @@
 import os
 
 from insight_graph.report_quality.domain_profiles import detect_domain_profile
+from insight_graph.report_quality.entity_resolver import resolve_entities
 from insight_graph.state import GraphState, Subtask
 
 
 def plan_research(state: GraphState) -> GraphState:
     state.domain_profile = detect_domain_profile(state.user_request).id
+    state.resolved_entities = [
+        entity.to_payload() for entity in resolve_entities(state.user_request)
+    ]
     state.subtasks = [
         Subtask(
             id="scope",
