@@ -33,6 +33,7 @@ from insight_graph.cli import (
 )
 from insight_graph.dashboard import dashboard_html
 from insight_graph.graph import run_research, run_research_with_events
+from insight_graph.persistence.checkpoints import get_checkpoint_store
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
     RESEARCH_JOB_LEASE_TTL_SECONDS,
@@ -87,6 +88,7 @@ _RESEARCH_JOB_EVENTS: dict[str, list[dict[str, Any]]] = {}
 _RESEARCH_JOB_EVENT_SUBSCRIBERS: dict[str, list[Queue[dict[str, Any]]]] = {}
 _RESEARCH_JOB_EVENT_LOCK = Lock()
 _DEFAULT_RUN_RESEARCH = run_research
+_CHECKPOINT_RESUME_ENV_VAR = "INSIGHT_GRAPH_CHECKPOINT_RESUME"
 ResearchJobStatusQuery = Annotated[
     ResearchJobStatus | None,
     Query(description="Filter jobs by status. Omit to return all retained jobs."),
@@ -565,10 +567,28 @@ def _next_research_job_event(
 def _run_research_job_workflow(
     query: str,
     emit_event: Callable[[dict[str, Any]], None],
+    *,
+    job_id: str | None = None,
 ) -> GraphState:
     if run_research is not _DEFAULT_RUN_RESEARCH:
         return run_research(query)
+    if job_id is not None and _checkpoint_resume_enabled():
+        return run_research_with_events(
+            query,
+            emit_event,
+            run_id=job_id,
+            checkpoint_store=get_checkpoint_store(),
+            resume=True,
+        )
     return run_research_with_events(query, emit_event)
+
+
+def _checkpoint_resume_enabled() -> bool:
+    return os.environ.get(_CHECKPOINT_RESUME_ENV_VAR, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _lease_expires_at(started_at: str) -> str:
@@ -985,6 +1005,7 @@ def _run_research_job(job_id: str) -> None:
                     state = _run_research_job_workflow(
                         job.query,
                         lambda event: _publish_research_job_event(job.id, event),
+                        job_id=job.id,
                     )
             result = _build_research_json_payload(state)
         except Exception:

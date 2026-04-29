@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in API/background research job checkpoint resume wiring.
 - Added deterministic vector fallback ranking for opt-in long-document retrieval.
 - Added deterministic offline embeddings for research memory records.
 - Added memory deletion controls by memory ID and metadata key/value.

@@ -154,6 +154,57 @@ def test_sqlite_research_job_execution_hides_lease_metadata(monkeypatch, tmp_pat
     assert "attempt_count" not in detail
 
 
+def test_research_job_workflow_passes_checkpoint_resume_options(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_CHECKPOINT_RESUME", "1")
+    store = object()
+    calls: list[dict[str, object]] = []
+
+    def fake_get_checkpoint_store():
+        return store
+
+    def fake_run_with_events(query, emit_event, **kwargs):
+        calls.append({"query": query, **kwargs})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "get_checkpoint_store", fake_get_checkpoint_store)
+    monkeypatch.setattr(api_module, "run_research_with_events", fake_run_with_events)
+
+    state = api_module._run_research_job_workflow(
+        "Resume me",
+        lambda event: None,
+        job_id="job-1",
+    )
+
+    assert state.user_request == "Resume me"
+    assert calls == [
+        {
+            "query": "Resume me",
+            "run_id": "job-1",
+            "checkpoint_store": store,
+            "resume": True,
+        }
+    ]
+
+
+def test_research_job_workflow_skips_checkpoint_resume_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_CHECKPOINT_RESUME", raising=False)
+    calls: list[dict[str, object]] = []
+
+    def fake_run_with_events(query, emit_event, **kwargs):
+        calls.append({"query": query, **kwargs})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research_with_events", fake_run_with_events)
+
+    api_module._run_research_job_workflow(
+        "No resume",
+        lambda event: None,
+        job_id="job-1",
+    )
+
+    assert calls == [{"query": "No resume"}]
+
+
 def make_api_state(query: str) -> GraphState:
     return GraphState(
         user_request=query,

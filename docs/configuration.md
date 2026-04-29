@@ -74,8 +74,9 @@ Checkpoint persistence is opt-in and separate from research job metadata. The de
 |------|------|--------|
 | `INSIGHT_GRAPH_CHECKPOINT_BACKEND` | `memory` 或 opt-in `postgres` | `memory` |
 | `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN used when checkpoint backend is `postgres` | - |
+| `INSIGHT_GRAPH_CHECKPOINT_RESUME` | `1` / `true` / `yes` 时 API/background research jobs pass `job_id` as checkpoint `run_id` and resume from existing checkpoints | 未启用 |
 
-`PostgresCheckpointStore` persists one latest `GraphState` payload per `run_id` in `insight_graph_checkpoints`. `run_research_with_events(..., run_id=..., checkpoint_store=..., resume=True)` can load an existing checkpoint and continue from the next event-runner stage. API/background-worker resume wiring remains explicit future work.
+`PostgresCheckpointStore` persists one latest `GraphState` payload per `run_id` in `insight_graph_checkpoints`. `run_research_with_events(..., run_id=..., checkpoint_store=..., resume=True)` can load an existing checkpoint and continue from the next event-runner stage. When `INSIGHT_GRAPH_CHECKPOINT_RESUME=1`, API/background research jobs use the job ID as the checkpoint run ID.
 
 ## Long-Term Memory
 
