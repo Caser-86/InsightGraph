@@ -371,6 +371,8 @@ Acceptance criteria:
 
 Goal: keep better evidence, not just more evidence.
 
+Initial implementation lives in `src/insight_graph/report_quality/evidence_scoring.py` and records deterministic authority/relevance/overall scores on `GraphState.evidence_scores` after collection. Recency and diversity expansion remain later scoring refinements.
+
 Scores:
 
 - Authority score.

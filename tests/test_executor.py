@@ -61,6 +61,19 @@ def test_executor_records_section_collection_status() -> None:
     ]
 
 
+def test_executor_records_evidence_scores() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["mock_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert len(updated.evidence_scores) == 3
+    assert updated.evidence_scores[0]["evidence_id"] == updated.evidence_pool[0].id
+    assert updated.evidence_scores[0]["overall_score"] > 0
+
+
 def test_executor_deduplicates_evidence(monkeypatch) -> None:
     registry_module = importlib.import_module("insight_graph.agents.executor")
 

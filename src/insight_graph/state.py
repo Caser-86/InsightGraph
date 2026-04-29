@@ -83,6 +83,7 @@ class GraphState(BaseModel):
     resolved_entities: list[dict[str, object]] = Field(default_factory=list)
     section_research_plan: list[dict[str, object]] = Field(default_factory=list)
     section_collection_status: list[dict[str, object]] = Field(default_factory=list)
+    evidence_scores: list[dict[str, object]] = Field(default_factory=list)
     subtasks: list[Subtask] = Field(default_factory=list)
     evidence_pool: list[Evidence] = Field(default_factory=list)
     global_evidence_pool: list[Evidence] = Field(default_factory=list)

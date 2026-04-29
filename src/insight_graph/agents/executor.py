@@ -2,6 +2,7 @@ from insight_graph.agents.relevance import (
     filter_relevant_evidence,
     is_relevance_filter_enabled,
 )
+from insight_graph.report_quality.evidence_scoring import score_evidence_pool
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
 
@@ -36,6 +37,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
     state.evidence_pool = deduped
     state.global_evidence_pool = deduped
     state.tool_call_log = records
+    state.evidence_scores = score_evidence_pool(deduped)
     state.section_collection_status = _build_section_collection_status(
         state.section_research_plan,
         deduped,

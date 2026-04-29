@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added deterministic evidence scoring metadata after collection.
 - Added deterministic section collection status metadata.
 - Added deterministic section research plans to Planner state.
 - Added deterministic entity resolution for Planner state.
