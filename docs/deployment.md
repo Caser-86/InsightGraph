@@ -268,6 +268,119 @@ If the dashboard is used through the proxy, confirm WebSocket streaming works fr
 browser. If WebSockets are blocked, the dashboard falls back to REST polling but live
 event latency increases.
 
+## Nginx Example
+
+This example terminates HTTPS at Nginx, forwards REST and WebSocket traffic to a local
+uvicorn process, and applies a small request-rate limit to research endpoints. Replace
+`insightgraph.example.com` and certificate paths for your host.
+
+```nginx
+# Place these directives in the Nginx `http` context.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+log_format insightgraph_safe '$remote_addr - $remote_user [$time_local] '
+                             '"$request_method $uri $server_protocol" $status '
+                             '$body_bytes_sent "$http_referer" "$http_user_agent"';
+
+limit_req_zone $binary_remote_addr zone=insightgraph_research:10m rate=30r/m;
+
+server {
+    listen 443 ssl http2;
+    server_name insightgraph.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/insightgraph.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/insightgraph.example.com/privkey.pem;
+
+    client_max_body_size 1m;
+
+    access_log /var/log/nginx/insightgraph.access.log insightgraph_safe;
+    error_log /var/log/nginx/insightgraph.error.log warn;
+
+    location /research {
+        limit_req zone=insightgraph_research burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+}
+
+server {
+    listen 80;
+    server_name insightgraph.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Use a log format like `insightgraph_safe` that records `$uri`, not `$request_uri`, so
+dashboard WebSocket API keys are not written through query strings. If your deployment
+adds custom log formats, do not log `Authorization`, `X-API-Key`, request bodies, or
+full query strings.
+
+## Caddy Example
+
+Caddy can manage TLS automatically. This example proxies to uvicorn on localhost and
+applies a request body limit. Use a Caddy rate-limit plugin or an upstream gateway if
+you need per-client throttling.
+
+```caddyfile
+insightgraph.example.com {
+    request_body {
+        max_size 1MB
+    }
+
+    reverse_proxy 127.0.0.1:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Authorization {header.Authorization}
+        header_up X-API-Key {header.X-API-Key}
+    }
+}
+```
+
+Caddy's `reverse_proxy` handles WebSocket upgrades automatically. Confirm the dashboard
+shows `WebSocket: connected` for a running job before using it for demos.
+If you enable Caddy access logging, configure it so credentials and full query strings
+are not written to disk.
+
+## Proxy Verification
+
+After deploying the proxy, verify the public boundary rather than only localhost:
+
+```bash
+curl https://insightgraph.example.com/health
+curl -H "Authorization: Bearer $INSIGHT_GRAPH_API_KEY" \
+  https://insightgraph.example.com/research/jobs/summary
+```
+
+Open `https://insightgraph.example.com/dashboard`, save the API key in the dashboard,
+start a short research job, and confirm the status line reports `WebSocket: connected`.
+If it stays on polling, review the proxy WebSocket upgrade configuration.
+
 ## Storage and Backup Notes
 
 For SQLite deployments:
