@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.31 - 2026-04-29
+
 - Added timestamp and duration metadata to `insight-graph-smoke` reports.
 
 ## v0.1.30 - 2026-04-29
