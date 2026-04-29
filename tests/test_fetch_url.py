@@ -4,6 +4,38 @@ from insight_graph.tools.fetch_url import fetch_url, infer_source_type
 from insight_graph.tools.http_client import FetchedPage
 
 
+def write_minimal_pdf_bytes(text: str) -> bytes:
+    escaped_text = text.replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+    content = f"BT /F1 12 Tf 72 720 Td ({escaped_text}) Tj ET"
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content.encode('utf-8'))} >>\nstream\n{content}\nendstream",
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n{body}\nendobj\n".encode())
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode())
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode()
+    )
+    return bytes(output)
+
+
 def test_fetch_url_returns_verified_evidence(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         assert url == "https://example.com/product"
@@ -71,6 +103,35 @@ def test_fetch_url_chunks_long_html_with_section_metadata(monkeypatch) -> None:
     assert {item.verified for item in evidence} == {True}
 
 
+def test_fetch_url_reads_remote_pdf_with_page_metadata(monkeypatch) -> None:
+    pdf_bytes = write_minimal_pdf_bytes("Remote PDF evidence text.")
+
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="application/pdf",
+            text=pdf_bytes.decode("latin-1"),
+            body=pdf_bytes,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url("https://example.com/report.pdf", "s1")
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.id == "example-com-report-pdf"
+    assert item.title == "report.pdf"
+    assert item.source_url == "https://example.com/report.pdf"
+    assert item.snippet == "Remote PDF evidence text."
+    assert item.source_type == "docs"
+    assert item.verified is True
+    assert item.chunk_index == 1
+    assert item.document_page == 1
+
+
 def test_fetch_url_returns_empty_list_for_empty_snippet(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(url=url, status_code=200, content_type="text/html", text="<html></html>")
@@ -85,4 +146,5 @@ def test_infer_source_type_from_url() -> None:
     assert infer_source_type("https://github.com/sst/opencode") == "github"
     assert infer_source_type("https://docs.github.com/copilot") == "docs"
     assert infer_source_type("https://example.com/docs/product") == "docs"
+    assert infer_source_type("https://example.com/report.pdf") == "docs"
     assert infer_source_type("https://example.com/product") == "unknown"

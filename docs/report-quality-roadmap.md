@@ -454,9 +454,11 @@ Live fetched HTML pages now use the same bounded evidence chunking model: long p
 
 The first filings capability adds an opt-in `sec_filings` tool backed by SEC submissions JSON for known public-company tickers and company-name aliases. `live-research` enables the source, and Planner includes it in multi-source collection only when the request contains a known public-company target.
 
+Remote PDF responses fetched through `fetch_url` now retain response bytes, extract text with pypdf, and emit verified docs evidence with chunk index and page metadata. This extends the live evidence path to PDF reports without adding OCR, browser rendering, storage, or vector search.
+
 Deferred items:
 
-- Long-document RAG with TOC/page-aware retrieval.
+- Long-document RAG with TOC-aware retrieval and vector ranking.
 - Financial analysis tools beyond recent SEC filing discovery.
 - Playwright-rendered pages.
 - PostgreSQL checkpoint resume.

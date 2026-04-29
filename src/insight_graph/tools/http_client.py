@@ -16,6 +16,7 @@ class FetchedPage(BaseModel):
     status_code: int
     content_type: str
     text: str
+    body: bytes | None = None
 
 
 def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
@@ -42,6 +43,7 @@ def fetch_text(url: str, timeout: float = 10.0) -> FetchedPage:
                 status_code=status_code,
                 content_type=content_type,
                 text=text,
+                body=body,
             )
     except HTTPError as exc:
         raise FetchError(f"HTTP error while fetching URL: {exc.code}") from exc
