@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.32 - 2026-04-29
+
 - Added failure error details to `insight-graph-smoke --markdown` reports.
 
 ## v0.1.31 - 2026-04-29
