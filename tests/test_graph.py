@@ -1,4 +1,5 @@
 from insight_graph.graph import run_research, run_research_with_events
+from insight_graph.persistence.checkpoints import CheckpointRecord
 from insight_graph.state import GraphState
 
 
@@ -118,3 +119,78 @@ def test_run_research_with_events_emits_tool_and_report_events(monkeypatch) -> N
     assert tool_events[0]["record"]["tool_name"] == "mock_search"
     assert report_events == [{"type": "report_ready"}]
     assert result.report_markdown is not None
+
+
+class RecordingCheckpointStore:
+    def __init__(self, loaded_record: CheckpointRecord | None = None) -> None:
+        self.records: list[CheckpointRecord] = []
+        self.loaded_record = loaded_record
+        self.schema_calls = 0
+
+    def ensure_schema(self) -> None:
+        self.schema_calls += 1
+
+    def save_checkpoint(self, record: CheckpointRecord) -> None:
+        self.records.append(record)
+
+    def load_checkpoint(self, run_id: str) -> CheckpointRecord | None:
+        if self.loaded_record is not None and self.loaded_record.run_id == run_id:
+            return self.loaded_record
+        return None
+
+
+def test_run_research_with_events_saves_checkpoints_after_each_stage(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    store = RecordingCheckpointStore()
+
+    result = run_research_with_events(
+        "Compare Cursor, OpenCode, and GitHub Copilot",
+        lambda event: None,
+        run_id="run-1",
+        checkpoint_store=store,
+    )
+
+    assert store.schema_calls == 1
+    assert [record.node_name for record in store.records] == [
+        "planner",
+        "collector",
+        "analyst",
+        "critic",
+        "reporter",
+    ]
+    assert store.records[-1].run_id == "run-1"
+    assert store.records[-1].to_state().report_markdown == result.report_markdown
+
+
+def test_run_research_with_events_resumes_after_loaded_checkpoint(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    first_store = RecordingCheckpointStore()
+    run_research_with_events(
+        "Compare Cursor, OpenCode, and GitHub Copilot",
+        lambda event: None,
+        run_id="run-1",
+        checkpoint_store=first_store,
+    )
+    collector_checkpoint = next(
+        record for record in first_store.records if record.node_name == "collector"
+    )
+    resumed_store = RecordingCheckpointStore(loaded_record=collector_checkpoint)
+    events: list[dict[str, object]] = []
+
+    result = run_research_with_events(
+        "ignored because checkpoint has state",
+        events.append,
+        run_id="run-1",
+        checkpoint_store=resumed_store,
+        resume=True,
+    )
+
+    assert result.user_request == "Compare Cursor, OpenCode, and GitHub Copilot"
+    assert [record.node_name for record in resumed_store.records] == [
+        "analyst",
+        "critic",
+        "reporter",
+    ]
+    assert events[0] == {"type": "resumed_from_checkpoint", "stage": "collector"}

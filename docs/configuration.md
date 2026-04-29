@@ -75,7 +75,7 @@ Checkpoint persistence is opt-in and separate from research job metadata. The de
 | `INSIGHT_GRAPH_CHECKPOINT_BACKEND` | `memory` 或 opt-in `postgres` | `memory` |
 | `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN used when checkpoint backend is `postgres` | - |
 
-`PostgresCheckpointStore` persists one latest `GraphState` payload per `run_id` in `insight_graph_checkpoints`. It provides the storage boundary needed for resume semantics; automatic LangGraph resume wiring remains explicit future work.
+`PostgresCheckpointStore` persists one latest `GraphState` payload per `run_id` in `insight_graph_checkpoints`. `run_research_with_events(..., run_id=..., checkpoint_store=..., resume=True)` can load an existing checkpoint and continue from the next event-runner stage. API/background-worker resume wiring remains explicit future work.
 
 ## Long-Term Memory
 
