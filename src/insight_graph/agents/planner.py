@@ -178,7 +178,12 @@ def _build_query_strategies(
                 continue
             strategies.append(
                 {
-                    "strategy_id": _strategy_id(round_index, section_id, source_type, len(strategies) + 1),
+                    "strategy_id": _strategy_id(
+                        round_index,
+                        section_id,
+                        source_type,
+                        len(strategies) + 1,
+                    ),
                     "section_id": section_id,
                     "tool_name": tool_name,
                     "query": _strategy_query(
