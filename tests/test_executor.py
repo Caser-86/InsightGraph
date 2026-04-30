@@ -179,6 +179,79 @@ def test_executor_deduplicates_evidence_by_canonical_url(monkeypatch) -> None:
     assert [item.id for item in updated.evidence_pool] == ["first"]
 
 
+def test_executor_runs_query_strategies_when_present(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    observed_calls = []
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed_calls.append((name, query, subtask_id))
+            return [
+                Evidence(
+                    id="strategy-evidence",
+                    subtask_id=subtask_id,
+                    title="Strategy Evidence",
+                    source_url="https://example.com/strategy",
+                    snippet="Strategy evidence has enough words for relevance.",
+                    verified=True,
+                )
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="fallback query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"] )],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "strategy_tool",
+                "query": "strategy query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert observed_calls == [("strategy_tool", "strategy query", "collect")]
+    assert updated.tool_call_log[0].tool_name == "strategy_tool"
+    assert updated.tool_call_log[0].query == "strategy query"
+
+
+def test_executor_tool_log_records_strategy_id(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return []
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "web_search",
+                "query": "pricing query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.tool_call_log[0].strategy_id == "strategy-1"
+
+
 def test_executor_records_conversation_summary_when_compression_enabled(
     monkeypatch,
 ) -> None:

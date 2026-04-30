@@ -83,6 +83,7 @@ class ToolCallRecord(BaseModel):
     error: str | None = None
     round_index: int = 1
     section_id: str | None = None
+    strategy_id: str | None = None
     stop_reason: str | None = None
 
 
