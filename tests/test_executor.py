@@ -313,6 +313,45 @@ def test_executor_round_summary_counts_fetch_diagnostics(monkeypatch) -> None:
     assert updated.collection_rounds[0]["verified_evidence_count"] == 1
 
 
+def test_executor_records_relevance_drop_reason_summary(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="kept",
+                    subtask_id=subtask_id,
+                    title="Kept",
+                    source_url="https://example.com/kept",
+                    snippet="Kept evidence has enough words for relevance.",
+                    verified=True,
+                ),
+                Evidence(
+                    id="dropped",
+                    subtask_id=subtask_id,
+                    title="Dropped",
+                    source_url="https://example.com/dropped",
+                    snippet="Dropped evidence has enough words for relevance.",
+                    verified=False,
+                ),
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.collection_rounds[0]["relevance_filtered_count"] == 1
+    assert updated.collection_rounds[0]["relevance_drop_reasons"] == [
+        "Evidence is not verified."
+    ]
+
+
 def test_executor_uses_network_failed_stop_reason_when_all_fetches_fail(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
 

@@ -11,7 +11,7 @@ from insight_graph.llm.observability import (
 )
 from insight_graph.llm.trace_writer import write_full_llm_trace_event
 from insight_graph.report_quality.budgeting import can_start_llm_call
-from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState
+from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState, LLMCallRecord
 
 PRODUCT_ALIASES = {
     "Cursor": ["cursor"],
@@ -52,6 +52,7 @@ def analyze_evidence(
     if provider == "deterministic":
         return _analyze_evidence_deterministic(state)
     if not can_start_llm_call(state):
+        state.llm_call_log.append(_budget_exhausted_record("analyst"))
         return _analyze_evidence_deterministic(state)
 
     try:
@@ -89,6 +90,17 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
         state.evidence_pool,
     )
     return state
+
+
+def _budget_exhausted_record(stage: str) -> LLMCallRecord:
+    return LLMCallRecord(
+        stage=stage,
+        provider="llm",
+        model="budget_exhausted",
+        success=False,
+        duration_ms=0,
+        error="budget_exhausted",
+    )
 
 
 def build_competitive_matrix(

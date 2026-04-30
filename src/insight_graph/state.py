@@ -48,6 +48,8 @@ class Evidence(BaseModel):
     reachable: bool | None = None
     source_trusted: bool | None = None
     claim_supported: bool | None = None
+    relevance_status: Literal["kept", "dropped"] | None = None
+    relevance_reason: str | None = None
 
     @property
     def source_domain(self) -> str:
