@@ -69,6 +69,30 @@ KNOWN_ENTITIES: tuple[ResolvedEntity, ...] = (
     ),
     ResolvedEntity("openai", "OpenAI", "company", ("OpenAI",), ("openai.com",), ("OpenAI",)),
     ResolvedEntity("github", "GitHub", "company", ("GitHub",), ("github.com",), ("GitHub",)),
+    ResolvedEntity(
+        "salesforce",
+        "Salesforce",
+        "company",
+        ("Salesforce", "Salesforce Inc", "CRM"),
+        ("salesforce.com",),
+        ("Salesforce", "CRM"),
+    ),
+    ResolvedEntity(
+        "oracle",
+        "Oracle",
+        "company",
+        ("Oracle", "Oracle Corp", "ORCL"),
+        ("oracle.com",),
+        ("Oracle", "ORCL"),
+    ),
+    ResolvedEntity(
+        "adobe",
+        "Adobe",
+        "company",
+        ("Adobe", "Adobe Inc", "ADBE"),
+        ("adobe.com",),
+        ("Adobe", "ADBE"),
+    ),
 )
 
 _GENERIC_TOKENS = {
@@ -82,6 +106,7 @@ _GENERIC_TOKENS = {
     "Agent",
     "Agents",
     "Market",
+    "SEC",
 }
 _CAPITALIZED_TOKEN_PATTERN = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:[A-Z][A-Za-z0-9]*)*\b")
 
