@@ -129,6 +129,15 @@ def execute_subtasks(state: GraphState) -> GraphState:
         if sufficient:
             stop_reason = "sufficient"
             break
+        if _all_round_fetches_failed(collected[round_start_count:]):
+            stop_reason = "network_failed"
+            break
+        if _has_query_strategies_for_round(state, round_index) and not _has_later_query_strategies(
+            state,
+            round_index,
+        ):
+            stop_reason = _strategy_exhaustion_stop_reason(state)
+            break
         if not state.section_research_plan and max_rounds == 1:
             stop_reason = "no_section_plan"
             break
@@ -175,6 +184,24 @@ def _query_strategy_count(
 
 def _fetch_status_count(evidence: list[Evidence], status: str) -> int:
     return sum(1 for item in evidence if item.fetch_status == status)
+
+
+def _all_round_fetches_failed(evidence: list[Evidence]) -> bool:
+    return bool(evidence) and all(item.fetch_status == "failed" for item in evidence)
+
+
+def _has_query_strategies_for_round(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) == round_index for strategy in state.query_strategies)
+
+
+def _has_later_query_strategies(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) > round_index for strategy in state.query_strategies)
+
+
+def _strategy_exhaustion_stop_reason(state: GraphState) -> str:
+    if state.evidence_pool and not any(item.verified for item in state.evidence_pool):
+        return "no_verified_evidence"
+    return "query_strategy_exhausted"
 
 
 def _finalize_collected_evidence(

@@ -200,7 +200,7 @@ def test_executor_runs_query_strategies_when_present(monkeypatch) -> None:
     monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
     state = GraphState(
         user_request="fallback query",
-        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"] )],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
         query_strategies=[
             {
                 "strategy_id": "strategy-1",
@@ -311,6 +311,137 @@ def test_executor_round_summary_counts_fetch_diagnostics(monkeypatch) -> None:
     assert updated.collection_rounds[0]["failed_fetch_count"] == 1
     assert updated.collection_rounds[0]["empty_fetch_count"] == 1
     assert updated.collection_rounds[0]["verified_evidence_count"] == 1
+
+
+def test_executor_uses_network_failed_stop_reason_when_all_fetches_fail(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="failed",
+                    subtask_id=subtask_id,
+                    title="Failed",
+                    source_url="https://example.com/failed",
+                    snippet="network: connection refused",
+                    verified=False,
+                    fetch_status="failed",
+                    fetch_error="network: connection refused",
+                )
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "fake",
+                "query": "pricing query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.collection_stop_reason == "network_failed"
+
+
+def test_executor_uses_query_strategy_exhausted_stop_reason(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="verified",
+                    subtask_id=subtask_id,
+                    title="Verified",
+                    source_url="https://example.com/verified",
+                    snippet="Verified evidence has enough words for relevance.",
+                    verified=True,
+                    fetch_status="fetched",
+                )
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+        section_research_plan=[
+            {
+                "section_id": "pricing",
+                "title": "Pricing",
+                "questions": ["What pricing changed?"],
+                "required_source_types": ["official_site", "news"],
+                "min_evidence": 3,
+                "budget": 3,
+            }
+        ],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "fake",
+                "query": "pricing query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.collection_stop_reason == "query_strategy_exhausted"
+
+
+def test_executor_uses_no_verified_evidence_stop_reason(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="empty",
+                    subtask_id=subtask_id,
+                    title="Empty",
+                    source_url="https://example.com/empty",
+                    snippet="fetch returned no evidence",
+                    verified=False,
+                    fetch_status="empty",
+                )
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "fake",
+                "query": "pricing query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.collection_stop_reason == "no_verified_evidence"
 
 
 def test_executor_records_conversation_summary_when_compression_enabled(
