@@ -108,6 +108,29 @@ def build_benchmark_payload(
     return build_eval_payload(cases, run_research_func=run_research_func)
 
 
+def build_memory_comparison_payload(
+    cases: list[EvalCase | str] | None = None,
+    run_research_func: Callable[[str], GraphState] = run_research,
+) -> dict[str, Any]:
+    eval_cases = [_coerce_eval_case(case) for case in (cases or DEFAULT_EVAL_CASES)]
+    disabled_payload = build_eval_payload(eval_cases, run_research_func=run_research_func)
+    enabled_cases = [
+        EvalCase(
+            query=f"{case.query} memory enabled",
+            min_findings=case.min_findings,
+            min_matrix_rows=case.min_matrix_rows,
+            min_references=case.min_references,
+        )
+        for case in eval_cases
+    ]
+    enabled_payload = build_eval_payload(enabled_cases, run_research_func=run_research_func)
+    return {
+        "memory_disabled": disabled_payload,
+        "memory_enabled": enabled_payload,
+        "memory_comparison": _memory_comparison_summary(disabled_payload, enabled_payload),
+    }
+
+
 def load_eval_cases(path: Path | str) -> list[EvalCase]:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -431,6 +454,27 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "average_collection_round_count": _average_quality(
             case_results, "collection_round_count"
         ),
+    }
+
+
+def _memory_comparison_summary(
+    disabled_payload: dict[str, Any],
+    enabled_payload: dict[str, Any],
+) -> dict[str, Any]:
+    disabled_summary = disabled_payload["summary"]
+    enabled_summary = enabled_payload["summary"]
+    disabled_depth = int(disabled_summary.get("average_report_depth_score", 0))
+    enabled_depth = int(enabled_summary.get("average_report_depth_score", 0))
+    disabled_score = int(disabled_summary.get("average_score", 0))
+    enabled_score = int(enabled_summary.get("average_score", 0))
+    return {
+        "case_count": disabled_summary.get("case_count", 0),
+        "memory_disabled_average_score": disabled_score,
+        "memory_enabled_average_score": enabled_score,
+        "average_score_delta": enabled_score - disabled_score,
+        "memory_disabled_average_report_depth_score": disabled_depth,
+        "memory_enabled_average_report_depth_score": enabled_depth,
+        "average_report_depth_delta": enabled_depth - disabled_depth,
     }
 
 
