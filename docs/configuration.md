@@ -94,10 +94,16 @@ Research memory is opt-in. The default backend is in-memory and is useful only f
 |------|------|--------|
 | `INSIGHT_GRAPH_MEMORY_BACKEND` | `memory` 或 opt-in `pgvector` | `memory` |
 | `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN used when memory backend is `pgvector` | - |
-| `INSIGHT_GRAPH_EMBEDDING_PROVIDER` | Research memory embedding provider；目前支持 `deterministic` | `deterministic` |
+| `INSIGHT_GRAPH_EMBEDDING_PROVIDER` | Research memory embedding provider；支持 `deterministic`、`openai_compatible`、`local_http` | `deterministic` |
+| `INSIGHT_GRAPH_EMBEDDING_BASE_URL` | Embedding endpoint；`openai_compatible` 使用 `<base_url>/embeddings`，`local_http` 使用该 URL 原值 | - |
+| `INSIGHT_GRAPH_EMBEDDING_API_KEY` | Embedding API key；`openai_compatible` 未设置时回退到 `INSIGHT_GRAPH_LLM_API_KEY` | - |
+| `INSIGHT_GRAPH_EMBEDDING_MODEL` | Embedding model name sent to external providers | - |
+| `INSIGHT_GRAPH_EMBEDDING_DIMENSIONS` | Expected embedding vector dimensions；设置后会验证 provider 响应长度 | - |
 | `INSIGHT_GRAPH_USE_MEMORY_CONTEXT` | `1` / `true` / `yes` 时 Planner 检索 long-term memory 并写入 `GraphState.memory_context` | 未启用 |
 
-`PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides persistence/search plus deletion by memory ID or metadata key/value. `build_memory_record` can generate deterministic offline embeddings for process-local tests and reproducible memory records. When memory context is enabled, Planner retrieves the top 3 similar memory records and uses them as collection hints. Real embedding providers and report-quality eval proof remain future work.
+`PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides persistence/search plus deletion by memory ID or metadata key/value. `build_memory_record` uses deterministic offline embeddings by default, or an explicitly configured external/local embedding provider. Memory records include embedding provider/model/dimension metadata, and memory search filters by the current embedding config before vector ranking. When memory context is enabled, Planner retrieves the top 3 similar memory records and uses them as collection hints. Report-quality eval proof remains future work.
+
+External embedding providers are opt-in and can fail if the endpoint is unavailable, returns invalid JSON, or returns a vector with an unexpected dimension. Tests use fake transports and do not call live embedding services.
 
 ## Document Indexing
 

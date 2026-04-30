@@ -15,9 +15,9 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
-| Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index | Need external embeddings and search_document tool | High |
+| Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Need search_document tool and live validation | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
-| pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
+| pgvector memory | Store/search/delete + deterministic/external embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
 | LLM provider presets | Local/self-hosted presets plus Qwen/DashScope config are implemented on the OpenAI-compatible client | Add Minimax preset if needed | Medium |
 | MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
@@ -47,7 +47,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 12. Named Minimax LLM preset. **Deferred until needed.**
 13. Stage-aware model routing policy. **Implemented.**
 14. Persisted document vector index. **Implemented.**
-15. External embedding provider boundary.
+15. External embedding provider boundary. **Implemented.**
 16. `search_document` tool for TOC/page/vector retrieval.
 17. PDF fetch/retrieval validation script.
 
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 15 starts with the external embedding provider boundary. The first implementation should add an opt-in embedding provider interface while keeping deterministic offline embeddings as the default.
+Phase 16 starts with the `search_document` tool for TOC/page/vector retrieval. The first implementation should expose the persisted document index through an explicit tool while keeping local/offline defaults.
