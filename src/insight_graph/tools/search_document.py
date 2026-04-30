@@ -29,10 +29,13 @@ LOGGER = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class SearchDocumentQuery:
     path: str
+    paths: tuple[str, ...] = ()
     query: str | None = None
     limit: int = MAX_DOCUMENT_EVIDENCE
     mode: SearchDocumentMode | None = None
     page: int | None = None
+    page_start: int | None = None
+    page_end: int | None = None
     section: str | None = None
 
 
@@ -42,20 +45,19 @@ def search_document(query: str, subtask_id: str = "collect") -> list[Evidence]:
         return []
 
     root = Path.cwd().resolve()
-    path = _resolve_inside_root(root, parsed_query.path)
-    if path is None or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
+    document_chunks = _load_search_documents(root, parsed_query)
+    candidates: list[tuple[Path, DocumentChunk]] = []
+    for path, chunks in document_chunks:
+        for chunk in _filter_chunks(chunks, parsed_query):
+            candidates.append((path, chunk))
+    if not candidates:
         return []
 
-    chunks = _load_document_chunks(path)
-    if not chunks:
-        return []
-
-    filtered_chunks = _filter_chunks(chunks, parsed_query)
-    if not filtered_chunks:
-        return []
-
-    selected_chunks = _select_chunks(filtered_chunks, parsed_query)
-    return [_build_evidence(root, path, subtask_id, chunk) for chunk in selected_chunks]
+    selected_chunks = _select_document_chunks(candidates, parsed_query)
+    return [
+        _build_evidence(root, path, subtask_id, chunk)
+        for path, chunk in selected_chunks
+    ]
 
 
 def _parse_search_document_query(query: str) -> SearchDocumentQuery | None:
@@ -68,6 +70,14 @@ def _parse_search_document_query(query: str) -> SearchDocumentQuery | None:
         return None
 
     path = parsed.get("path")
+    paths = parsed.get("paths")
+    parsed_paths: tuple[str, ...] = ()
+    if isinstance(paths, list):
+        parsed_paths = tuple(
+            item.strip() for item in paths if isinstance(item, str) and item.strip()
+        )
+    if parsed_paths:
+        path = parsed_paths[0]
     if not isinstance(path, str) or not path.strip():
         return None
 
@@ -89,18 +99,51 @@ def _parse_search_document_query(query: str) -> SearchDocumentQuery | None:
     ):
         page = None
 
+    page_start = _parse_positive_int(parsed.get("page_start"))
+    page_end = _parse_positive_int(parsed.get("page_end"))
+    if page_start is not None and page_end is not None and page_start > page_end:
+        page_start, page_end = page_end, page_start
+
     section = parsed.get("section")
     if not isinstance(section, str) or not section.strip():
         section = None
 
     return SearchDocumentQuery(
         path=path.strip(),
+        paths=parsed_paths,
         query=retrieval_query.strip() if retrieval_query else None,
         limit=limit,
         mode=mode,
         page=page,
+        page_start=page_start,
+        page_end=page_end,
         section=section.strip() if section else None,
     )
+
+
+def _parse_positive_int(value) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        return None
+    return value
+
+
+def _load_search_documents(
+    root: Path,
+    parsed_query: SearchDocumentQuery,
+) -> list[tuple[Path, list[DocumentChunk]]]:
+    documents = []
+    for query_path in parsed_query.paths or (parsed_query.path,):
+        path = _resolve_inside_root(root, query_path)
+        if (
+            path is None
+            or not path.is_file()
+            or path.suffix.lower() not in SUPPORTED_SUFFIXES
+        ):
+            continue
+        chunks = _load_document_chunks(path)
+        if chunks:
+            documents.append((path, chunks))
+    return documents
 
 
 def _load_document_chunks(path: Path) -> list[DocumentChunk]:
@@ -141,6 +184,18 @@ def _filter_chunks(
         filtered_chunks = [
             chunk for chunk in filtered_chunks if chunk.page == parsed_query.page
         ]
+    if parsed_query.page_start is not None:
+        filtered_chunks = [
+            chunk
+            for chunk in filtered_chunks
+            if chunk.page is not None and chunk.page >= parsed_query.page_start
+        ]
+    if parsed_query.page_end is not None:
+        filtered_chunks = [
+            chunk
+            for chunk in filtered_chunks
+            if chunk.page is not None and chunk.page <= parsed_query.page_end
+        ]
     if parsed_query.section is not None:
         section_query = parsed_query.section.casefold()
         filtered_chunks = [
@@ -150,6 +205,36 @@ def _filter_chunks(
             and section_query in chunk.section_heading.casefold()
         ]
     return filtered_chunks
+
+
+def _select_document_chunks(
+    candidates: list[tuple[Path, DocumentChunk]],
+    parsed_query: SearchDocumentQuery,
+) -> list[tuple[Path, DocumentChunk]]:
+    if not parsed_query.query:
+        return candidates[: parsed_query.limit]
+
+    index_chunks = [
+        DocumentIndexChunk(
+            text=chunk.snippet,
+            index=chunk.index,
+            document_index=document_index,
+            page=chunk.page,
+            section_heading=chunk.section_heading,
+        )
+        for document_index, (_path, chunk) in enumerate(candidates)
+    ]
+    ranked = rank_document_chunks(index_chunks, parsed_query.query, mode=parsed_query.mode)
+    chunks_by_key = {
+        (document_index, chunk.index): (path, chunk)
+        for document_index, (path, chunk) in enumerate(candidates)
+    }
+    selected = [
+        chunks_by_key[(chunk.document_index, chunk.index)]
+        for chunk in ranked
+        if (chunk.document_index, chunk.index) in chunks_by_key
+    ]
+    return (selected if selected else candidates)[: parsed_query.limit]
 
 
 def _select_chunks(

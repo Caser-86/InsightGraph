@@ -37,6 +37,7 @@ class DocumentReaderQuery:
 class DocumentText:
     text: str
     page_starts: list[tuple[int, int]]
+    section_headings: list[tuple[int, str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,7 +127,11 @@ def _read_document_chunks(path: Path) -> list[DocumentChunk]:
     return _chunk_snippets(
         normalized_text,
         _normalize_page_starts(extracted_text, document_text.page_starts),
-        _extract_section_headings(document_text.text, normalized_text),
+        _normalize_section_starts(
+            extracted_text,
+            document_text.section_headings or [],
+        )
+        + _extract_section_headings(document_text.text, normalized_text),
     )
 
 
@@ -174,6 +179,16 @@ def _normalize_page_starts(
     return [
         (len(_normalize_snippet(text[:start])), page_number)
         for start, page_number in page_starts
+    ]
+
+
+def _normalize_section_starts(
+    text: str,
+    section_starts: list[tuple[int, str]],
+) -> list[tuple[int, str]]:
+    return [
+        (len(_normalize_snippet(text[:start])), heading)
+        for start, heading in section_starts
     ]
 
 
@@ -340,9 +355,46 @@ def _read_pdf_text(path: Path) -> DocumentText:
                     page_starts.append((offset, page_number))
                 parts.append(page_text)
                 offset += len(page_text) + 1
-            return DocumentText(text="\n".join(parts), page_starts=page_starts)
+            return DocumentText(
+                text="\n".join(parts),
+                page_starts=page_starts,
+                section_headings=_extract_pdf_outline_headings(reader, page_starts),
+            )
     finally:
         logger.setLevel(previous_level)
+
+
+def _extract_pdf_outline_headings(
+    reader: PdfReader,
+    page_starts: list[tuple[int, int]],
+) -> list[tuple[int, str]]:
+    page_offsets = {page_number: offset for offset, page_number in page_starts}
+    headings: list[tuple[int, str]] = []
+    for destination in _iter_pdf_outline_destinations(getattr(reader, "outline", [])):
+        title = getattr(destination, "title", None)
+        if not isinstance(title, str) or not title.strip():
+            continue
+        try:
+            page_number = reader.get_destination_page_number(destination) + 1
+        except (AttributeError, KeyError, ValueError, TypeError):
+            continue
+        offset = page_offsets.get(page_number)
+        if offset is None:
+            continue
+        headings.append((offset, title.strip()))
+    return sorted(headings)
+
+
+def _iter_pdf_outline_destinations(outline):
+    if isinstance(outline, list):
+        for item in outline:
+            yield from _iter_pdf_outline_destinations(item)
+        return
+    if isinstance(outline, tuple):
+        for item in outline:
+            yield from _iter_pdf_outline_destinations(item)
+        return
+    yield outline
 
 
 def _extract_text(text: str, suffix: str) -> str:

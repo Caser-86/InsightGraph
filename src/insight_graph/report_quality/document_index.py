@@ -19,6 +19,7 @@ DOCUMENT_EMBEDDING_DIMENSIONS = len(deterministic_text_embedding(""))
 class DocumentIndexChunk:
     text: str
     index: int
+    document_index: int = 0
     page: int | None = None
     section_heading: str | None = None
     score: int = 0
@@ -28,6 +29,7 @@ class DocumentIndexChunk:
 class IndexedDocumentChunk:
     text: str
     index: int
+    document_index: int = 0
     page: int | None = None
     section_heading: str | None = None
     embedding: list[float] = field(default_factory=list)
@@ -122,6 +124,7 @@ def build_index_chunks(chunks: Sequence[DocumentIndexChunk]) -> list[IndexedDocu
             IndexedDocumentChunk(
                 text=chunk.text,
                 index=chunk.index,
+                document_index=chunk.document_index,
                 page=chunk.page,
                 section_heading=chunk.section_heading,
                 embedding=deterministic_text_embedding(
@@ -137,6 +140,7 @@ def _indexed_chunk_to_json(chunk: IndexedDocumentChunk) -> dict[str, Any]:
     return {
         "text": chunk.text,
         "index": chunk.index,
+        "document_index": chunk.document_index,
         "page": chunk.page,
         "section_heading": chunk.section_heading,
         "embedding": chunk.embedding,
@@ -147,6 +151,7 @@ def _indexed_chunk_to_json(chunk: IndexedDocumentChunk) -> dict[str, Any]:
 def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | None:
     text = payload.get("text")
     index = payload.get("index")
+    document_index = payload.get("document_index", 0)
     page = payload.get("page")
     section_heading = payload.get("section_heading")
     score = payload.get("score", 0)
@@ -154,6 +159,8 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
     if not isinstance(text, str):
         return None
     if not isinstance(index, int) or isinstance(index, bool):
+        return None
+    if not isinstance(document_index, int) or isinstance(document_index, bool):
         return None
     if page is not None and (not isinstance(page, int) or isinstance(page, bool)):
         return None
@@ -166,6 +173,7 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
     return IndexedDocumentChunk(
         text=text,
         index=index,
+        document_index=document_index,
         page=page,
         section_heading=section_heading,
         embedding=embedding,
@@ -227,6 +235,7 @@ def rank_document_chunks(
                     DocumentIndexChunk(
                         text=chunk.text,
                         index=chunk.index,
+                        document_index=chunk.document_index,
                         page=chunk.page,
                         section_heading=chunk.section_heading,
                         score=score,
@@ -257,6 +266,7 @@ def _rank_chunks_by_deterministic_vector(
                     DocumentIndexChunk(
                         text=chunk.text,
                         index=chunk.index,
+                        document_index=chunk.document_index,
                         page=chunk.page,
                         section_heading=chunk.section_heading,
                         score=int(score * 10_000),
