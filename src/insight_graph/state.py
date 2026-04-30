@@ -6,7 +6,16 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 SubtaskType = Literal["research", "company", "product", "market", "technology", "synthesis"]
-SourceType = Literal["official_site", "docs", "github", "news", "blog", "unknown"]
+SourceType = Literal[
+    "official_site",
+    "docs",
+    "github",
+    "news",
+    "blog",
+    "sec",
+    "paper",
+    "unknown",
+]
 
 
 class Subtask(BaseModel):

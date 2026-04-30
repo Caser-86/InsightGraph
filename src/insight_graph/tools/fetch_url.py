@@ -17,6 +17,7 @@ from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
 from insight_graph.tools.http_client import FetchedPage, FetchError, fetch_text
 from insight_graph.tools.rendered_fetch import render_page
+from insight_graph.report_quality.source_types import infer_source_type
 
 MAX_FETCHED_EVIDENCE = 5
 MAX_SNIPPET_CHARS = 500
@@ -94,17 +95,6 @@ def _parse_fetch_url_query(query: str) -> FetchUrlQuery:
     if not isinstance(retrieval_query, str) or not retrieval_query.strip():
         retrieval_query = None
     return FetchUrlQuery(url=url.strip(), retrieval_query=retrieval_query)
-
-
-def infer_source_type(url: str) -> SourceType:
-    parsed = urlparse(url)
-    domain = parsed.netloc.lower()
-    path = parsed.path.lower()
-    if domain.startswith("docs.") or "/docs" in path or path.endswith(".pdf"):
-        return "docs"
-    if domain == "github.com" or domain.endswith(".github.com"):
-        return "github"
-    return "unknown"
 
 
 def _evidence_id(url: str) -> str:
