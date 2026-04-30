@@ -65,6 +65,7 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
     evidence_ids = [item.id for item in state.evidence_pool if item.verified]
     if not evidence_ids:
         state.findings = []
+        state.grounded_claims = []
         state.competitive_matrix = []
         return state
     state.findings = [
@@ -85,11 +86,37 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
             evidence_ids=evidence_ids[2:],
         ),
     ]
+    state.grounded_claims = _build_grounded_claims(state.findings, state.evidence_pool)
     state.competitive_matrix = build_competitive_matrix(
         state.user_request,
         state.evidence_pool,
     )
     return state
+
+
+def _build_grounded_claims(
+    findings: list[Finding],
+    evidence_pool: list[Evidence],
+) -> list[dict[str, object]]:
+    evidence_by_id = {item.id: item for item in evidence_pool if item.verified}
+    claims = []
+    for finding in findings:
+        evidence_ids = [item for item in finding.evidence_ids if item in evidence_by_id]
+        if not evidence_ids:
+            continue
+        section_ids = [evidence_by_id[item].section_id for item in evidence_ids]
+        section_id = next((item for item in section_ids if item), None)
+        claims.append(
+            {
+                "claim": finding.title,
+                "section_id": section_id,
+                "evidence_ids": evidence_ids,
+                "confidence": "medium",
+                "risk": "Deterministic claim needs human review before publication.",
+                "unknowns": [],
+            }
+        )
+    return claims
 
 
 def _budget_exhausted_record(stage: str) -> LLMCallRecord:
@@ -215,7 +242,7 @@ def _analyze_evidence_with_llm(
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     try:
-        state.findings, parsed_matrix = _parse_analyst_response(
+        state.findings, state.grounded_claims, parsed_matrix = _parse_analyst_response(
             result.content,
             state.evidence_pool,
         )
@@ -310,13 +337,20 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
                 "Return strict JSON with this shape only: "
                 '{"findings": [{"title": "...", "summary": "...", '
                 '"evidence_ids": ["verified-evidence-id"]}], '
+                '"grounded_claims": [{"claim": "...", "section_id": "...", '
+                '"evidence_ids": ["verified-evidence-id"], "confidence": "high|medium|low", '
+                '"risk": "...", "unknowns": ["..."]}], '
                 '"competitive_matrix": [{"product": "...", '
                 '"positioning": "...", "strengths": ["..."], '
+                '"pricing": "...", "features": ["..."], '
+                '"integrations": ["..."], "target_users": ["..."], '
+                '"risks": ["..."], '
                 '"evidence_ids": ["verified-evidence-id"]}]} '
                 "competitive_matrix is optional, but each matrix row must include "
                 "product, positioning, strengths, and evidence_ids that cite "
                 "verified evidence IDs from the list. Every finding must cite "
-                "one or more verified evidence IDs from the list."
+                "one or more verified evidence IDs from the list. Every grounded_claim "
+                "must cite one or more verified evidence IDs from the list."
             ),
         ]
     )
@@ -336,11 +370,12 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
 def _parse_analyst_response(
     content: str | None,
     evidence_pool: list[Evidence],
-) -> tuple[list[Finding], list[CompetitiveMatrixRow] | None]:
+) -> tuple[list[Finding], list[dict[str, object]], list[CompetitiveMatrixRow] | None]:
     data = _load_analyst_json(content)
     findings = _parse_analyst_findings_from_data(data, evidence_pool)
+    grounded_claims = _parse_grounded_claims_from_data(data, evidence_pool, findings)
     matrix = _parse_competitive_matrix_from_data(data, evidence_pool)
-    return findings, matrix
+    return findings, grounded_claims, matrix
 
 
 def _load_analyst_json(content: str | None) -> dict:
@@ -401,6 +436,56 @@ def _parse_analyst_findings_from_data(data: dict, evidence_pool: list[Evidence])
     return findings
 
 
+def _parse_grounded_claims_from_data(
+    data: dict,
+    evidence_pool: list[Evidence],
+    findings: list[Finding],
+) -> list[dict[str, object]]:
+    if "grounded_claims" not in data:
+        return _build_grounded_claims(findings, evidence_pool)
+    raw_claims = data.get("grounded_claims")
+    if not isinstance(raw_claims, list):
+        raise ValueError("LLM grounded_claims must be a list")
+    verified_evidence_ids = {item.id for item in evidence_pool if item.verified}
+    claims = []
+    for raw_claim in raw_claims:
+        if not isinstance(raw_claim, dict):
+            raise ValueError("LLM grounded_claim must be an object")
+        claim = raw_claim.get("claim")
+        evidence_ids = raw_claim.get("evidence_ids")
+        confidence = raw_claim.get("confidence")
+        risk = raw_claim.get("risk")
+        unknowns = raw_claim.get("unknowns")
+        section_id = raw_claim.get("section_id")
+        if not isinstance(claim, str) or not claim.strip():
+            raise ValueError("LLM grounded_claim claim is required")
+        if not isinstance(evidence_ids, list) or not evidence_ids:
+            raise ValueError("LLM grounded_claim evidence_ids are required")
+        if not all(
+            isinstance(evidence_id, str) and evidence_id.strip() for evidence_id in evidence_ids
+        ):
+            raise ValueError("LLM grounded_claim evidence_ids must be strings")
+        if not set(evidence_ids).issubset(verified_evidence_ids):
+            raise ValueError("LLM grounded_claim cites unverified or unknown evidence")
+        if not isinstance(confidence, str) or not confidence.strip():
+            raise ValueError("LLM grounded_claim confidence is required")
+        if not isinstance(risk, str):
+            raise ValueError("LLM grounded_claim risk must be a string")
+        if not isinstance(unknowns, list) or not all(isinstance(item, str) for item in unknowns):
+            raise ValueError("LLM grounded_claim unknowns must be strings")
+        claims.append(
+            {
+                "claim": claim.strip(),
+                "section_id": section_id.strip() if isinstance(section_id, str) else None,
+                "evidence_ids": evidence_ids,
+                "confidence": confidence.strip(),
+                "risk": risk.strip(),
+                "unknowns": [item.strip() for item in unknowns if item.strip()],
+            }
+        )
+    return claims
+
+
 def _parse_competitive_matrix_from_data(
     data: dict,
     evidence_pool: list[Evidence],
@@ -420,6 +505,11 @@ def _parse_competitive_matrix_from_data(
         product = raw_row.get("product")
         positioning = raw_row.get("positioning")
         strengths = raw_row.get("strengths")
+        pricing = raw_row.get("pricing")
+        features = raw_row.get("features", [])
+        integrations = raw_row.get("integrations", [])
+        target_users = raw_row.get("target_users", [])
+        risks = raw_row.get("risks", [])
         evidence_ids = raw_row.get("evidence_ids")
         if not isinstance(product, str) or not product.strip():
             raise ValueError("LLM competitive_matrix product is required")
@@ -431,6 +521,18 @@ def _parse_competitive_matrix_from_data(
             raise ValueError("LLM competitive_matrix strengths must be strings")
         if len(strengths) > 5:
             raise ValueError("LLM competitive_matrix strengths must have at most 5 items")
+        if pricing is not None and not isinstance(pricing, str):
+            raise ValueError("LLM competitive_matrix pricing must be a string")
+        for field_name, values in {
+            "features": features,
+            "integrations": integrations,
+            "target_users": target_users,
+            "risks": risks,
+        }.items():
+            if not isinstance(values, list) or not all(
+                isinstance(item, str) and item.strip() for item in values
+            ):
+                raise ValueError(f"LLM competitive_matrix {field_name} must be strings")
         if not isinstance(evidence_ids, list) or not evidence_ids:
             raise ValueError("LLM competitive_matrix evidence_ids are required")
         if not all(
@@ -445,6 +547,11 @@ def _parse_competitive_matrix_from_data(
                 product=product.strip(),
                 positioning=positioning.strip(),
                 strengths=[item.strip() for item in strengths],
+                pricing=pricing.strip() if isinstance(pricing, str) and pricing.strip() else None,
+                features=[item.strip() for item in features],
+                integrations=[item.strip() for item in integrations],
+                target_users=[item.strip() for item in target_users],
+                risks=[item.strip() for item in risks],
                 evidence_ids=evidence_ids,
             )
         )

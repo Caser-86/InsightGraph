@@ -107,6 +107,7 @@ def test_graph_state_starts_with_empty_collections() -> None:
     assert state.subtasks == []
     assert state.evidence_pool == []
     assert state.findings == []
+    assert state.grounded_claims == []
     assert state.competitive_matrix == []
     assert state.report_markdown is None
     assert state.memory_context == []
@@ -123,12 +124,22 @@ def test_competitive_matrix_row_stores_evidence_backed_fields() -> None:
         product="Cursor",
         positioning="Official product positioning signal",
         strengths=["Official/documented source coverage"],
+        pricing="Pro and Business tiers",
+        features=["AI coding assistance"],
+        integrations=["VS Code"],
+        target_users=["Engineering teams"],
+        risks=["Pricing may change"],
         evidence_ids=["cursor-pricing"],
     )
 
     assert row.product == "Cursor"
     assert row.positioning == "Official product positioning signal"
     assert row.strengths == ["Official/documented source coverage"]
+    assert row.pricing == "Pro and Business tiers"
+    assert row.features == ["AI coding assistance"]
+    assert row.integrations == ["VS Code"]
+    assert row.target_users == ["Engineering teams"]
+    assert row.risks == ["Pricing may change"]
     assert row.evidence_ids == ["cursor-pricing"]
 
 

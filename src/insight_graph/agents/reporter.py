@@ -490,6 +490,7 @@ def _build_competitive_matrix_section(
     reference_numbers: dict[str, int],
 ) -> list[str]:
     rows = []
+    has_v2_fields = any(_matrix_row_has_v2_fields(row) for row in matrix)
     for row in matrix:
         citations = [
             f"[{reference_numbers[evidence_id]}]"
@@ -499,29 +500,43 @@ def _build_competitive_matrix_section(
         if not citations:
             continue
         strengths = "; ".join(row.strengths) if row.strengths else "Verified evidence available"
-        rows.append(
-            "| "
-            + " | ".join(
+        cells = [
+            _markdown_table_cell(row.product),
+            _markdown_table_cell(row.positioning),
+            _markdown_table_cell(strengths),
+        ]
+        if has_v2_fields:
+            cells.extend(
                 [
-                    _markdown_table_cell(row.product),
-                    _markdown_table_cell(row.positioning),
-                    _markdown_table_cell(strengths),
-                    ", ".join(citations),
+                    _markdown_table_cell(row.pricing or ""),
+                    _markdown_table_cell(_matrix_list_cell(row.features)),
+                    _markdown_table_cell(_matrix_list_cell(row.integrations)),
+                    _markdown_table_cell(_matrix_list_cell(row.target_users)),
+                    _markdown_table_cell(_matrix_list_cell(row.risks)),
                 ]
             )
-            + " |"
-        )
+        cells.append(", ".join(citations))
+        rows.append("| " + " | ".join(cells) + " |")
 
     if not rows:
         return []
-    return [
-        "## Competitive Matrix",
-        "",
-        "| Product | Positioning | Strengths | Evidence |",
-        "| --- | --- | --- | --- |",
-        *rows,
-        "",
-    ]
+    header = "| Product | Positioning | Strengths | Evidence |"
+    separator = "| --- | --- | --- | --- |"
+    if has_v2_fields:
+        header = (
+            "| Product | Positioning | Strengths | Pricing | Features | Integrations | "
+            "Target Users | Risks | Evidence |"
+        )
+        separator = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    return ["## Competitive Matrix", "", header, separator, *rows, ""]
+
+
+def _matrix_row_has_v2_fields(row: CompetitiveMatrixRow) -> bool:
+    return bool(row.pricing or row.features or row.integrations or row.target_users or row.risks)
+
+
+def _matrix_list_cell(values: list[str]) -> str:
+    return "; ".join(values)
 
 
 def _has_competitive_matrix_section(body: str) -> bool:

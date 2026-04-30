@@ -66,6 +66,11 @@ class CompetitiveMatrixRow(BaseModel):
     product: str
     positioning: str
     strengths: list[str] = Field(default_factory=list)
+    pricing: str | None = None
+    features: list[str] = Field(default_factory=list)
+    integrations: list[str] = Field(default_factory=list)
+    target_users: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
 
 
@@ -123,6 +128,7 @@ class GraphState(BaseModel):
     tool_call_log: list[ToolCallRecord] = Field(default_factory=list)
     llm_call_log: list[LLMCallRecord] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    grounded_claims: list[dict[str, object]] = Field(default_factory=list)
     competitive_matrix: list[CompetitiveMatrixRow] = Field(default_factory=list)
     critique: Critique | None = None
     report_markdown: str | None = None
