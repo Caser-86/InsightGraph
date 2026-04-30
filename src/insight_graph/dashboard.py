@@ -891,7 +891,23 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </div>`;
     }
 
+    function renderQualityCards(result, detail) {
+      const cards = result?.quality_cards || {};
+      const runtime = cards.runtime_seconds ?? detail?.runtime_seconds ?? 0;
+      const items = [
+        ['Section coverage', `${cards.section_coverage_score ?? 0}%`],
+        ['Citation support', `${cards.citation_support_score ?? 0}%`],
+        ['Source diversity', `${cards.source_diversity_score ?? 0}%`],
+        ['Unsupported claims', cards.unsupported_claim_count ?? 0],
+        ['URL validation', `${cards.url_validation_rate ?? 0}%`],
+        ['Token totals', cards.total_tokens ?? 0],
+        ['Runtime', `${runtime}s`],
+      ];
+      return `<div class="overview-grid">${items.map(([label, value]) => `<div class="info-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>`;
+    }
+
     function renderQualityPanel(result) {
+      const detail = state.detail || {};
       const llm = result?.llm_call_log || [];
       const quality = result?.quality || result?.report_quality || {};
       const inputTokens = llm.reduce((total, item) => total + Number(item.input_tokens || 0), 0);
@@ -900,6 +916,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       return `
         <div class="data-list">
           <h2>Quality Signals</h2>
+          ${renderQualityCards(result, detail)}
           <p><strong>Source candidates</strong><br>${escapeHtml((result?.evidence_pool || []).length)}</p>
           <p><strong>Fetch errors</strong><br>${escapeHtml((result?.evidence_pool || []).filter((item) => item.fetch_error).length)}</p>
           <p><strong>Supported citations</strong><br>${escapeHtml((result?.citation_support || []).filter((item) => item.support_status === 'supported').length)}</p>

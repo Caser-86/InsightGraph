@@ -13,6 +13,7 @@ from insight_graph.memory.store import InMemoryResearchMemoryStore, ResearchMemo
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Critique,
+    Evidence,
     Finding,
     GraphState,
     LLMCallRecord,
@@ -276,6 +277,9 @@ def make_api_state(query: str) -> GraphState:
                 model="relay-model",
                 success=True,
                 duration_ms=12,
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=42,
             )
         ],
         iterations=1,
@@ -937,6 +941,98 @@ def test_research_returns_cli_aligned_json(monkeypatch) -> None:
     assert payload["tool_call_log"][0]["tool_name"] == "mock_search"
     assert payload["llm_call_log"][0]["model"] == "relay-model"
     assert payload["iterations"] == 1
+
+
+def test_research_json_payload_includes_dashboard_quality_cards() -> None:
+    state = GraphState(
+        user_request="Quality cards",
+        report_markdown=(
+            "# InsightGraph Research Report\n\n"
+            "## Key Findings\n\nSupported finding. [1]\n\n"
+            "## Competitive Matrix\n\n| Product | Evidence |\n| --- | --- |\n| Cursor | [1] |\n\n"
+            "## References\n\n[1] Cursor Pricing. https://cursor.com/pricing\n"
+        ),
+        section_research_plan=[
+            {"section_id": "pricing", "title": "Pricing"},
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing evidence.",
+                source_type="official_site",
+                verified=True,
+                section_id="pricing",
+            ),
+            Evidence(
+                id="cursor-docs",
+                subtask_id="collect",
+                title="Cursor Docs",
+                source_url="https://docs.cursor.com",
+                snippet="Cursor docs evidence.",
+                source_type="docs",
+                verified=True,
+                section_id="pricing",
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Pricing differs",
+                summary="Cursor has pricing evidence.",
+                evidence_ids=["cursor-pricing"],
+            )
+        ],
+        competitive_matrix=[
+            CompetitiveMatrixRow(
+                product="Cursor",
+                positioning="Pricing evidence exists.",
+                evidence_ids=["cursor-pricing"],
+            )
+        ],
+        llm_call_log=[
+            LLMCallRecord(
+                stage="analyst",
+                provider="llm",
+                model="relay-model",
+                success=True,
+                duration_ms=12,
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=42,
+            )
+        ],
+        url_validation=[
+            {"source_url": "https://cursor.com/pricing", "valid": True},
+            {"source_url": "https://docs.cursor.com", "valid": False},
+        ],
+    )
+
+    payload = api_module._build_research_json_payload(state)
+
+    assert payload["quality_cards"] == {
+        "section_coverage_score": 100,
+        "citation_support_score": 100,
+        "source_diversity_score": 67,
+        "unsupported_claim_count": 0,
+        "url_validation_rate": 50,
+        "total_tokens": 42,
+        "runtime_seconds": None,
+    }
+
+
+def test_dashboard_quality_panel_renders_quality_cards() -> None:
+    html = api_module.dashboard_html()
+
+    assert "renderQualityCards" in html
+    assert "Section coverage" in html
+    assert "Citation support" in html
+    assert "Source diversity" in html
+    assert "Unsupported claims" in html
+    assert "URL validation" in html
+    assert "Token totals" in html
+    assert "Runtime" in html
 
 
 def test_research_passes_query_to_workflow(monkeypatch) -> None:
