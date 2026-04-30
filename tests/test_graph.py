@@ -1,6 +1,6 @@
 from insight_graph.graph import run_research, run_research_with_events
 from insight_graph.persistence.checkpoints import CheckpointRecord
-from insight_graph.state import GraphState
+from insight_graph.state import Critique, GraphState
 
 
 def clear_llm_env(monkeypatch) -> None:
@@ -194,3 +194,54 @@ def test_run_research_with_events_resumes_after_loaded_checkpoint(monkeypatch) -
         "reporter",
     ]
     assert events[0] == {"type": "resumed_from_checkpoint", "stage": "collector"}
+
+
+def test_run_research_with_events_resumes_failed_critic_at_retry(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    failed_state = GraphState(
+        user_request="Needs retry",
+        critique=Critique(
+            passed=False,
+            issues=["Need more evidence"],
+            reason="Needs another collection round.",
+        ),
+        iterations=0,
+    )
+    checkpoint = CheckpointRecord.from_state("run-1", "critic", failed_state)
+    store = RecordingCheckpointStore(loaded_record=checkpoint)
+
+    result = run_research_with_events(
+        "ignored",
+        lambda event: None,
+        run_id="run-1",
+        checkpoint_store=store,
+        resume=True,
+    )
+
+    assert [record.node_name for record in store.records[:2]] == [
+        "record_retry",
+        "planner",
+    ]
+    assert result.iterations == 1
+
+
+def test_run_research_with_events_resumes_passed_critic_at_reporter(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    clear_planner_tool_env(monkeypatch)
+    passed_state = GraphState(
+        user_request="Ready to report",
+        critique=Critique(passed=True, issues=[], reason="Ready."),
+    )
+    checkpoint = CheckpointRecord.from_state("run-1", "critic", passed_state)
+    store = RecordingCheckpointStore(loaded_record=checkpoint)
+
+    run_research_with_events(
+        "ignored",
+        lambda event: None,
+        run_id="run-1",
+        checkpoint_store=store,
+        resume=True,
+    )
+
+    assert [record.node_name for record in store.records] == ["reporter"]

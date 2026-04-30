@@ -82,8 +82,10 @@ def run_research_with_events(
     else:
         state = GraphState(user_request=user_request)
 
-    skip_until = _next_stage_after_checkpoint(resume_stage)
+    skip_until = _next_stage_after_checkpoint(resume_stage, state)
     while True:
+        if skip_until == "reporter":
+            break
         if skip_until in {None, "planner"}:
             state = _run_stage_with_events(
                 "planner", plan_research, state, emit_event, run_id, checkpoint_store
@@ -96,9 +98,10 @@ def run_research_with_events(
             state = _run_stage_with_events(
                 "analyst", analyze_evidence, state, emit_event, run_id, checkpoint_store
             )
-        state = _run_stage_with_events(
-            "critic", critique_analysis, state, emit_event, run_id, checkpoint_store
-        )
+        if skip_until != "record_retry":
+            state = _run_stage_with_events(
+                "critic", critique_analysis, state, emit_event, run_id, checkpoint_store
+            )
         skip_until = None
         if _route_after_critic(state) == "reporter":
             break
@@ -113,13 +116,14 @@ def run_research_with_events(
     return state
 
 
-def _next_stage_after_checkpoint(stage: str | None) -> str | None:
+def _next_stage_after_checkpoint(stage: str | None, state: GraphState) -> str | None:
+    if stage == "critic":
+        return "reporter" if _route_after_critic(state) == "reporter" else "record_retry"
     return {
         None: None,
         "planner": "collector",
         "collector": "analyst",
         "analyst": "critic",
-        "critic": "reporter",
         "record_retry": "planner",
         "reporter": "reporter",
     }.get(stage)
