@@ -42,11 +42,13 @@ def resolve_embedding_config(
     if normalized_provider not in {"deterministic", "openai_compatible", "local_http"}:
         raise ValueError(f"Unsupported embedding provider: {resolved_provider}")
 
-    resolved_base_url = _env_or_value(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None)
-    resolved_api_key = _env_or_value(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None)
+    resolved_base_url = _env_or_value_allow_empty(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None)
+    resolved_api_key = _env_or_value_allow_empty(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None)
     if normalized_provider == "openai_compatible":
-        resolved_base_url = resolved_base_url or _env_or_value(None, "INSIGHT_GRAPH_LLM_BASE_URL", None)
-        resolved_api_key = resolved_api_key or _env_or_value(None, "INSIGHT_GRAPH_LLM_API_KEY", None)
+        if resolved_base_url is None:
+            resolved_base_url = _env_or_value(None, "INSIGHT_GRAPH_LLM_BASE_URL", None)
+        if resolved_api_key is None:
+            resolved_api_key = _env_or_value(None, "INSIGHT_GRAPH_LLM_API_KEY", None)
 
     return EmbeddingConfig(
         provider=normalized_provider,  # type: ignore[arg-type]
@@ -147,6 +149,15 @@ def _env_or_value(value: str | None, env_name: str, default: str | None) -> str 
     return stripped or default
 
 
+def _env_or_value_allow_empty(value: str | None, env_name: str, default: str | None) -> str | None:
+    if value is not None:
+        return value
+    env_value = os.environ.get(env_name)
+    if env_value is None:
+        return default
+    return env_value.strip()
+
+
 def _resolve_dimensions(dimensions: int | None) -> int | None:
     if dimensions is not None:
         return dimensions
@@ -164,19 +175,19 @@ def _default_http_transport(url: str, payload: dict[str, object], headers: dict[
             headers={"Content-Type": "application/json", **headers},
             method="POST",
         )
-    except Exception as exc:
-        raise EmbeddingProviderError("Embedding provider request could not be created") from exc
+    except Exception:
+        raise EmbeddingProviderError("Embedding provider request could not be created") from None
 
     try:
         with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
             body = response.read().decode("utf-8")
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, TimeoutError) as exc:
-        raise EmbeddingProviderError("Embedding provider HTTP request failed") from exc
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, TimeoutError):
+        raise EmbeddingProviderError("Embedding provider HTTP request failed") from None
 
     try:
         return json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise EmbeddingProviderError("Embedding provider JSON response was invalid") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise EmbeddingProviderError("Embedding provider JSON response was invalid") from None
 
 
 def _send_embedding_request(
@@ -190,8 +201,8 @@ def _send_embedding_request(
         return transport(url, payload, headers)
     except EmbeddingProviderError:
         raise
-    except Exception as exc:
-        raise EmbeddingProviderError("Embedding provider request failed") from exc
+    except Exception:
+        raise EmbeddingProviderError("Embedding provider request failed") from None
 
 
 def _parse_openai_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
@@ -212,6 +223,8 @@ def _parse_local_embedding_response(response: object, *, dimensions: int | None)
 def _validate_embedding_vector(embedding: object, *, dimensions: int | None) -> list[float]:
     if not isinstance(embedding, list):
         raise EmbeddingProviderError("Embedding response must contain a list")
+    if not embedding:
+        raise EmbeddingProviderError("Embedding response contains empty vector")
 
     vector: list[float] = []
     for value in embedding:

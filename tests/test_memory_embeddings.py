@@ -127,6 +127,29 @@ def test_embedding_specific_env_takes_precedence_over_llm_env(monkeypatch) -> No
     assert config.api_key == "embedding-key"
 
 
+def test_empty_explicit_openai_values_do_not_fall_back_to_llm_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "http://llm.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "llm-key")
+
+    config = resolve_embedding_config(provider="openai_compatible", base_url="", api_key="")
+
+    assert config.base_url == ""
+    assert config.api_key == ""
+
+
+def test_empty_embedding_env_values_do_not_fall_back_to_llm_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", "")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_API_KEY", "")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "http://llm.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "llm-key")
+
+    config = resolve_embedding_config()
+
+    assert config.base_url == ""
+    assert config.api_key == ""
+
+
 def test_embed_text_deterministic_returns_existing_deterministic_embedding() -> None:
     config = EmbeddingConfig(provider="deterministic", dimensions=8)
 
@@ -230,6 +253,7 @@ def test_resolve_embedding_config_rejects_unsupported_explicit_provider() -> Non
 def test_embed_text_raises_for_invalid_embedding_response() -> None:
     invalid_responses: list[object] = [
         {},
+        {"embedding": []},
         {"embedding": [1.0, "not numeric"]},
         {"embedding": [1.0, float("inf")]},
         {"embedding": [1.0]},
@@ -252,6 +276,19 @@ def test_embed_text_raises_for_invalid_embedding_response() -> None:
             raise AssertionError(f"expected EmbeddingProviderError for {response!r}")
 
 
+def test_embed_text_rejects_empty_embedding_without_dimensions() -> None:
+    try:
+        embed_text(
+            "hello",
+            config=EmbeddingConfig(provider="local_http", base_url="http://localhost:8000/embed"),
+            transport=lambda _url, _payload, _headers: {"embedding": []},
+        )
+    except EmbeddingProviderError as exc:
+        assert "empty" in str(exc)
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
+
+
 def test_embed_text_wraps_transport_errors_safely() -> None:
     def fake_transport(_url: str, _payload: dict[str, object], _headers: dict[str, str]) -> object:
         raise RuntimeError("boom secret-token")
@@ -265,6 +302,8 @@ def test_embed_text_wraps_transport_errors_safely() -> None:
     except EmbeddingProviderError as exc:
         assert "Embedding provider request failed" in str(exc)
         assert "secret-token" not in str(exc)
+        assert exc.__cause__ is None
+        assert exc.__suppress_context__ is True
     else:
         raise AssertionError("expected EmbeddingProviderError")
 
@@ -283,6 +322,8 @@ def test_default_http_transport_uses_timeout_and_wraps_errors(monkeypatch) -> No
     except EmbeddingProviderError as exc:
         assert "Embedding provider HTTP request failed" in str(exc)
         assert "api-key-secret" not in str(exc)
+        assert exc.__cause__ is None
+        assert exc.__suppress_context__ is True
     else:
         raise AssertionError("expected EmbeddingProviderError")
 
@@ -311,6 +352,8 @@ def test_default_http_transport_wraps_invalid_json_safely(monkeypatch) -> None:
     except EmbeddingProviderError as exc:
         assert "Embedding provider JSON response was invalid" in str(exc)
         assert "secret-token" not in str(exc)
+        assert exc.__cause__ is None
+        assert exc.__suppress_context__ is True
     else:
         raise AssertionError("expected EmbeddingProviderError")
 
