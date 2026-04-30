@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added offline `scripts/validate_pdf_fetch.py` to validate PDF fetch and retrieval evidence metadata without network access.
 - Added opt-in `search_document` tool for local TOC/page/vector-style document retrieval.
 - Added opt-in external/local embedding provider boundary for research memory.
 - Added opt-in local JSON document vector indexing via `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH`.

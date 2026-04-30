@@ -49,7 +49,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 14. Persisted document vector index. **Implemented.**
 15. External embedding provider boundary. **Implemented.**
 16. `search_document` tool for TOC/page/vector retrieval. **Implemented.**
-17. PDF fetch/retrieval validation script.
+17. PDF fetch/retrieval validation script. **Implemented.**
 
 ### Phase C: Production Persistence And Runtime Parity
 
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 17 starts with the PDF fetch/retrieval validation script. The first implementation should validate local and fetched PDF evidence metadata without requiring network access by default.
+Phase 18 starts with the PostgreSQL migration layer for checkpoint and memory tables.
