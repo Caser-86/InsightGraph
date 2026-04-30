@@ -77,7 +77,7 @@ def _diagnostic_evidence(
     error: Exception | None,
 ) -> Evidence:
     fetch_status = "failed" if error is not None else "empty"
-    fetch_error = str(error) if error is not None else "fetch returned no evidence"
+    fetch_error = _fetch_error_message(error) if error is not None else "fetch returned no evidence"
     prefix = "fetch-failed" if error is not None else "fetch-missing"
     return Evidence(
         id=f"{prefix}-{_url_slug(result.url)}",
@@ -109,3 +109,10 @@ def _url_slug(url: str) -> str:
 
 def _source_url_is_trusted(url: str) -> bool:
     return infer_source_type(url) in {"official_site", "docs", "github", "news", "sec", "paper"}
+
+
+def _fetch_error_message(error: Exception) -> str:
+    kind = getattr(error, "kind", None)
+    if isinstance(kind, str) and kind:
+        return f"{kind}: {error}"
+    return str(error)

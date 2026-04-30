@@ -69,8 +69,16 @@ def test_fetch_text_rejects_missing_host() -> None:
     ],
 )
 def test_fetch_text_rejects_private_or_local_hosts(url) -> None:
-    with pytest.raises(FetchError, match="URL host is not allowed"):
+    with pytest.raises(FetchError, match="URL host is not allowed") as exc_info:
         fetch_text(url)
+    assert exc_info.value.kind == "blocked_url"
+
+
+def test_fetch_text_tags_blocked_url_errors() -> None:
+    with pytest.raises(FetchError, match="URL host is not allowed") as exc_info:
+        fetch_text("http://127.0.0.1/admin")
+
+    assert exc_info.value.kind == "blocked_url"
 
 
 def test_fetch_text_rejects_hostname_that_resolves_to_private_ip(monkeypatch) -> None:
@@ -203,6 +211,42 @@ def test_fetch_text_wraps_url_error(monkeypatch) -> None:
 
     with pytest.raises(FetchError, match="Network error while fetching URL"):
         fetch_text("https://example.com/unreachable")
+
+
+def test_fetch_text_retries_transient_network_error(monkeypatch) -> None:
+    attempts = []
+    sleeps = []
+
+    def fake_urlopen(request, timeout):
+        attempts.append(request.full_url)
+        if len(attempts) == 1:
+            raise URLError("temporary failure")
+        return FakeResponse(b"ok")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
+
+    page = fetch_text(
+        "https://example.com/retry",
+        retries=1,
+        backoff_seconds=0.25,
+        sleep_func=sleeps.append,
+    )
+
+    assert page.text == "ok"
+    assert attempts == ["https://example.com/retry", "https://example.com/retry"]
+    assert sleeps == [0.25]
+
+
+def test_fetch_text_does_not_retry_blocked_url(monkeypatch) -> None:
+    def fail_if_called(request, timeout):
+        raise AssertionError("network request should not run")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fail_if_called)
+
+    with pytest.raises(FetchError, match="URL host is not allowed") as exc_info:
+        fetch_text("http://127.0.0.1/admin", retries=3)
+
+    assert exc_info.value.kind == "blocked_url"
 
 
 def test_fetch_text_falls_back_for_unknown_charset(monkeypatch) -> None:

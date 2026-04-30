@@ -141,6 +141,23 @@ def test_pre_fetch_marks_diagnostic_evidence_verification_state(monkeypatch) -> 
     assert [item.claim_supported for item in evidence] == [False, False]
 
 
+def test_pre_fetch_diagnostic_error_includes_fetch_error_kind(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    class FakeFetchError(RuntimeError):
+        kind = "network"
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        raise FakeFetchError("connection refused")
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [SearchResult(title="Broken", url="https://example.com/broken", snippet="broken")]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=1)
+
+    assert evidence[0].fetch_error == "network: connection refused"
+
+
 def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
     pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
     fetched_urls = []
