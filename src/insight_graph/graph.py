@@ -78,7 +78,13 @@ def run_research_with_events(
             if checkpoint is not None:
                 state = checkpoint.to_state()
                 resume_stage = checkpoint.node_name
-                emit_event({"type": "resumed_from_checkpoint", "stage": resume_stage})
+                emit_event(
+                    {
+                        "type": "resumed_from_checkpoint",
+                        "stage": resume_stage,
+                        "trace_id": state.trace_id,
+                    }
+                )
             else:
                 state = GraphState(user_request=user_request)
         else:
@@ -117,7 +123,7 @@ def run_research_with_events(
         "reporter", write_report, state, emit_event, run_id, checkpoint_store
     )
     write_report_memories(state, run_id=run_id)
-    emit_event({"type": "report_ready"})
+    emit_event({"type": "report_ready", "trace_id": state.trace_id})
     return state
 
 
@@ -144,13 +150,25 @@ def _run_stage_with_events(
 ) -> GraphState:
     tool_call_count = len(state.tool_call_log)
     llm_call_count = len(state.llm_call_log)
-    emit_event({"type": "stage_started", "stage": stage})
+    emit_event({"type": "stage_started", "stage": stage, "trace_id": state.trace_id})
     state = func(state)
     for record in state.tool_call_log[tool_call_count:]:
-        emit_event({"type": "tool_call", "record": record.model_dump(mode="json")})
+        emit_event(
+            {
+                "type": "tool_call",
+                "record": record.model_dump(mode="json"),
+                "trace_id": state.trace_id,
+            }
+        )
     for record in state.llm_call_log[llm_call_count:]:
-        emit_event({"type": "llm_call", "record": record.model_dump(mode="json")})
+        emit_event(
+            {
+                "type": "llm_call",
+                "record": record.model_dump(mode="json"),
+                "trace_id": state.trace_id,
+            }
+        )
     if run_id is not None and checkpoint_store is not None:
         checkpoint_store.save_checkpoint(CheckpointRecord.from_state(run_id, stage, state))
-    emit_event({"type": "stage_finished", "stage": stage})
+    emit_event({"type": "stage_finished", "stage": stage, "trace_id": state.trace_id})
     return state

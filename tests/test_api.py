@@ -449,6 +449,7 @@ def test_research_accepts_bearer_api_key(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["user_request"] == "Compare AI coding agents"
+    assert response.json()["trace_id"]
 
 
 def test_research_accepts_x_api_key(monkeypatch) -> None:

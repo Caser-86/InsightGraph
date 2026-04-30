@@ -113,6 +113,7 @@ def _markdown_table_cell(value: str) -> str:
 def _build_research_json_payload(state: GraphState) -> dict[str, object]:
     return {
         "user_request": state.user_request,
+        "trace_id": state.trace_id,
         "report_markdown": state.report_markdown or "",
         "findings": [finding.model_dump(mode="json") for finding in state.findings],
         "competitive_matrix": [
