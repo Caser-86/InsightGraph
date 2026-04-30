@@ -458,9 +458,19 @@ curl http://127.0.0.1:8000/research/jobs/<job_id>/report.html
 | `INSIGHT_GRAPH_LLM_API_KEY` | OpenAI-compatible API key | - |
 | `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible `/v1` endpoint | - |
 | `INSIGHT_GRAPH_CHECKPOINT_BACKEND` | checkpoint backend：`memory` 或 `postgres` | `memory` |
+| `INSIGHT_GRAPH_POSTGRES_DSN` | PostgreSQL DSN for `INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres` or pgvector memory | - |
 | `INSIGHT_GRAPH_MEMORY_BACKEND` | memory backend：`memory` 或 `pgvector` | `memory` |
-| `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` | jobs backend，支持 `sqlite` | `memory` |
-| `INSIGHT_GRAPH_LLM_TRACE_FULL` | 允许 trace 写入 redacted prompt/completion payload | 未启用 |
+| `INSIGHT_GRAPH_MEMORY_BACKEND=pgvector` | opt-in pgvector memory mode | 未启用 |
+| `INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND=pgvector` | opt-in pgvector document chunk index | 未启用 |
+| `INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN` | document pgvector DSN | - |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite` | SQLite jobs backend | 未启用 |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` | SQLite jobs database path | - |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER` | startup worker claims queued/expired jobs | 未启用 |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` | terminal job cleanup cutoff in days | 未启用 |
+| `INSIGHT_GRAPH_LLM_TRACE` | metadata-only/full trace diagnostic switch; prompt/completion capture is opt-in | 未启用 |
+| `INSIGHT_GRAPH_LLM_TRACE_PATH` | full trace JSONL path | - |
+
+Deployment runbook: see `docs/deployment.md` for Storage Matrix, Trace Redaction, API key auth, SQLite/PostgreSQL/pgvector setup, live provider env, and benchmark cost notes.
 
 更多配置见 `docs/configuration.md`。
 

@@ -79,6 +79,13 @@ For multi-process-safe job metadata storage, set `INSIGHT_GRAPH_RESEARCH_JOBS_BA
 
 For JSON metadata persistence, queued or running jobs from a previous process are restored as failed with `Research job did not complete before server restart.` SQLite storage keeps queued jobs in the queue and requeues expired running jobs through worker lease claim. The API does not automatically resume interrupted workflow execution or rerun unfinished jobs without a later worker claim/retry.
 
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` | `memory` 或 opt-in `sqlite` | `memory` |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` | SQLite jobs database path when backend is `sqlite` | - |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER` | `1` / `true` / `yes` 时 API startup claims queued and expired running SQLite jobs | 未启用 |
+| `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` | Opt-in startup cleanup for terminal jobs older than this many days | 未启用 |
+
 ## Checkpoint Persistence
 
 Checkpoint persistence is opt-in and separate from research job metadata. The default backend is in-memory and does not require services. PostgreSQL checkpoints require installing the optional dependency group, for example `pip install '.[postgres]'`.
@@ -118,6 +125,8 @@ Local document indexing is opt-in and offline. When `INSIGHT_GRAPH_DOCUMENT_INDE
 |------|------|--------|
 | `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` | Local JSON file used for persisted document chunks and deterministic embeddings | 未启用 |
 | `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `deterministic` lexical ranking or opt-in deterministic vector ranking | `deterministic` |
+| `INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND` | `json` 或 opt-in `pgvector` document chunk index backend | `json` |
+| `INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN` | PostgreSQL/pgvector DSN used only when document index backend is `pgvector` | - |
 
 当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并按 canonical URL 去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 默认关闭；启用后会写入 deterministic summary，保留 evidence IDs、source URLs、tool-call counts 和 findings，供后续长跑 agent loop 使用。
 
