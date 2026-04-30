@@ -5,9 +5,8 @@ import os
 import re
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
-from dataclasses import replace
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from insight_graph.memory.store import ResearchMemoryRecord
@@ -43,7 +42,11 @@ def resolve_embedding_config(
     if normalized_provider not in {"deterministic", "openai_compatible", "local_http"}:
         raise ValueError(f"Unsupported embedding provider: {resolved_provider}")
 
-    resolved_base_url = _env_or_value_allow_empty(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None)
+    resolved_base_url = _env_or_value_allow_empty(
+        base_url,
+        "INSIGHT_GRAPH_EMBEDDING_BASE_URL",
+        None,
+    )
     resolved_api_key = _env_or_value_allow_empty(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None)
     if normalized_provider == "openai_compatible":
         if resolved_base_url is None:
@@ -170,7 +173,11 @@ def _resolve_dimensions(dimensions: int | None) -> int | None:
     return int(env_value)
 
 
-def _default_http_transport(url: str, payload: dict[str, object], headers: dict[str, str]) -> object:
+def _default_http_transport(
+    url: str,
+    payload: dict[str, object],
+    headers: dict[str, str],
+) -> object:
     try:
         request = urllib.request.Request(
             url,
@@ -209,8 +216,16 @@ def _send_embedding_request(
         raise EmbeddingProviderError("Embedding provider request failed") from None
 
 
-def _parse_openai_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
-    if not isinstance(response, dict) or not isinstance(response.get("data"), list) or not response["data"]:
+def _parse_openai_embedding_response(
+    response: object,
+    *,
+    dimensions: int | None,
+) -> list[float]:
+    if (
+        not isinstance(response, dict)
+        or not isinstance(response.get("data"), list)
+        or not response["data"]
+    ):
         raise EmbeddingProviderError("Embedding response missing data[0].embedding")
     first = response["data"][0]
     if not isinstance(first, dict) or "embedding" not in first:
@@ -232,7 +247,11 @@ def _validate_embedding_vector(embedding: object, *, dimensions: int | None) -> 
 
     vector: list[float] = []
     for value in embedding:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
             raise EmbeddingProviderError("Embedding response contains non-finite numeric value")
         vector.append(float(value))
 

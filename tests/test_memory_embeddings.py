@@ -43,7 +43,10 @@ def test_build_memory_record_generates_embedding_and_metadata() -> None:
     assert record.text == "Grounded finding about pricing."
     assert record.metadata == {"run_id": "run-1", "embedding_provider": "deterministic"}
     assert len(record.embedding) == 8
-    assert record.embedding == deterministic_text_embedding("Grounded finding about pricing.", dimensions=8)
+    assert record.embedding == deterministic_text_embedding(
+        "Grounded finding about pricing.",
+        dimensions=8,
+    )
 
 
 def test_build_memory_record_uses_configured_embedding_provider(monkeypatch) -> None:
@@ -506,7 +509,11 @@ def test_default_http_transport_parses_json_response(monkeypatch) -> None:
 
     monkeypatch.setattr(embeddings.urllib.request, "urlopen", fake_urlopen)
 
-    assert embeddings._default_http_transport("http://example.test/embed", {"text": "hello"}, {}) == {
+    assert embeddings._default_http_transport(
+        "http://example.test/embed",
+        {"text": "hello"},
+        {},
+    ) == {
         "embedding": [0.1]
     }
     assert captured == {"timeout": 10.0, "payload": {"text": "hello"}}
