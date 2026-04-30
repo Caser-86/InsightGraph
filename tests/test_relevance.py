@@ -336,7 +336,43 @@ def test_openai_compatible_judge_skips_llm_when_token_budget_exhausted(monkeypat
         reason="LLM token budget exhausted.",
     )
     assert client.messages == []
-    assert len(records) == 1
+    assert len(records) == 2
+    assert records[-1].error == "budget_exhausted"
+
+
+def test_openai_relevance_records_budget_exhaustion(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "10")
+    client = FakeChatCompletionClient(
+        '{"relevant": true, "reason": "Would have accepted."}'
+    )
+    records = [
+        LLMCallRecord(
+            stage="previous",
+            provider="llm",
+            model="model",
+            success=True,
+            duration_ms=1,
+            total_tokens=10,
+        )
+    ]
+    judge = OpenAICompatibleRelevanceJudge(
+        client=client,
+        api_key="test-key",
+        model="relay-model",
+        llm_call_log=records,
+    )
+
+    decision = judge.judge(
+        "Compare AI coding agents",
+        Subtask(id="collect", description="Collect pricing evidence"),
+        make_evidence(id="budgeted"),
+    )
+
+    assert decision.relevant is False
+    assert client.messages == []
+    assert records[-1].stage == "relevance"
+    assert records[-1].success is False
+    assert records[-1].error == "budget_exhausted"
 
 
 def test_openai_compatible_judge_records_successful_llm_call() -> None:

@@ -112,6 +112,7 @@ class OpenAICompatibleRelevanceJudge:
         if self._llm_call_log is not None and not can_start_llm_call_from_records(
             self._llm_call_log
         ):
+            self._record_budget_exhaustion()
             return EvidenceRelevanceDecision(
                 evidence_id=evidence.id,
                 relevant=False,
@@ -175,6 +176,21 @@ class OpenAICompatibleRelevanceJudge:
                 input_tokens=result.input_tokens if result is not None else None,
                 output_tokens=result.output_tokens if result is not None else None,
                 total_tokens=result.total_tokens if result is not None else None,
+            )
+        )
+
+    def _record_budget_exhaustion(self) -> None:
+        if self._llm_call_log is None:
+            return
+        self._llm_call_log.append(
+            LLMCallRecord(
+                stage="relevance",
+                provider="openai_compatible",
+                model=self._config.model,
+                wire_api=get_llm_wire_api(self._client),
+                success=False,
+                duration_ms=0,
+                error="budget_exhausted",
             )
         )
 
