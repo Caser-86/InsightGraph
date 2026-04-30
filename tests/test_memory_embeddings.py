@@ -1,3 +1,7 @@
+import json
+import urllib.error
+
+import insight_graph.memory.embeddings as embeddings
 from insight_graph.memory.embeddings import (
     EmbeddingConfig,
     EmbeddingProviderError,
@@ -94,6 +98,35 @@ def test_resolve_embedding_config_uses_env_and_explicit_overrides(monkeypatch) -
     )
 
 
+def test_openai_compatible_config_falls_back_to_llm_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "openai_compatible")
+    monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "http://llm.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "llm-key")
+
+    assert resolve_embedding_config() == EmbeddingConfig(
+        provider="openai_compatible",
+        base_url="http://llm.example/v1",
+        api_key="llm-key",
+        model=None,
+        dimensions=None,
+    )
+
+
+def test_embedding_specific_env_takes_precedence_over_llm_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", "http://embedding.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_API_KEY", "embedding-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_BASE_URL", "http://llm.example/v1")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "llm-key")
+
+    config = resolve_embedding_config()
+
+    assert config.base_url == "http://embedding.example/v1"
+    assert config.api_key == "embedding-key"
+
+
 def test_embed_text_deterministic_returns_existing_deterministic_embedding() -> None:
     config = EmbeddingConfig(provider="deterministic", dimensions=8)
 
@@ -129,6 +162,26 @@ def test_embed_text_openai_compatible_posts_embeddings_request_with_auth() -> No
             {"Authorization": "Bearer secret"},
         )
     ]
+
+
+def test_embed_text_openai_compatible_requires_data_embedding_shape() -> None:
+    def fake_transport(_url: str, _payload: dict[str, object], _headers: dict[str, str]) -> object:
+        return {"embedding": [0.1, 0.2]}
+
+    try:
+        embed_text(
+            "hello",
+            config=EmbeddingConfig(
+                provider="openai_compatible",
+                base_url="http://example.test/v1",
+                dimensions=2,
+            ),
+            transport=fake_transport,
+        )
+    except EmbeddingProviderError as exc:
+        assert "data[0].embedding" in str(exc)
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
 
 
 def test_embed_text_local_http_posts_to_base_url_and_parses_supported_shapes() -> None:
@@ -197,3 +250,92 @@ def test_embed_text_raises_for_invalid_embedding_response() -> None:
             pass
         else:
             raise AssertionError(f"expected EmbeddingProviderError for {response!r}")
+
+
+def test_embed_text_wraps_transport_errors_safely() -> None:
+    def fake_transport(_url: str, _payload: dict[str, object], _headers: dict[str, str]) -> object:
+        raise RuntimeError("boom secret-token")
+
+    try:
+        embed_text(
+            "hello",
+            config=EmbeddingConfig(provider="local_http", base_url="http://localhost:8000/embed"),
+            transport=fake_transport,
+        )
+    except EmbeddingProviderError as exc:
+        assert "Embedding provider request failed" in str(exc)
+        assert "secret-token" not in str(exc)
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
+
+
+def test_default_http_transport_uses_timeout_and_wraps_errors(monkeypatch) -> None:
+    calls: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> object:
+        calls.append(timeout)
+        raise urllib.error.URLError("api-key-secret")
+
+    monkeypatch.setattr(embeddings.urllib.request, "urlopen", fake_urlopen)
+
+    try:
+        embeddings._default_http_transport("http://example.test/embed", {"text": "hello"}, {})
+    except EmbeddingProviderError as exc:
+        assert "Embedding provider HTTP request failed" in str(exc)
+        assert "api-key-secret" not in str(exc)
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
+
+    assert calls == [10.0]
+
+
+def test_default_http_transport_wraps_invalid_json_safely(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"not json containing secret-token"
+
+    monkeypatch.setattr(
+        embeddings.urllib.request,
+        "urlopen",
+        lambda _request, *, timeout: FakeResponse(),
+    )
+
+    try:
+        embeddings._default_http_transport("http://example.test/embed", {"text": "hello"}, {})
+    except EmbeddingProviderError as exc:
+        assert "Embedding provider JSON response was invalid" in str(exc)
+        assert "secret-token" not in str(exc)
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
+
+
+def test_default_http_transport_parses_json_response(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"embedding": [0.1]}'
+
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request: object, *, timeout: float) -> object:
+        captured["timeout"] = timeout
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(embeddings.urllib.request, "urlopen", fake_urlopen)
+
+    assert embeddings._default_http_transport("http://example.test/embed", {"text": "hello"}, {}) == {
+        "embedding": [0.1]
+    }
+    assert captured == {"timeout": 10.0, "payload": {"text": "hello"}}

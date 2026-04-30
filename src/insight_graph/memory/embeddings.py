@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable
@@ -12,6 +13,7 @@ from insight_graph.memory.store import ResearchMemoryRecord
 
 EmbeddingProvider = Literal["deterministic", "openai_compatible", "local_http"]
 EmbeddingTransport = Callable[[str, dict[str, object], dict[str, str]], object]
+_HTTP_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -40,10 +42,16 @@ def resolve_embedding_config(
     if normalized_provider not in {"deterministic", "openai_compatible", "local_http"}:
         raise ValueError(f"Unsupported embedding provider: {resolved_provider}")
 
+    resolved_base_url = _env_or_value(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None)
+    resolved_api_key = _env_or_value(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None)
+    if normalized_provider == "openai_compatible":
+        resolved_base_url = resolved_base_url or _env_or_value(None, "INSIGHT_GRAPH_LLM_BASE_URL", None)
+        resolved_api_key = resolved_api_key or _env_or_value(None, "INSIGHT_GRAPH_LLM_API_KEY", None)
+
     return EmbeddingConfig(
         provider=normalized_provider,  # type: ignore[arg-type]
-        base_url=_env_or_value(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None),
-        api_key=_env_or_value(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None),
+        base_url=resolved_base_url,
+        api_key=resolved_api_key,
         model=_env_or_value(model, "INSIGHT_GRAPH_EMBEDDING_MODEL", None),
         dimensions=_resolve_dimensions(dimensions),
     )
@@ -72,20 +80,22 @@ def embed_text(
     transport = transport or _default_http_transport
     if config.provider == "openai_compatible":
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
-        response = transport(
-            f"{config.base_url.rstrip('/')}/embeddings",
-            {"model": config.model, "input": text},
-            headers,
+        response = _send_embedding_request(
+            transport,
+            url=f"{config.base_url.rstrip('/')}/embeddings",
+            payload={"model": config.model, "input": text},
+            headers=headers,
         )
-        return _parse_embedding_response(response, dimensions=config.dimensions)
+        return _parse_openai_embedding_response(response, dimensions=config.dimensions)
 
     if config.provider == "local_http":
-        response = transport(
-            config.base_url,
-            {"text": text, "model": config.model, "dimensions": config.dimensions},
-            {},
+        response = _send_embedding_request(
+            transport,
+            url=config.base_url,
+            payload={"text": text, "model": config.model, "dimensions": config.dimensions},
+            headers={},
         )
-        return _parse_embedding_response(response, dimensions=config.dimensions)
+        return _parse_local_embedding_response(response, dimensions=config.dimensions)
 
     raise EmbeddingProviderError(f"Unsupported embedding provider: {config.provider}")
 
@@ -147,28 +157,59 @@ def _resolve_dimensions(dimensions: int | None) -> int | None:
 
 
 def _default_http_transport(url: str, payload: dict[str, object], headers: dict[str, str]) -> object:
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", **headers},
-        method="POST",
-    )
-    with urllib.request.urlopen(request) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", **headers},
+            method="POST",
+        )
+    except Exception as exc:
+        raise EmbeddingProviderError("Embedding provider request could not be created") from exc
+
+    try:
+        with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
+            body = response.read().decode("utf-8")
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise EmbeddingProviderError("Embedding provider HTTP request failed") from exc
+
+    try:
+        return json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise EmbeddingProviderError("Embedding provider JSON response was invalid") from exc
 
 
-def _parse_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
-    embedding: object
+def _send_embedding_request(
+    transport: EmbeddingTransport,
+    *,
+    url: str,
+    payload: dict[str, object],
+    headers: dict[str, str],
+) -> object:
+    try:
+        return transport(url, payload, headers)
+    except EmbeddingProviderError:
+        raise
+    except Exception as exc:
+        raise EmbeddingProviderError("Embedding provider request failed") from exc
+
+
+def _parse_openai_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
+    if not isinstance(response, dict) or not isinstance(response.get("data"), list) or not response["data"]:
+        raise EmbeddingProviderError("Embedding response missing data[0].embedding")
+    first = response["data"][0]
+    if not isinstance(first, dict) or "embedding" not in first:
+        raise EmbeddingProviderError("Embedding response missing data[0].embedding")
+    return _validate_embedding_vector(first["embedding"], dimensions=dimensions)
+
+
+def _parse_local_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
     if isinstance(response, dict) and "embedding" in response:
-        embedding = response["embedding"]
-    elif isinstance(response, dict) and isinstance(response.get("data"), list) and response["data"]:
-        first = response["data"][0]
-        if not isinstance(first, dict) or "embedding" not in first:
-            raise EmbeddingProviderError("Embedding response missing data[0].embedding")
-        embedding = first["embedding"]
-    else:
-        raise EmbeddingProviderError("Embedding response missing embedding")
+        return _validate_embedding_vector(response["embedding"], dimensions=dimensions)
+    return _parse_openai_embedding_response(response, dimensions=dimensions)
 
+
+def _validate_embedding_vector(embedding: object, *, dimensions: int | None) -> list[float]:
     if not isinstance(embedding, list):
         raise EmbeddingProviderError("Embedding response must contain a list")
 
