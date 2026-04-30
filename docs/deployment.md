@@ -126,6 +126,62 @@ SQLite behavior:
 - Lease metadata is internal and never appears in API responses.
 - Workflow execution is not resumed in-place; a later worker claim starts a fresh workflow attempt.
 
+For restart recovery, enable the startup worker and optional checkpoint resume:
+
+```bash
+export INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1
+export INSIGHT_GRAPH_CHECKPOINT_RESUME=1
+export INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS=14
+```
+
+`INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` deletes only terminal jobs (`succeeded`, `failed`, `cancelled`) whose `finished_at` is older than the cutoff. Queued/running jobs are never deleted by cleanup.
+
+## Storage Matrix
+
+| Surface | Env vars | Notes |
+|---|---|---|
+| API auth | `INSIGHT_GRAPH_API_KEY` | Shared-secret gate for API endpoints except `/health` and `/dashboard`. |
+| SQLite jobs | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`, `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH`, `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER`, `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` | Durable job metadata, worker leases, restart claim, terminal cleanup. |
+| PostgreSQL checkpoints | `INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres`, `INSIGHT_GRAPH_POSTGRES_DSN`, `INSIGHT_GRAPH_CHECKPOINT_RESUME` | Optional latest-state checkpoint resume keyed by job ID. |
+| pgvector memory | `INSIGHT_GRAPH_MEMORY_BACKEND=pgvector`, `INSIGHT_GRAPH_POSTGRES_DSN` | Optional long-term memory store; keep memory retrieval quality controls enabled. |
+| pgvector document index | `INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND=pgvector`, `INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN` | Optional document chunk retrieval backend; JSON index remains default. |
+
+## Live Providers And Benchmark Cost
+
+`live-research` uses network/LLM surfaces only when explicitly selected. Typical live provider settings:
+
+```bash
+export INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo
+export INSIGHT_GRAPH_GITHUB_PROVIDER=live
+export INSIGHT_GRAPH_USE_SEC_FILINGS=1
+export INSIGHT_GRAPH_USE_SEC_FINANCIALS=1
+export INSIGHT_GRAPH_LLM_API_KEY="replace-with-your-api-key"
+export INSIGHT_GRAPH_LLM_BASE_URL="https://your-provider.example/v1"
+export INSIGHT_GRAPH_LLM_MODEL="your-model"
+```
+
+Manual live benchmark runs require explicit cost acknowledgment:
+
+```bash
+export INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1
+python scripts/benchmark_live_research.py --allow-live --case-file docs/benchmarks/live-research-cases.json --output reports/live-benchmark.json
+```
+
+Live benchmark runs may incur network/LLM cost. Do not commit generated live benchmark reports.
+
+## Trace Redaction
+
+Default API/job observability is metadata-only: trace IDs, stage events, tool names, LLM model names, token counts, durations, and success/error flags. It does not store prompt/completion payloads, provider raw responses, headers, request bodies, or API keys.
+
+Full diagnostic trace logging is opt-in:
+
+```bash
+export INSIGHT_GRAPH_LLM_TRACE=1
+export INSIGHT_GRAPH_LLM_TRACE_PATH=/var/log/insightgraph/llm-trace.jsonl
+```
+
+Full trace mode can persist prompt/completion payload data. Use it only in controlled environments, rotate logs, and avoid proxy logging of request bodies, query strings, and provider headers.
+
 ## Live LLM Demo Runtime
 
 The API defaults to deterministic/offline behavior. To enable live LLM paths, configure an OpenAI-compatible provider and use the `live-llm` preset in requests.

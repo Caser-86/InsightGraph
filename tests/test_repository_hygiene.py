@@ -156,3 +156,44 @@ def test_readme_uses_reference_style_sections_with_current_project_truths() -> N
     assert "Offline deterministic 是测试/CI fallback" in readme
     assert "真实 sandboxed Python/code execution 暂不启用" in readme
     assert "MCP runtime invocation 暂不启用" in readme
+
+
+def test_deployment_runbook_aligns_operational_env_surfaces() -> None:
+    root = Path(__file__).parents[1]
+    docs = {
+        "README.md": (root / "README.md").read_text(encoding="utf-8"),
+        "docs/deployment.md": (root / "docs" / "deployment.md").read_text(
+            encoding="utf-8"
+        ),
+        "docs/configuration.md": (root / "docs" / "configuration.md").read_text(
+            encoding="utf-8"
+        ),
+    }
+    combined = "\n".join(docs.values())
+
+    for token in [
+        "INSIGHT_GRAPH_API_KEY",
+        "INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite",
+        "INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH",
+        "INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER",
+        "INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS",
+        "INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres",
+        "INSIGHT_GRAPH_POSTGRES_DSN",
+        "INSIGHT_GRAPH_MEMORY_BACKEND=pgvector",
+        "INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND=pgvector",
+        "INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN",
+        "INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo",
+        "INSIGHT_GRAPH_GITHUB_PROVIDER=live",
+        "INSIGHT_GRAPH_USE_SEC_FILINGS",
+        "INSIGHT_GRAPH_LLM_TRACE",
+        "INSIGHT_GRAPH_LLM_TRACE_PATH",
+        "INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1",
+        "network/LLM cost",
+    ]:
+        assert token in combined
+
+    assert "metadata-only" in combined
+    assert "prompt/completion" in combined
+    assert "Do not commit generated live benchmark reports" in combined
+    assert "Trace Redaction" in docs["docs/deployment.md"]
+    assert "Storage Matrix" in docs["docs/deployment.md"]
