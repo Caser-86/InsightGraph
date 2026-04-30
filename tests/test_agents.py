@@ -1239,6 +1239,31 @@ def test_deterministic_analyst_builds_competitive_matrix() -> None:
     assert "unverified-cursor-blog" not in cursor.evidence_ids
 
 
+def test_deterministic_analyst_builds_grounded_claims() -> None:
+    state = make_matrix_state()
+
+    updated = analyze_evidence(state)
+
+    assert updated.grounded_claims == [
+        {
+            "claim": "Official sources establish baseline product positioning",
+            "section_id": None,
+            "evidence_ids": ["cursor-pricing", "opencode-repo"],
+            "confidence": "medium",
+            "risk": "Deterministic claim needs human review before publication.",
+            "unknowns": [],
+        },
+        {
+            "claim": "Open repositories add adoption and roadmap signals",
+            "section_id": None,
+            "evidence_ids": ["copilot-docs"],
+            "confidence": "medium",
+            "risk": "Deterministic claim needs human review before publication.",
+            "unknowns": [],
+        },
+    ]
+
+
 def test_deterministic_analyst_matrix_uses_evidence_products_with_generic_request() -> None:
     state = make_matrix_state()
     state.user_request = "Compare AI coding agents"
@@ -1414,7 +1439,82 @@ def test_llm_analyst_prompt_requests_competitive_matrix(monkeypatch) -> None:
     assert "product" in prompt
     assert "positioning" in prompt
     assert "strengths" in prompt
+    assert "grounded_claims" in prompt
+    assert "confidence" in prompt
+    assert "risk" in prompt
+    assert "unknowns" in prompt
+    assert "pricing" in prompt
+    assert "features" in prompt
+    assert "integrations" in prompt
+    assert "target_users" in prompt
+    assert "risks" in prompt
     assert "evidence_ids" in prompt
+
+
+def test_llm_analyst_parses_grounded_claims_and_matrix_v2(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"grounded_claims":[{"claim":"Cursor publishes pricing tiers.",'
+            '"section_id":"pricing","evidence_ids":["cursor-pricing"],'
+            '"confidence":"high","risk":"Pricing can change.",'
+            '"unknowns":["Discount availability"]}],'
+            '"competitive_matrix":[{"product":"Cursor",'
+            '"positioning":"Official product positioning signal",'
+            '"strengths":["Official/documented source coverage"],'
+            '"pricing":"Pro and Business tiers",'
+            '"features":["AI coding assistance"],'
+            '"integrations":["VS Code"],'
+            '"target_users":["Engineering teams"],'
+            '"risks":["Pricing may change"],'
+            '"evidence_ids":["cursor-pricing"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert updated.grounded_claims == [
+        {
+            "claim": "Cursor publishes pricing tiers.",
+            "section_id": "pricing",
+            "evidence_ids": ["cursor-pricing"],
+            "confidence": "high",
+            "risk": "Pricing can change.",
+            "unknowns": ["Discount availability"],
+        }
+    ]
+    assert updated.competitive_matrix[0].pricing == "Pro and Business tiers"
+    assert updated.competitive_matrix[0].features == ["AI coding assistance"]
+    assert updated.competitive_matrix[0].integrations == ["VS Code"]
+    assert updated.competitive_matrix[0].target_users == ["Engineering teams"]
+    assert updated.competitive_matrix[0].risks == ["Pricing may change"]
+
+
+def test_llm_analyst_falls_back_for_unverified_grounded_claim(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = FakeLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"grounded_claims":[{"claim":"Unsupported",'
+            '"section_id":"pricing","evidence_ids":["missing"],'
+            '"confidence":"high","risk":"None","unknowns":[]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert [finding.title for finding in updated.findings] == [
+        "Official sources establish baseline product positioning",
+        "Open repositories add adoption and roadmap signals",
+    ]
 
 
 def test_llm_analyst_uses_deterministic_matrix_when_matrix_missing(monkeypatch) -> None:
@@ -1652,6 +1752,35 @@ def test_reporter_renders_competitive_matrix() -> None:
     assert updated.report_markdown.index("## Competitive Matrix") < updated.report_markdown.index(
         "## Critic Assessment"
     )
+
+
+def test_reporter_renders_competitive_matrix_v2_fields() -> None:
+    state = make_reporter_state()
+    state.competitive_matrix = [
+        CompetitiveMatrixRow(
+            product="Cursor",
+            positioning="Official product positioning signal",
+            strengths=["Official/documented source coverage"],
+            pricing="Pro and Business tiers",
+            features=["AI coding assistance"],
+            integrations=["VS Code"],
+            target_users=["Engineering teams"],
+            risks=["Pricing may change"],
+            evidence_ids=["cursor-pricing"],
+        )
+    ]
+
+    updated = write_report(state)
+
+    assert (
+        "| Product | Positioning | Strengths | Pricing | Features | Integrations | "
+        "Target Users | Risks | Evidence |"
+    ) in updated.report_markdown
+    assert (
+        "| Cursor | Official product positioning signal | "
+        "Official/documented source coverage | Pro and Business tiers | "
+        "AI coding assistance | VS Code | Engineering teams | Pricing may change | [1] |"
+    ) in updated.report_markdown
 
 
 def test_reporter_does_not_validate_urls_by_default(monkeypatch) -> None:
