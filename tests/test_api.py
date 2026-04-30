@@ -238,6 +238,83 @@ def test_api_startup_worker_poller_runs_queued_sqlite_jobs(monkeypatch, tmp_path
     assert detail["result"]["report_markdown"] == "# InsightGraph Research Report\n"
 
 
+def test_api_startup_worker_resumes_expired_running_sqlite_job(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    clear_live_env(monkeypatch)
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    jobs_module.configure_research_jobs_sqlite_backend(sqlite_path)
+    created = jobs_module.create_research_job(
+        query="Expired before restart",
+        preset=api_module.ResearchPreset.offline,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    claimed = jobs_module.mark_research_job_running(
+        created["job_id"],
+        started_at=lambda: "2026-04-28T10:00:01Z",
+        store_failure_finished_at=lambda: "2026-04-28T10:00:02Z",
+        worker_id="old-worker",
+        lease_expires_at=lambda started_at: "2026-04-28T10:05:01Z",
+    )
+    assert claimed is not None
+    jobs_module.configure_research_jobs_in_memory_backend()
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_CHECKPOINT_RESUME", "1")
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence(
+            "2026-04-28T10:05:02Z",
+            "2026-04-28T10:05:03Z",
+            "2026-04-28T10:05:04Z",
+            "2026-04-28T10:05:05Z",
+        ),
+    )
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    checkpoint_store = object()
+    calls: list[dict[str, object]] = []
+
+    def fake_run_with_events(query, emit_event, **kwargs):
+        calls.append({"query": query, **kwargs})
+        emit_event({"type": "resumed_from_checkpoint", "stage": "collector"})
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "get_checkpoint_store", lambda: checkpoint_store)
+    monkeypatch.setattr(api_module, "run_research_with_events", fake_run_with_events)
+
+    try:
+        api_module._initialize_research_jobs_from_env()
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert detail["status"] == "succeeded"
+    assert calls == [
+        {
+            "query": "Expired before restart",
+            "run_id": created["job_id"],
+            "checkpoint_store": checkpoint_store,
+            "resume": True,
+        }
+    ]
+    assert detail["events"] == [
+        {"type": "resumed_from_checkpoint", "stage": "collector", "sequence": 1}
+    ]
+
+
+def test_research_jobs_api_docs_describe_restart_resume_smoke_path() -> None:
+    docs = Path("docs/research-jobs-api.md").read_text(encoding="utf-8")
+
+    assert "Restart And Resume Smoke Path" in docs
+    assert "INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER" in docs
+    assert "INSIGHT_GRAPH_CHECKPOINT_RESUME" in docs
+    assert "expired running jobs" in docs
+    assert "worker claim" in docs
+
+
 def test_research_job_workflow_passes_checkpoint_resume_options(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_CHECKPOINT_RESUME", "1")
     store = object()
