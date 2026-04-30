@@ -1090,6 +1090,7 @@ def test_llm_analyst_writes_full_trace_when_enabled(tmp_path, monkeypatch) -> No
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
     trace_path = tmp_path / "llm-trace.jsonl"
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_FULL", "1")
     client = UsageLLMClient(
         result=ChatCompletionResult(
             content=(
@@ -2064,6 +2065,7 @@ def test_llm_reporter_writes_full_trace_when_enabled(tmp_path, monkeypatch) -> N
     trace_path = tmp_path / "llm-trace.jsonl"
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_FULL", "1")
     client = UsageLLMClient(
         result=ChatCompletionResult(
             content=(
@@ -2096,6 +2098,7 @@ def test_llm_reporter_writes_failed_full_trace_when_enabled(tmp_path, monkeypatc
     trace_path = tmp_path / "llm-trace.jsonl"
     monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_FULL", "1")
     client = UsageLLMClient(error=RuntimeError("provider failed"))
 
     updated = write_report(make_reporter_state(), llm_client=client)

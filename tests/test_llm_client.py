@@ -9,6 +9,7 @@ from insight_graph.llm import (
     get_llm_client,
     resolve_llm_config,
 )
+from insight_graph.llm.trace_writer import write_full_llm_trace_event
 
 
 class FakeOpenAIMessage:
@@ -139,6 +140,11 @@ class FakeOpenAIClient:
         self.completions = completions or FakeOpenAICompletions()
         self.responses = responses or FakeOpenAIResponses()
         self.chat = FakeOpenAIChat(self.completions)
+
+
+class FakeTraceClient:
+    def __init__(self, config: LLMConfig) -> None:
+        self.config = config
 
 
 def test_openai_compatible_chat_client_completes_json() -> None:
@@ -356,6 +362,63 @@ def test_get_llm_client_returns_openai_compatible_client() -> None:
     client = get_llm_client(config=LLMConfig(api_key="test-key", base_url=None, model="test-model"))
 
     assert isinstance(client, OpenAICompatibleChatClient)
+
+
+def test_full_llm_trace_redacts_secrets_and_omits_payload_by_default(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_TRACE_FULL", raising=False)
+    client = FakeTraceClient(
+        LLMConfig(api_key="sk-secret", base_url=None, model="test-model")
+    )
+
+    write_full_llm_trace_event(
+        stage="analyst",
+        llm_client=client,
+        messages=[ChatMessage(role="user", content="API key sk-secret prompt")],
+        output_text="completion with sk-secret",
+        duration_ms=12,
+        success=True,
+        input_tokens=1,
+        output_tokens=2,
+        total_tokens=3,
+    )
+
+    content = trace_path.read_text(encoding="utf-8")
+    assert "sk-secret" not in content
+    assert "API key" not in content
+    assert "completion with" not in content
+    assert "token_usage" in content
+
+
+def test_full_llm_trace_payload_is_explicit_opt_in_and_redacted(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_PATH", str(trace_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TRACE_FULL", "1")
+    client = FakeTraceClient(
+        LLMConfig(api_key="sk-secret", base_url=None, model="test-model")
+    )
+
+    write_full_llm_trace_event(
+        stage="analyst",
+        llm_client=client,
+        messages=[ChatMessage(role="user", content="API key sk-secret prompt")],
+        output_text="completion with sk-secret",
+        duration_ms=12,
+        success=True,
+    )
+
+    content = trace_path.read_text(encoding="utf-8")
+    assert "sk-secret" not in content
+    assert "[REDACTED]" in content
+    assert "API key [REDACTED] prompt" in content
+    assert "completion with [REDACTED]" in content
 
 
 def test_llm_package_exports_core_types() -> None:
