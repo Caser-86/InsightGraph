@@ -130,9 +130,50 @@ def _build_research_json_payload(state: GraphState) -> dict[str, object]:
         ],
         "llm_call_log": [record.model_dump(mode="json") for record in state.llm_call_log],
         "iterations": state.iterations,
+        "evidence_pool": _build_evidence_drilldown(state),
+        "global_evidence_pool": [
+            evidence.model_dump(mode="json", exclude_none=True)
+            for evidence in state.global_evidence_pool
+        ],
+        "citation_support": state.citation_support,
+        "url_validation": state.url_validation,
         "quality": quality,
         "quality_cards": _build_quality_cards(state, quality),
     }
+
+
+def _build_evidence_drilldown(state: GraphState) -> list[dict[str, object]]:
+    citation_status = _citation_status_by_evidence_id(state)
+    validation_status = _url_validation_status_by_evidence_id(state)
+    return [
+        {
+            **evidence.model_dump(mode="json", exclude_none=True),
+            "citation_support_status": citation_status.get(evidence.id, "unknown"),
+            "url_validation_status": validation_status.get(evidence.id, "unknown"),
+        }
+        for evidence in state.evidence_pool
+    ]
+
+
+def _citation_status_by_evidence_id(state: GraphState) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    for record in state.citation_support:
+        status = record.get("support_status") or record.get("status") or "unknown"
+        if not isinstance(status, str):
+            status = "unknown"
+        for evidence_id in record.get("evidence_ids", []):
+            if isinstance(evidence_id, str):
+                statuses[evidence_id] = status
+    return statuses
+
+
+def _url_validation_status_by_evidence_id(state: GraphState) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    for record in state.url_validation:
+        evidence_id = record.get("evidence_id")
+        if isinstance(evidence_id, str):
+            statuses[evidence_id] = "valid" if record.get("valid") is True else "invalid"
+    return statuses
 
 
 def _build_quality_cards(state: GraphState, quality: dict[str, object]) -> dict[str, object]:

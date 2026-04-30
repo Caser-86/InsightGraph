@@ -1022,6 +1022,75 @@ def test_research_json_payload_includes_dashboard_quality_cards() -> None:
     }
 
 
+def test_research_json_payload_includes_evidence_drilldown() -> None:
+    state = GraphState(
+        user_request="Evidence drilldown",
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing evidence.",
+                source_type="official_site",
+                verified=True,
+                section_id="pricing",
+                fetch_status="fetched",
+                reachable=True,
+                source_trusted=True,
+            )
+        ],
+        citation_support=[
+            {
+                "claim": "Cursor pricing is published.",
+                "support_status": "supported",
+                "evidence_ids": ["cursor-pricing"],
+            }
+        ],
+        url_validation=[
+            {
+                "evidence_id": "cursor-pricing",
+                "source_url": "https://cursor.com/pricing",
+                "valid": True,
+                "status_code": 200,
+            }
+        ],
+    )
+
+    payload = api_module._build_research_json_payload(state)
+
+    assert payload["evidence_pool"] == [
+        {
+            "id": "cursor-pricing",
+            "subtask_id": "collect",
+            "title": "Cursor Pricing",
+            "source_url": "https://cursor.com/pricing",
+            "source_type": "official_site",
+            "fetch_status": "fetched",
+            "section_id": "pricing",
+            "snippet": "Cursor pricing evidence.",
+            "verified": True,
+            "reachable": True,
+            "source_trusted": True,
+            "citation_support_status": "supported",
+            "url_validation_status": "valid",
+        }
+    ]
+    assert payload["citation_support"] == state.citation_support
+    assert payload["url_validation"] == state.url_validation
+
+
+def test_dashboard_evidence_panel_renders_drilldown_fields() -> None:
+    html = api_module.dashboard_html()
+
+    assert "evidence-card" in html
+    assert "Citation support" in html
+    assert "Section ID" in html
+    assert "Fetch status" in html
+    assert "URL validation" in html
+    assert "renderEvidenceMeta" in html
+
+
 def test_dashboard_quality_panel_renders_quality_cards() -> None:
     html = api_module.dashboard_html()
 

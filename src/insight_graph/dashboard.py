@@ -868,6 +868,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </div>`;
     }
 
+    function renderEvidenceMeta(label, value) {
+      return `<span><strong>${escapeHtml(label)}</strong> ${escapeHtml(value ?? 'unknown')}</span>`;
+    }
+
     function renderEvidencePanel(result) {
       const evidence = result?.evidence_pool || result?.global_evidence_pool || [];
       const validation = result?.url_validation || [];
@@ -875,7 +879,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
       return `
         <div class="data-list">
           <h2>Evidence & Sources</h2>
-          ${evidence.map((item) => `<p><strong>${escapeHtml(item.title || item.id)}</strong><br>${escapeHtml(item.source_url || '')}<br><span class="subtitle">${escapeHtml(item.source_type || 'unknown')} - ${escapeHtml(item.fetch_status || 'not fetched')} - ${escapeHtml(item.fetch_error || 'ok')}</span><br>${escapeHtml(item.snippet || '')}</p>`).join('')}
+          ${evidence.map((item) => `<article class="evidence-card"><h3>${escapeHtml(item.title || item.id)}</h3><p>${escapeHtml(item.source_url || '')}</p><div class="job-meta">${[
+            renderEvidenceMeta('Source type', item.source_type),
+            renderEvidenceMeta('Fetch status', item.fetch_status || 'not fetched'),
+            renderEvidenceMeta('Section ID', item.section_id),
+            renderEvidenceMeta('Citation support', item.citation_support_status),
+            renderEvidenceMeta('URL validation', item.url_validation_status),
+          ].join('')}</div><p>${escapeHtml(item.snippet || '')}</p></article>`).join('')}
           <h2>URL Validation</h2>
           ${validation.length ? validation.map((item) => `<p><strong>${escapeHtml(item.url || item.source_url || 'url')}</strong><br><span class="subtitle">reachable: ${escapeHtml(item.reachable)} trusted: ${escapeHtml(item.source_trusted)}</span></p>`).join('') : '<p class="subtitle">No URL validation records.</p>'}
         </div>`;
