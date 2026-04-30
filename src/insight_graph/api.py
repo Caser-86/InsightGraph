@@ -34,6 +34,8 @@ from insight_graph.cli import (
 )
 from insight_graph.dashboard import dashboard_html
 from insight_graph.graph import run_research, run_research_with_events
+from insight_graph.memory.embeddings import embed_text
+from insight_graph.memory.store import ResearchMemoryRecord, get_research_memory_store
 from insight_graph.persistence.checkpoints import get_checkpoint_store
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
@@ -167,6 +169,27 @@ class ResearchJobsSummaryResponse(BaseModel):
     active_limit: int
     queued_jobs: list[ResearchJobSummary]
     running_jobs: list[ResearchJobSummary]
+
+
+class MemoryRecordResponse(BaseModel):
+    memory_id: str
+    text: str
+    metadata: dict[str, Any]
+
+
+class MemoryListResponse(BaseModel):
+    records: list[MemoryRecordResponse]
+    count: int
+
+
+class MemorySearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+    metadata_filter: dict[str, object] | None = None
+
+
+class MemoryDeleteResponse(BaseModel):
+    deleted: bool
 
 
 _RESEARCH_JOBS_TAG = "research jobs"
@@ -719,6 +742,62 @@ def research(request: ResearchRequest) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
     return _build_research_json_payload(state)
+
+
+def _memory_record_response(record: ResearchMemoryRecord) -> dict[str, Any]:
+    return {
+        "memory_id": record.memory_id,
+        "text": record.text,
+        "metadata": record.metadata,
+    }
+
+
+@router.get(
+    "/memory",
+    response_model=MemoryListResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def list_memory_records(limit: int = 100) -> dict[str, Any]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    records = store.list_memories(limit=limit)
+    return {
+        "records": [_memory_record_response(record) for record in records],
+        "count": len(records),
+    }
+
+
+@router.post(
+    "/memory/search",
+    response_model=MemoryListResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def search_memory_records(request: MemorySearchRequest) -> dict[str, Any]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    records = store.search(
+        embed_text(request.query),
+        limit=request.limit,
+        metadata_filter=request.metadata_filter,
+    )
+    return {
+        "records": [_memory_record_response(record) for record in records],
+        "count": len(records),
+    }
+
+
+@router.delete(
+    "/memory/{memory_id}",
+    response_model=MemoryDeleteResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def delete_memory_record(memory_id: str) -> dict[str, bool]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    return {"deleted": store.delete_memory(memory_id)}
 
 
 @router.post(

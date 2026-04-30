@@ -14,6 +14,8 @@ class ResearchMemoryStore(Protocol):
 
     def add_memory(self, record: "ResearchMemoryRecord") -> None: ...
 
+    def list_memories(self, *, limit: int = 100) -> list["ResearchMemoryRecord"]: ...
+
     def search(
         self,
         embedding: list[float],
@@ -44,6 +46,9 @@ class InMemoryResearchMemoryStore:
 
     def add_memory(self, record: ResearchMemoryRecord) -> None:
         self._records[record.memory_id] = record
+
+    def list_memories(self, *, limit: int = 100) -> list[ResearchMemoryRecord]:
+        return list(self._records.values())[:limit]
 
     def search(
         self,
@@ -103,6 +108,29 @@ class PgVectorResearchMemoryStore:
                 ),
             )
         connection.commit()
+
+    def list_memories(self, *, limit: int = 100) -> list[ResearchMemoryRecord]:
+        connection = self._connection_factory()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT memory_id, text, embedding, metadata
+                FROM insight_graph_memories
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+        return [
+            ResearchMemoryRecord(
+                memory_id=row[0],
+                text=row[1],
+                embedding=list(row[2]),
+                metadata=dict(row[3]),
+            )
+            for row in rows
+        ]
 
     def search(
         self,
