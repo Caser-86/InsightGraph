@@ -11,6 +11,7 @@ from typing import Any, Literal
 from insight_graph.memory.embeddings import deterministic_text_embedding
 
 DocumentRetrievalMode = Literal["deterministic", "vector"]
+DocumentIndexBackend = Literal["json", "pgvector"]
 VectorRanker = Callable[[Sequence["DocumentIndexChunk"], str], list["DocumentIndexChunk"]]
 DOCUMENT_EMBEDDING_DIMENSIONS = len(deterministic_text_embedding(""))
 
@@ -50,6 +51,14 @@ def get_document_retrieval_mode() -> DocumentRetrievalMode:
 def get_document_index_path() -> Path | None:
     value = os.environ.get("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", "").strip()
     return Path(value) if value else None
+
+
+def get_document_index_backend() -> DocumentIndexBackend:
+    backend = os.environ.get("INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND", "json").strip().lower()
+    dsn = os.environ.get("INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN", "").strip()
+    if backend == "pgvector" and dsn:
+        return "pgvector"
+    return "json"
 
 
 class DocumentVectorIndex:

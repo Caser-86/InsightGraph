@@ -1,4 +1,8 @@
-from insight_graph.persistence.migrations import Migration, run_migrations
+from insight_graph.persistence.migrations import (
+    DOCUMENT_PGVECTOR_MIGRATIONS,
+    Migration,
+    run_migrations,
+)
 
 
 class FakeCursor:
@@ -71,3 +75,14 @@ def test_run_migrations_skips_already_applied_versions() -> None:
 
     assert calls == ["second"]
     assert connection.commits == 1
+
+
+def test_document_pgvector_migration_creates_document_chunk_table() -> None:
+    connection = FakeConnection()
+
+    run_migrations(connection, DOCUMENT_PGVECTOR_MIGRATIONS)
+
+    statements = "\n".join(statement for statement, _ in connection.cursor_obj.statements)
+    assert "CREATE EXTENSION IF NOT EXISTS vector" in statements
+    assert "CREATE TABLE IF NOT EXISTS insight_graph_document_chunks" in statements
+    assert "embedding vector" in statements
