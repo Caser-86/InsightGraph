@@ -179,6 +179,30 @@ def test_build_eval_payload_includes_collection_depth_metrics(monkeypatch) -> No
     assert payload["summary"]["average_collection_round_count"] == 2
 
 
+def test_build_memory_comparison_payload_reports_quality_delta(monkeypatch) -> None:
+    monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.01, 2.0, 2.01]).__next__)
+
+    def state_for_memory(query: str) -> GraphState:
+        state = make_eval_state(query)
+        if "memory enabled" in query:
+            state.report_markdown += "\nMemory context improved the report depth. " * 20
+            state.memory_context = [{"memory_id": "m1", "text": "prior context"}]
+        return state
+
+    payload = eval_module.build_memory_comparison_payload(
+        [eval_module.EvalCase(query="Compare Cursor", min_references=2)],
+        run_research_func=state_for_memory,
+    )
+
+    comparison = payload["memory_comparison"]
+    assert comparison["case_count"] == 1
+    assert comparison["memory_disabled_average_score"] == 100
+    assert comparison["memory_enabled_average_score"] == 100
+    assert comparison["average_score_delta"] == 0
+    assert comparison["average_report_depth_delta"] > 0
+    assert payload["memory_enabled"]["cases"][0]["query"] == "Compare Cursor memory enabled"
+
+
 def test_eval_summary_includes_report_quality_aggregates(monkeypatch) -> None:
     monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
 
