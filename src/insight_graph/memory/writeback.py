@@ -45,16 +45,32 @@ def _memory_items(
     *,
     run_id: str | None,
 ) -> list[tuple[str, str, dict[str, object]]]:
-    base_metadata: dict[str, object] = {"user_request": state.user_request}
+    base_metadata: dict[str, object] = {
+        "user_request": state.user_request,
+        "refresh_after_days": 90,
+        "expires_after_days": 365,
+    }
+    if state.domain_profile:
+        base_metadata["domain_profile"] = state.domain_profile
     if run_id is not None:
         base_metadata["run_id"] = run_id
     items: list[tuple[str, str, dict[str, object]]] = []
-    items.append(("report_summary", _report_summary_text(state), dict(base_metadata)))
+    items.append(
+        (
+            "report_summary",
+            _report_summary_text(state),
+            {**base_metadata, "support_status": "summary"},
+        )
+    )
     for entity in state.resolved_entities:
         name = entity.get("name")
         entity_id = entity.get("id")
         if isinstance(name, str) and name.strip():
-            metadata = {**base_metadata, "entity_id": entity_id or name}
+            metadata = {
+                **base_metadata,
+                "entity_id": entity_id or name,
+                "support_status": "summary",
+            }
             items.append(("entity", f"Entity researched: {name}.", metadata))
     for claim in state.grounded_claims:
         if claim.get("support_status") != "supported":
@@ -64,6 +80,7 @@ def _memory_items(
             metadata = {
                 **base_metadata,
                 "evidence_ids": list(_string_items(claim.get("evidence_ids"))),
+                "support_status": "supported",
             }
             items.append(("supported_claim", claim_text, metadata))
     for evidence in _verified_references(state):
@@ -72,8 +89,20 @@ def _memory_items(
             "evidence_id": evidence.id,
             "source_url": evidence.source_url,
             "source_type": evidence.source_type,
+            "support_status": "fresh_evidence",
         }
         items.append(("reference", f"Reference: {evidence.title}. {evidence.source_url}", metadata))
+        reliability = "trusted" if evidence.source_trusted else "unverified_trust"
+        items.append(
+            (
+                "source_reliability_note",
+                f"{evidence.source_type} source {reliability}: {evidence.source_url}",
+                {
+                    **metadata,
+                    "source_reliability": reliability,
+                },
+            )
+        )
     return items
 
 

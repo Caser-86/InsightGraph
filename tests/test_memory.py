@@ -229,13 +229,62 @@ def test_write_report_memories_stores_summary_claims_references_and_entities(
     count = write_report_memories(state, store=store, run_id="run-1")
     records = list(store._records.values())
 
-    assert count == 4
+    assert count == 5
     assert {record.metadata["memory_type"] for record in records} == {
         "report_summary",
         "entity",
         "supported_claim",
         "reference",
+        "source_reliability_note",
     }
     assert all(record.metadata["run_id"] == "run-1" for record in records)
+    assert all(record.metadata["refresh_after_days"] == 90 for record in records)
+    assert all(record.metadata["expires_after_days"] == 365 for record in records)
     assert any("Cursor has editor-native positioning" in record.text for record in records)
     assert not any("Unsupported claim" in record.text for record in records)
+
+
+def test_write_report_memories_adds_refresh_metadata_and_source_reliability_notes(
+    monkeypatch,
+) -> None:
+    store = InMemoryResearchMemoryStore()
+    state = GraphState(
+        user_request="Compare Cursor and Copilot",
+        domain_profile="competitive_intel",
+        report_markdown="# InsightGraph Research Report\n\nCursor differs from Copilot.",
+        evidence_pool=[
+            Evidence(
+                id="ev-1",
+                subtask_id="s1",
+                title="Cursor pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing evidence.",
+                source_type="official_site",
+                verified=True,
+                source_trusted=True,
+            )
+        ],
+    )
+    monkeypatch.setenv("INSIGHT_GRAPH_MEMORY_WRITEBACK", "1")
+
+    count = write_report_memories(state, store=store, run_id="run-1")
+    records = list(store._records.values())
+
+    assert count == 3
+    assert {record.metadata["memory_type"] for record in records} == {
+        "report_summary",
+        "reference",
+        "source_reliability_note",
+    }
+    for record in records:
+        assert record.metadata["domain_profile"] == "competitive_intel"
+        assert record.metadata["refresh_after_days"] == 90
+        assert record.metadata["expires_after_days"] == 365
+        assert record.metadata["support_status"] in {"summary", "fresh_evidence"}
+    reliability = [
+        record
+        for record in records
+        if record.metadata["memory_type"] == "source_reliability_note"
+    ][0]
+    assert reliability.metadata["source_reliability"] == "trusted"
+    assert "official_site source trusted" in reliability.text
