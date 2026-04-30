@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 from collections.abc import Callable, Sequence
@@ -11,6 +12,7 @@ from insight_graph.memory.embeddings import deterministic_text_embedding
 
 DocumentRetrievalMode = Literal["deterministic", "vector"]
 VectorRanker = Callable[[Sequence["DocumentIndexChunk"], str], list["DocumentIndexChunk"]]
+DOCUMENT_EMBEDDING_DIMENSIONS = len(deterministic_text_embedding(""))
 
 
 @dataclass(frozen=True)
@@ -74,7 +76,11 @@ class DocumentVectorIndex:
             return []
         if entry.get("mtime_ns") != stat.st_mtime_ns or entry.get("size") != stat.st_size:
             return []
-        if entry.get("content_hash") != _hash_document_content(path):
+        try:
+            content_hash = _hash_document_content(path)
+        except OSError:
+            return []
+        if entry.get("content_hash") != content_hash:
             return []
 
         chunks = entry.get("chunks")
@@ -102,7 +108,10 @@ class DocumentVectorIndex:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"version": 1, "documents": self._documents}
-        self.path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        self.path.write_text(
+            json.dumps(payload, sort_keys=True, allow_nan=False),
+            encoding="utf-8",
+        )
 
 
 def build_index_chunks(chunks: Sequence[DocumentIndexChunk]) -> list[IndexedDocumentChunk]:
@@ -166,11 +175,16 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
 def _embedding_from_json(value: Any) -> list[float] | None:
     if not isinstance(value, list):
         return None
+    if len(value) != DOCUMENT_EMBEDDING_DIMENSIONS:
+        return None
     embedding = []
     for item in value:
         if not isinstance(item, (int, float)) or isinstance(item, bool):
             return None
-        embedding.append(float(item))
+        numeric_value = float(item)
+        if not math.isfinite(numeric_value):
+            return None
+        embedding.append(numeric_value)
     return embedding
 
 

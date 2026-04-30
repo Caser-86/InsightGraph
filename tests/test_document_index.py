@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 
+import pytest
+
 import insight_graph.report_quality.document_index as document_index
 from insight_graph.report_quality.document_index import (
     DocumentIndexChunk,
@@ -197,7 +199,7 @@ def test_document_vector_index_skips_malformed_chunk_payloads(tmp_path) -> None:
         "index": 0,
         "page": 1,
         "section_heading": "Overview",
-        "embedding": [1, 2.5],
+        "embedding": [0.5] * 64,
         "score": 7,
     }
     payload = {
@@ -224,8 +226,121 @@ def test_document_vector_index_skips_malformed_chunk_payloads(tmp_path) -> None:
     fresh_chunks = loaded.get_fresh_chunks(document_path)
 
     assert len(fresh_chunks) == 1
-    assert fresh_chunks[0].embedding == [1.0, 2.5]
+    assert fresh_chunks[0].embedding == [0.5] * 64
     assert fresh_chunks[0].score == 7
+
+
+def test_document_vector_index_skips_invalid_cached_embedding_shapes(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    stat = document_path.stat()
+    index_path = tmp_path / "documents.json"
+    chunk = {
+        "text": "Alpha evidence",
+        "index": 0,
+        "page": None,
+        "section_heading": None,
+        "embedding": [0.5] * 64,
+        "score": 0,
+    }
+    payload = {
+        "version": 1,
+        "documents": {
+            str(document_path.resolve()): {
+                "mtime_ns": stat.st_mtime_ns,
+                "size": stat.st_size,
+                "content_hash": hashlib.sha256(document_path.read_bytes()).hexdigest(),
+                "chunks": [
+                    {**chunk, "embedding": []},
+                    {**chunk, "embedding": [0.5] * 63},
+                    {**chunk, "embedding": [0.5] * 65},
+                    {**chunk, "embedding": [0.5] * 64},
+                ],
+            }
+        },
+    }
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+    fresh_chunks = loaded.get_fresh_chunks(document_path)
+
+    assert len(fresh_chunks) == 1
+    assert fresh_chunks[0].embedding == [0.5] * 64
+
+
+def test_document_vector_index_skips_non_finite_cached_embeddings(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    stat = document_path.stat()
+    index_path = tmp_path / "documents.json"
+    chunk = {
+        "text": "Alpha evidence",
+        "index": 0,
+        "page": None,
+        "section_heading": None,
+        "embedding": [0.5] * 64,
+        "score": 0,
+    }
+    payload = {
+        "version": 1,
+        "documents": {
+            str(document_path.resolve()): {
+                "mtime_ns": stat.st_mtime_ns,
+                "size": stat.st_size,
+                "content_hash": hashlib.sha256(document_path.read_bytes()).hexdigest(),
+                "chunks": [
+                    {**chunk, "embedding": [float("nan")] + ([0.5] * 63)},
+                    {**chunk, "embedding": [float("inf")] + ([0.5] * 63)},
+                    {**chunk, "embedding": [0.5] * 64},
+                ],
+            }
+        },
+    }
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+    fresh_chunks = loaded.get_fresh_chunks(document_path)
+
+    assert len(fresh_chunks) == 1
+    assert fresh_chunks[0].embedding == [0.5] * 64
+
+
+def test_document_vector_index_returns_no_chunks_when_hashing_fails(
+    monkeypatch, tmp_path
+) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+    index.store_document(document_path, [DocumentIndexChunk(text="Alpha evidence", index=0)])
+    index.save()
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+
+    def fail_hash(path):
+        raise OSError("cannot read")
+
+    monkeypatch.setattr(document_index, "_hash_document_content", fail_hash)
+
+    assert loaded.get_fresh_chunks(document_path) == []
+
+
+def test_document_vector_index_save_rejects_non_finite_json(tmp_path) -> None:
+    index_path = tmp_path / "documents.json"
+    index = document_index.DocumentVectorIndex(
+        index_path,
+        {
+            "document.md": {
+                "mtime_ns": 1,
+                "size": 1,
+                "content_hash": "abc",
+                "chunks": [{"embedding": [float("nan")]}],
+            }
+        },
+    )
+
+    with pytest.raises(ValueError):
+        index.save()
 
 
 def test_document_vector_index_loads_corrupt_json_as_empty_index(tmp_path) -> None:
