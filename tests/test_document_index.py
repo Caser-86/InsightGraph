@@ -189,7 +189,9 @@ def test_document_vector_index_rejects_entry_when_content_hash_changes(tmp_path)
     assert loaded.get_fresh_chunks(document_path) == []
 
 
-def test_document_vector_index_skips_malformed_chunk_payloads(tmp_path) -> None:
+def test_document_vector_index_rejects_entry_with_any_malformed_chunk_payload(
+    tmp_path,
+) -> None:
     document_path = tmp_path / "report.md"
     document_path.write_text("Alpha evidence", encoding="utf-8")
     stat = document_path.stat()
@@ -223,14 +225,12 @@ def test_document_vector_index_skips_malformed_chunk_payloads(tmp_path) -> None:
     index_path.write_text(json.dumps(payload), encoding="utf-8")
 
     loaded = document_index.DocumentVectorIndex.load(index_path)
-    fresh_chunks = loaded.get_fresh_chunks(document_path)
-
-    assert len(fresh_chunks) == 1
-    assert fresh_chunks[0].embedding == [0.5] * 64
-    assert fresh_chunks[0].score == 7
+    assert loaded.get_fresh_chunks(document_path) == []
 
 
-def test_document_vector_index_skips_invalid_cached_embedding_shapes(tmp_path) -> None:
+def test_document_vector_index_rejects_entry_with_invalid_cached_embedding_shape(
+    tmp_path,
+) -> None:
     document_path = tmp_path / "report.md"
     document_path.write_text("Alpha evidence", encoding="utf-8")
     stat = document_path.stat()
@@ -262,13 +262,12 @@ def test_document_vector_index_skips_invalid_cached_embedding_shapes(tmp_path) -
     index_path.write_text(json.dumps(payload), encoding="utf-8")
 
     loaded = document_index.DocumentVectorIndex.load(index_path)
-    fresh_chunks = loaded.get_fresh_chunks(document_path)
-
-    assert len(fresh_chunks) == 1
-    assert fresh_chunks[0].embedding == [0.5] * 64
+    assert loaded.get_fresh_chunks(document_path) == []
 
 
-def test_document_vector_index_skips_non_finite_cached_embeddings(tmp_path) -> None:
+def test_document_vector_index_rejects_entry_with_non_finite_cached_embedding(
+    tmp_path,
+) -> None:
     document_path = tmp_path / "report.md"
     document_path.write_text("Alpha evidence", encoding="utf-8")
     stat = document_path.stat()
@@ -299,10 +298,7 @@ def test_document_vector_index_skips_non_finite_cached_embeddings(tmp_path) -> N
     index_path.write_text(json.dumps(payload), encoding="utf-8")
 
     loaded = document_index.DocumentVectorIndex.load(index_path)
-    fresh_chunks = loaded.get_fresh_chunks(document_path)
-
-    assert len(fresh_chunks) == 1
-    assert fresh_chunks[0].embedding == [0.5] * 64
+    assert loaded.get_fresh_chunks(document_path) == []
 
 
 def test_document_vector_index_returns_no_chunks_when_hashing_fails(

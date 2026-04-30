@@ -89,10 +89,11 @@ class DocumentVectorIndex:
         indexed_chunks = []
         for chunk in chunks:
             if not isinstance(chunk, dict):
-                continue
+                return []
             indexed_chunk = _indexed_chunk_from_json(chunk)
-            if indexed_chunk is not None:
-                indexed_chunks.append(indexed_chunk)
+            if indexed_chunk is None:
+                return []
+            indexed_chunks.append(indexed_chunk)
         return indexed_chunks
 
     def store_document(self, document_path: Path, chunks: Sequence[DocumentIndexChunk]) -> None:
