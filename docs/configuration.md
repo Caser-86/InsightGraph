@@ -2,11 +2,11 @@
 
 InsightGraph keeps deterministic/offline behavior for tests and local smoke runs. The product-oriented path is `--preset live-research`, which opts into networked search plus LLM analysis/reporting when an LLM endpoint is configured.
 
-Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`, `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`, and `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately.
+Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`, `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`, and `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately. Source URLs are canonicalized for dedupe, source types are classified as `official_site`, `docs`, `github`, `news`, `blog`, `sec`, `paper`, or `unknown`, and fetch failures carry stable error kinds such as `network`, `http_status`, `content_type`, `too_large`, and `blocked_url`.
 
 ## Search Provider 配置
 
-`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。搜索结果会通过 bounded pre-fetch pipeline 转为 evidence：fetch attempts 同时受 search limit 和 `INSIGHT_GRAPH_MAX_FETCHES` 约束，单个 URL fetch 失败不会中断其他结果，原始 query 会传给 `fetch_url` 用于长 HTML/PDF chunk ranking。成功抓取的 evidence 会保留 search provider、rank、query 和 search snippet；抓取失败或无内容的 candidate 会生成 unverified diagnostic evidence，记录 `fetch_status` 和 `fetch_error`，但不会进入最终 References。需要在工具层使用真实搜索时，可显式启用 DuckDuckGo 后直接调用 `web_search` 或通过 `ToolRegistry` 运行该工具：
+`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。搜索结果会通过 bounded pre-fetch pipeline 转为 evidence：fetch attempts 同时受 search limit 和 `INSIGHT_GRAPH_MAX_FETCHES` 约束，单个 URL fetch 失败不会中断其他结果，原始 query 会传给 `fetch_url` 用于长 HTML/PDF chunk ranking。成功抓取的 evidence 会保留 search provider、rank、query、search snippet、canonical URL、`reachable=True` 和 source trust metadata；抓取失败或无内容的 candidate 会生成 unverified diagnostic evidence，记录 `fetch_status`、`fetch_error` 和 verification metadata，但不会进入最终 References。需要在工具层使用真实搜索时，可显式启用 DuckDuckGo 后直接调用 `web_search` 或通过 `ToolRegistry` 运行该工具：
 
 ```bash
 INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c "from insight_graph.tools.web_search import web_search; print(web_search('Compare Cursor, OpenCode, and GitHub Copilot'))"
@@ -63,7 +63,7 @@ Built-in Markdown profile example: `biotech_finance`, used for biotech/clinical/
 |------|------|--------|
 | `INSIGHT_GRAPH_MAX_TOOL_CALLS` | 单次研究最多执行的 tool call 数 | `20` |
 | `INSIGHT_GRAPH_MAX_STEPS` | 预留的 workflow step budget，供后续 agent loop/checkpoint 使用 | `10` |
-| `INSIGHT_GRAPH_MAX_FETCHES` | 预留的 fetch budget，供后续 fetch/pre-fetch 集中管控使用 | `10` |
+| `INSIGHT_GRAPH_MAX_FETCHES` | pre-fetch candidate 抓取上限；候选会先按 canonical URL 去重 | `10` |
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | 单次研究最终保留的 evidence 数上限 | `20` |
 | `INSIGHT_GRAPH_MAX_TOKENS` | 单次研究已记录 LLM total token 上限；耗尽后 Analyst/Reporter 回退 deterministic，OpenAI relevance judge 保守拒绝新 LLM 判断 | `50000` |
 | `INSIGHT_GRAPH_MAX_TOOL_ROUNDS` | Executor 对每个 planned tool/subtask collection loop 允许的最大轮数；未设置时沿用 `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` | `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` |
@@ -117,7 +117,7 @@ Local document indexing is opt-in and offline. When `INSIGHT_GRAPH_DOCUMENT_INDE
 | `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` | Local JSON file used for persisted document chunks and deterministic embeddings | 未启用 |
 | `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `deterministic` lexical ranking or opt-in deterministic vector ranking | `deterministic` |
 
-当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 默认关闭；启用后会写入 deterministic summary，保留 evidence IDs、source URLs、tool-call counts 和 findings，供后续长跑 agent loop 使用。
+当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并按 canonical URL 去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 默认关闭；启用后会写入 deterministic summary，保留 evidence IDs、source URLs、tool-call counts 和 findings，供后续长跑 agent loop 使用。
 
 ## Relevance Filtering
 
@@ -141,11 +141,11 @@ INSIGHT_GRAPH_RELEVANCE_FILTER=1 python -m insight_graph.cli research "Compare C
 
 ## Reporter URL Revalidation
 
-Reporter URL revalidation 默认关闭；`--preset live-research` 会启用它。也可显式设置 `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`。启用后，Reporter 在最终 References 前用 bounded HTTP fetch 验证 verified evidence URLs，将结果写入 `GraphState.url_validation`，并在 References 中标注 `(URL validated)` 或 `(URL validation failed: ...)`。验证失败不会生成替代 URL，也不会伪造引用。
+Reporter URL revalidation 默认关闭；`--preset live-research` 会启用它。也可显式设置 `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`。启用后，Reporter 在最终 References 前用 bounded HTTP fetch 验证 verified evidence URLs，将结果写入 `GraphState.url_validation`，并在 References 中标注 `(URL validated)` 或 `(URL validation failed: ...)`。验证失败不会生成替代 URL，也不会伪造引用。底层 fetch errors 带 `kind` 字段；只会对 transient network 和 5xx HTTP errors 按调用方配置执行 retry/backoff，不会重试 blocked URL、4xx、MIME 或 oversize 响应。
 
 ## Snippet-Level Citation Support
 
-Critic 会把 finding 的 verified evidence snippets 写入 `GraphState.citation_support`，并记录 `supporting_snippets`、`matched_terms`、`missing_terms` 和 `support_score`。LLM Reporter 的 prompt 只把 verified evidence snippets 作为允许事实依据，并禁止编造 facts、numbers、sources 或 citations。该边界默认离线 deterministic；LLM Reporter 仍需显式 opt-in。
+Critic 会把 finding 的 verified evidence snippets 写入 `GraphState.citation_support`，并记录 `supporting_snippets`、`matched_terms`、`missing_terms`、`support_score` 和 `claim_supported`。Evidence 本身保留 `reachable`、`source_trusted`、`claim_supported` metadata；本批次 Citation Support 只输出 claim support records，不反向修改 Evidence。LLM Reporter 的 prompt 只把 verified evidence snippets 作为允许事实依据，并禁止编造 facts、numbers、sources 或 citations。该边界默认离线 deterministic；LLM Reporter 仍需显式 opt-in。
 
 ```bash
 INSIGHT_GRAPH_RELEVANCE_FILTER=1 \

@@ -22,7 +22,12 @@ def infer_source_type(url: str) -> SourceType:
         return "sec"
     if _is_paper_source(domain, path):
         return "paper"
-    if domain.startswith("docs.") or "/docs" in path or "/documentation" in path or path.endswith(".pdf"):
+    if (
+        domain.startswith("docs.")
+        or "/docs" in path
+        or "/documentation" in path
+        or path.endswith(".pdf")
+    ):
         return "docs"
     if domain == "github.com" or domain.endswith(".github.com"):
         return "github"
@@ -42,4 +47,7 @@ def _is_paper_source(domain: str, path: str) -> bool:
 
 
 def _is_news_domain(domain: str) -> bool:
-    return any(domain == news_domain or domain.endswith(f".{news_domain}") for news_domain in NEWS_DOMAINS)
+    return any(
+        domain == news_domain or domain.endswith(f".{news_domain}")
+        for news_domain in NEWS_DOMAINS
+    )

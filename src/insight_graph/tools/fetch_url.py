@@ -13,11 +13,11 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
 from insight_graph.tools.http_client import FetchedPage, FetchError, fetch_text
 from insight_graph.tools.rendered_fetch import render_page
-from insight_graph.report_quality.source_types import infer_source_type
 
 MAX_FETCHED_EVIDENCE = 5
 MAX_SNIPPET_CHARS = 500

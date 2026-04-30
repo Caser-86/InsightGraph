@@ -82,7 +82,10 @@ def _fetch_text_once(
             _validate_content_type(content_type)
             content_length = _content_length_from_headers(response.headers)
             if content_length is not None and content_length > max_bytes:
-                raise FetchError(f"Response body too large: {content_length} bytes", kind="too_large")
+                raise FetchError(
+                    f"Response body too large: {content_length} bytes",
+                    kind="too_large",
+                )
             body = _read_bounded_body(response, max_bytes)
             if not body:
                 raise FetchError("Empty response body", kind="empty")
