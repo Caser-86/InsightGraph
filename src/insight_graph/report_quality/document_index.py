@@ -22,6 +22,9 @@ class DocumentIndexChunk:
     document_index: int = 0
     page: int | None = None
     section_heading: str | None = None
+    source_type: str | None = None
+    entity_names: tuple[str, ...] = ()
+    document_updated_at: str | None = None
     score: int = 0
 
 
@@ -32,6 +35,9 @@ class IndexedDocumentChunk:
     document_index: int = 0
     page: int | None = None
     section_heading: str | None = None
+    source_type: str | None = None
+    entity_names: tuple[str, ...] = ()
+    document_updated_at: str | None = None
     embedding: list[float] = field(default_factory=list)
     score: int = 0
 
@@ -127,6 +133,9 @@ def build_index_chunks(chunks: Sequence[DocumentIndexChunk]) -> list[IndexedDocu
                 document_index=chunk.document_index,
                 page=chunk.page,
                 section_heading=chunk.section_heading,
+                source_type=chunk.source_type,
+                entity_names=chunk.entity_names,
+                document_updated_at=chunk.document_updated_at,
                 embedding=deterministic_text_embedding(
                     " ".join([chunk.section_heading or "", chunk.text])
                 ),
@@ -143,6 +152,9 @@ def _indexed_chunk_to_json(chunk: IndexedDocumentChunk) -> dict[str, Any]:
         "document_index": chunk.document_index,
         "page": chunk.page,
         "section_heading": chunk.section_heading,
+        "source_type": chunk.source_type,
+        "entity_names": list(chunk.entity_names),
+        "document_updated_at": chunk.document_updated_at,
         "embedding": chunk.embedding,
         "score": chunk.score,
     }
@@ -154,6 +166,9 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
     document_index = payload.get("document_index", 0)
     page = payload.get("page")
     section_heading = payload.get("section_heading")
+    source_type = payload.get("source_type")
+    entity_names = payload.get("entity_names", [])
+    document_updated_at = payload.get("document_updated_at")
     score = payload.get("score", 0)
     embedding = _embedding_from_json(payload.get("embedding"))
     if not isinstance(text, str):
@@ -166,6 +181,14 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
         return None
     if section_heading is not None and not isinstance(section_heading, str):
         return None
+    if source_type is not None and not isinstance(source_type, str):
+        return None
+    if not isinstance(entity_names, list) or not all(
+        isinstance(item, str) for item in entity_names
+    ):
+        return None
+    if document_updated_at is not None and not isinstance(document_updated_at, str):
+        return None
     if embedding is None:
         return None
     if not isinstance(score, int) or isinstance(score, bool):
@@ -176,6 +199,9 @@ def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | 
         document_index=document_index,
         page=page,
         section_heading=section_heading,
+        source_type=source_type,
+        entity_names=tuple(entity_names),
+        document_updated_at=document_updated_at,
         embedding=embedding,
         score=score,
     )
@@ -224,6 +250,7 @@ def rank_document_chunks(
         heading_tokens = _tokenize(chunk.section_heading or "")
         score = sum(1 for token in text_tokens if token in query_tokens)
         score += 100 * sum(1 for token in heading_tokens if token in query_tokens)
+        score += _cross_document_quality_boost(chunk, query_tokens, query)
         distinct_matches = len({token for token in text_tokens if token in query_tokens})
         distinct_matches += len({token for token in heading_tokens if token in query_tokens})
         if score > 0:
@@ -238,6 +265,9 @@ def rank_document_chunks(
                         document_index=chunk.document_index,
                         page=chunk.page,
                         section_heading=chunk.section_heading,
+                        source_type=chunk.source_type,
+                        entity_names=chunk.entity_names,
+                        document_updated_at=chunk.document_updated_at,
                         score=score,
                     ),
                 )
@@ -269,6 +299,9 @@ def _rank_chunks_by_deterministic_vector(
                         document_index=chunk.document_index,
                         page=chunk.page,
                         section_heading=chunk.section_heading,
+                        source_type=chunk.source_type,
+                        entity_names=chunk.entity_names,
+                        document_updated_at=chunk.document_updated_at,
                         score=int(score * 10_000),
                     ),
                 )
@@ -281,6 +314,29 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right) or not left:
         return 0.0
     return sum(a * b for a, b in zip(left, right, strict=True))
+
+
+def _cross_document_quality_boost(
+    chunk: DocumentIndexChunk,
+    query_tokens: set[str],
+    query: str,
+) -> int:
+    boost = 0
+    if chunk.source_type in {"official_site", "docs", "sec", "paper"}:
+        boost += 50
+    heading_tokens = set(_tokenize(chunk.section_heading or ""))
+    if heading_tokens and heading_tokens.issubset(query_tokens):
+        boost += 50
+    if any(entity.casefold() in query.casefold() for entity in chunk.entity_names):
+        boost += 30
+    if chunk.document_updated_at:
+        boost += min(20, max(0, _first_int(chunk.document_updated_at) - 2000))
+    return boost
+
+
+def _first_int(value: str) -> int:
+    match = re.search(r"\d+", value)
+    return int(match.group(0)) if match else 0
 
 
 def _tokenize(value: str) -> list[str]:
