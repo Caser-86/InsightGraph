@@ -531,6 +531,7 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
                 "error": None,
                 "round_index": 1,
                 "section_id": None,
+                "strategy_id": None,
                 "stop_reason": None,
             }
         ],

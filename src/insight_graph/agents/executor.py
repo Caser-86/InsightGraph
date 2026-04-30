@@ -262,7 +262,11 @@ def _collection_work_items(
     round_index: int,
 ) -> list[tuple[Subtask, dict[str, object] | None]]:
     collect_subtasks = [task for task in state.subtasks if task.id == "collect"]
-    subtask = collect_subtasks[0] if collect_subtasks else Subtask(id="collect", description="Collect")
+    subtask = (
+        collect_subtasks[0]
+        if collect_subtasks
+        else Subtask(id="collect", description="Collect")
+    )
     strategies = [
         strategy
         for strategy in state.query_strategies
