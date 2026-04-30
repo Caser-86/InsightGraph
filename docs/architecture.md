@@ -2,6 +2,8 @@
 
 This document keeps the project blueprint and execution model. The root README provides the project overview, while this document keeps deeper architecture details.
 
+Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. Batch 14 docs final alignment complete.
+
 ## 目标项目结构（蓝图）
 
 ```text
@@ -218,7 +220,7 @@ flowchart LR
     R --> M
 ```
 
-当前 MVP 中部分蓝图能力仍是目标态：Long-term Memory、PostgreSQL checkpoint、conversation compression、Playwright 渲染和 Reporter 主动 URL 网络校验尚未实现。已实现路径已包含 domain profiles、entity resolver、section plan、multi-source live collection、SEC recent filings、HTML/PDF evidence chunk metadata，并保留相同数据边界：工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support，API/CLI JSON 输出不 dump `evidence_pool` 或 `global_evidence_pool`。
+已实现路径已包含 domain profiles、entity resolver、section plan、multi-source live collection、SEC filings/financials/content snippets、HTML/PDF evidence chunk metadata、checkpoint persistence, pgvector memory adapters, dashboard evidence/citation panels, trace IDs, redacted trace controls, and manual live benchmark. 工具只产出 `Evidence`，Reporter 只引用已有 verified evidence 并检查 citation/snippet support。
 
 ## 技术栈
 

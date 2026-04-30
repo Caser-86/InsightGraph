@@ -3,6 +3,8 @@
 This document is the canonical execution route for InsightGraph after `v0.1.32`.
 Future work must follow this route unless the user explicitly approves a route change.
 
+Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. Batch 14 docs final alignment complete.
+
 ## Route Status
 
 | Item | Decision |
@@ -478,13 +480,14 @@ Rendered-page fetch is now opt-in. `fetch_url` uses lazy Playwright rendering on
 
 SEC financial evidence now extends beyond recent filing discovery. The opt-in `sec_financials` tool reads SEC companyfacts JSON for known public-company targets and emits deterministic revenue, net income, and assets evidence without claiming full financial modeling.
 
-PostgreSQL checkpoint resume and pgvector long-term memory are deferred to a later infrastructure phase. Phase 10 closes without adding heavy persistence dependencies; future work must first specify resume semantics, migration paths, embedding cost controls, privacy/deletion behavior, and report-quality gains.
+PostgreSQL checkpoint resume, pgvector long-term memory, migrations, memory writeback/API, dashboard observability, trace controls, and manual live benchmark are now implemented as opt-in capabilities. Heavy external services remain disabled by default.
 
-Deferred infrastructure items:
+Deferred items requiring explicit approval:
 
-- PostgreSQL checkpoint resume.
-- pgvector long-term memory.
-- Conversation compression for very long live runs.
+- MCP runtime invocation behind allowlist.
+- Real sandboxed Python/code execution.
+- `/tasks` API compatibility aliases unless a real consumer requires them.
+- Force-push/release/deploy automation.
 
 Next work queue:
 
@@ -551,7 +554,7 @@ Phases 1-10 are implemented. Historical agent planning documents were consolidat
 - Observability/extensibility now has safe opt-in boundaries for full trace payloads, MCP-style tool specs, and restricted code execution.
 - Default offline behavior remains one collection round; `live-research` opts into deeper collection.
 
-- pgvector memory still needs real embedding providers and eval proof that memory improves grounded reports.
-- Vector retrieval still needs external embedding providers and a persisted index before becoming production RAG.
-- Conversation compression still needs long-run trace integration after the deterministic summary helper.
-- Eval Bench should be expanded before infrastructure work if report-quality regression detection is the priority.
+- pgvector memory has deterministic/external embedding boundaries, API management, writeback, and offline eval proof.
+- Vector retrieval has local persisted index and external embedding provider boundaries; production RAG hardening can continue incrementally.
+- Conversation compression remains deterministic and opt-in for long-run support.
+- Eval Bench includes report quality metrics plus manual opt-in live benchmark output.
