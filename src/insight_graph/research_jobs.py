@@ -457,6 +457,13 @@ def _prune_finished_jobs_locked() -> None:
     _RESEARCH_JOBS_BACKEND.prune_finished()
 
 
+def cleanup_research_jobs(finished_before: str) -> dict[str, Any]:
+    with _JOBS_LOCK:
+        deleted_count = _RESEARCH_JOBS_BACKEND.delete_terminal_before(finished_before)
+        _persist_research_jobs_best_effort_locked()
+    return {"deleted_count": deleted_count, "artifact_retention": "external"}
+
+
 def create_research_job(
     query: str,
     preset: ResearchPreset,

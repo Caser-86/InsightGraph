@@ -68,6 +68,47 @@ def test_research_jobs_backend_contract_retry_failed_job(research_jobs_backend) 
     assert retry_record.query == "Contract retry"
 
 
+def test_cleanup_research_jobs_deletes_terminal_jobs_before_cutoff(research_jobs_backend) -> None:
+    old_terminal = jobs_module.ResearchJob(
+        id="old-terminal",
+        query="Old terminal",
+        preset=ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-01T10:00:00Z",
+        status="succeeded",
+        finished_at="2026-04-01T10:05:00Z",
+    )
+    new_terminal = jobs_module.ResearchJob(
+        id="new-terminal",
+        query="New terminal",
+        preset=ResearchPreset.offline,
+        created_order=2,
+        created_at="2026-04-15T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-15T10:05:00Z",
+    )
+    running = jobs_module.ResearchJob(
+        id="running",
+        query="Running",
+        preset=ResearchPreset.offline,
+        created_order=3,
+        created_at="2026-04-01T10:00:00Z",
+        status="running",
+        finished_at="2026-04-01T10:05:00Z",
+    )
+    jobs_module.reset_research_jobs_state(
+        next_job_sequence=3,
+        jobs=[old_terminal, new_terminal, running],
+    )
+
+    result = jobs_module.cleanup_research_jobs(finished_before="2026-04-10T00:00:00Z")
+
+    assert result == {"deleted_count": 1, "artifact_retention": "external"}
+    assert jobs_module.get_research_job_record("old-terminal") is None
+    assert jobs_module.get_research_job_record("new-terminal") is not None
+    assert jobs_module.get_research_job_record("running") is not None
+
+
 def test_retry_research_job_clones_failed_job_as_new_queued_job() -> None:
     source = jobs_module.ResearchJob(
         id="failed-job",

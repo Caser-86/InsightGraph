@@ -43,6 +43,7 @@ from insight_graph.research_jobs import (
     ResearchJobStatus,
     append_research_job_event,
     claim_next_research_job_for_worker,
+    cleanup_research_jobs,
     configure_research_jobs_backend_from_env,
     heartbeat_research_job,
     initialize_research_jobs,
@@ -693,7 +694,33 @@ def _stop_research_job_heartbeat(stop_event: Event, thread: Thread | None) -> No
 def _initialize_research_jobs_from_env() -> None:
     configure_research_jobs_backend_from_env()
     initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
+    _cleanup_research_jobs_from_env()
     _submit_startup_research_jobs()
+
+
+def _cleanup_research_jobs_from_env() -> None:
+    retention_days = _terminal_retention_days_from_env()
+    if retention_days is None:
+        return
+    cleanup_research_jobs(
+        finished_before=_timestamp_days_before(_current_utc_timestamp(), retention_days)
+    )
+
+
+def _terminal_retention_days_from_env() -> int | None:
+    raw = os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def _timestamp_days_before(timestamp: str, days: int) -> str:
+    cutoff = datetime.fromisoformat(timestamp.replace("Z", "+00:00")) - timedelta(days=days)
+    return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _startup_worker_enabled() -> bool:

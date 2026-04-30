@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -133,6 +134,52 @@ def test_api_research_jobs_startup_does_not_reimport_json_over_existing_sqlite(
 
     assert detail["status"] == "queued"
     assert detail["job_id"] == created["job_id"]
+
+
+def test_api_startup_applies_terminal_retention_cleanup(monkeypatch, tmp_path) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    jobs_module.configure_research_jobs_sqlite_backend(sqlite_path)
+    old_job = jobs_module.ResearchJob(
+        id="old-terminal",
+        query="Old terminal",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-01T10:00:00Z",
+        status="succeeded",
+        finished_at="2026-04-01T10:05:00Z",
+    )
+    new_job = jobs_module.ResearchJob(
+        id="new-terminal",
+        query="New terminal",
+        preset=api_module.ResearchPreset.offline,
+        created_order=2,
+        created_at="2026-04-29T10:00:00Z",
+        status="failed",
+        finished_at="2026-04-29T10:05:00Z",
+    )
+    jobs_module.reset_research_jobs_state(next_job_sequence=2, jobs=[old_job, new_job])
+    jobs_module.configure_research_jobs_in_memory_backend()
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS", "7")
+    monkeypatch.setattr(api_module, "_current_utc_timestamp", lambda: "2026-04-30T10:00:00Z")
+
+    try:
+        api_module._initialize_research_jobs_from_env()
+        assert jobs_module.get_research_job_record("old-terminal") is None
+        assert jobs_module.get_research_job_record("new-terminal") is not None
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+
+def test_research_jobs_api_docs_describe_retention_cleanup_policy() -> None:
+    docs = Path("docs/research-jobs-api.md").read_text(encoding="utf-8")
+
+    assert "INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS" in docs
+    assert "terminal job retention" in docs
+    assert "SQLite cleanup" in docs
+    assert "artifact retention" in docs
+    assert "external" in docs
 
 
 def test_sqlite_research_job_execution_hides_lease_metadata(monkeypatch, tmp_path) -> None:
