@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
 from insight_graph.tools.http_client import FetchedPage, FetchError, fetch_text
@@ -60,6 +61,9 @@ def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
             snippet=chunk.snippet,
             source_type=source_type,
             verified=True,
+            reachable=True,
+            source_trusted=_source_type_is_trusted(source_type),
+            claim_supported=None,
             chunk_index=index + 1,
             section_heading=_section_for_start(chunk.start, headings),
         )
@@ -96,17 +100,6 @@ def _parse_fetch_url_query(query: str) -> FetchUrlQuery:
     return FetchUrlQuery(url=url.strip(), retrieval_query=retrieval_query)
 
 
-def infer_source_type(url: str) -> SourceType:
-    parsed = urlparse(url)
-    domain = parsed.netloc.lower()
-    path = parsed.path.lower()
-    if domain.startswith("docs.") or "/docs" in path or path.endswith(".pdf"):
-        return "docs"
-    if domain == "github.com" or domain.endswith(".github.com"):
-        return "github"
-    return "unknown"
-
-
 def _evidence_id(url: str) -> str:
     parsed = urlparse(url)
     raw = f"{parsed.netloc}{parsed.path}".strip("/") or url
@@ -139,6 +132,9 @@ def _pdf_evidence(
             snippet=chunk.snippet,
             source_type="docs",
             verified=True,
+            reachable=True,
+            source_trusted=True,
+            claim_supported=None,
             chunk_index=index + 1,
             document_page=chunk.page,
         )
@@ -176,6 +172,10 @@ def _extract_pdf_text(body: bytes | None) -> tuple[str, list[tuple[int, int]]] |
 def _is_pdf_response(content_type: str, url: str) -> bool:
     media_type = content_type.split(";", maxsplit=1)[0].strip().lower()
     return media_type in PDF_CONTENT_TYPES or urlparse(url).path.lower().endswith(".pdf")
+
+
+def _source_type_is_trusted(source_type: SourceType) -> bool:
+    return source_type in {"official_site", "docs", "github", "news", "sec", "paper"}
 
 
 def _pdf_title(url: str) -> str:

@@ -69,6 +69,52 @@ def test_fetch_url_returns_verified_evidence(monkeypatch) -> None:
     assert item.chunk_index == 1
 
 
+def test_fetch_url_uses_source_type_classifier(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text="""
+            <html>
+              <head><title>SEC Filing</title></head>
+              <body><main><p>SEC filing evidence text.</p></main></body>
+            </html>
+            """,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url("https://www.sec.gov/Archives/edgar/data/320193/10-k.htm", "s1")
+
+    assert evidence[0].source_type == "sec"
+
+
+def test_fetch_url_marks_successful_evidence_reachable(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text="""
+            <html>
+              <head><title>GitHub Repo</title></head>
+              <body><main><p>GitHub repository evidence text.</p></main></body>
+            </html>
+            """,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url("https://github.com/sst/opencode", "s1")
+
+    assert evidence[0].reachable is True
+    assert evidence[0].source_trusted is True
+    assert evidence[0].claim_supported is None
+
+
 def test_fetch_url_chunks_long_html_with_section_metadata(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(
@@ -240,4 +286,8 @@ def test_infer_source_type_from_url() -> None:
     assert infer_source_type("https://docs.github.com/copilot") == "docs"
     assert infer_source_type("https://example.com/docs/product") == "docs"
     assert infer_source_type("https://example.com/report.pdf") == "docs"
+    assert infer_source_type("https://www.sec.gov/Archives/edgar/data/320193/10-k.htm") == "sec"
+    assert infer_source_type("https://www.reuters.com/technology/ai-agents") == "news"
+    assert infer_source_type("https://blog.example.com/post") == "blog"
+    assert infer_source_type("https://arxiv.org/abs/2401.12345") == "paper"
     assert infer_source_type("https://example.com/product") == "unknown"

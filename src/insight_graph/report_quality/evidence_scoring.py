@@ -6,6 +6,8 @@ AUTHORITY_BY_SOURCE_TYPE = {
     "github": 80,
     "news": 70,
     "blog": 50,
+    "sec": 95,
+    "paper": 85,
     "unknown": 20,
 }
 

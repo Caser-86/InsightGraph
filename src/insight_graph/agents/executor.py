@@ -462,10 +462,10 @@ def _process_tool_results(
 
 
 def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str] | tuple[str]] = set()
     deduped: list[Evidence] = []
     for item in evidence:
-        key = (item.id, item.source_url)
+        key = (item.canonical_url,) if item.canonical_url else (item.id, item.source_url)
         if key in seen:
             continue
         seen.add(key)

@@ -6,7 +6,16 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 SubtaskType = Literal["research", "company", "product", "market", "technology", "synthesis"]
-SourceType = Literal["official_site", "docs", "github", "news", "blog", "unknown"]
+SourceType = Literal[
+    "official_site",
+    "docs",
+    "github",
+    "news",
+    "blog",
+    "sec",
+    "paper",
+    "unknown",
+]
 
 
 class Subtask(BaseModel):
@@ -25,6 +34,7 @@ class Evidence(BaseModel):
     snippet: str
     source_type: SourceType = "unknown"
     verified: bool = False
+    canonical_url: str | None = None
     chunk_index: int | None = None
     document_page: int | None = None
     section_heading: str | None = None
@@ -35,6 +45,9 @@ class Evidence(BaseModel):
     search_snippet: str | None = None
     fetch_status: Literal["fetched", "empty", "failed"] | None = None
     fetch_error: str | None = None
+    reachable: bool | None = None
+    source_trusted: bool | None = None
+    claim_supported: bool | None = None
 
     @property
     def source_domain(self) -> str:

@@ -120,6 +120,44 @@ def test_pre_fetch_results_records_fetch_error_candidate(monkeypatch) -> None:
     assert evidence[0].search_rank == 1
 
 
+def test_pre_fetch_marks_diagnostic_evidence_verification_state(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        if url.endswith("broken"):
+            raise RuntimeError("fetch failed")
+        return []
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title="Broken", url="https://github.com/sst/broken", snippet="broken"),
+        SearchResult(title="Empty", url="https://example.com/empty", snippet="empty"),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
+
+    assert [item.reachable for item in evidence] == [False, True]
+    assert [item.source_trusted for item in evidence] == [True, False]
+    assert [item.claim_supported for item in evidence] == [False, False]
+
+
+def test_pre_fetch_diagnostic_error_includes_fetch_error_kind(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    class FakeFetchError(RuntimeError):
+        kind = "network"
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        raise FakeFetchError("connection refused")
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [SearchResult(title="Broken", url="https://example.com/broken", snippet="broken")]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=1)
+
+    assert evidence[0].fetch_error == "network: connection refused"
+
+
 def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
     pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
     fetched_urls = []
@@ -204,3 +242,41 @@ def test_pre_fetch_results_attaches_search_query_metadata(monkeypatch) -> None:
     assert evidence[0].search_query == "pricing strategy"
     assert evidence[0].search_snippet == "Search snippet."
     assert evidence[0].search_provider == "duckduckgo"
+
+
+def test_pre_fetch_deduplicates_candidates_by_canonical_url(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    fetched_urls = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        fetched_urls.append(url)
+        return [
+            Evidence(
+                id="kept",
+                subtask_id=subtask_id,
+                title="Kept",
+                source_url="https://example.com/page?utm_source=newsletter#hero",
+                snippet="Kept evidence snippet.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(
+            title="Tracked",
+            url="https://example.com/page?utm_source=newsletter#hero",
+            snippet="tracked",
+        ),
+        SearchResult(
+            title="Canonical duplicate",
+            url="https://EXAMPLE.com:443/page",
+            snippet="duplicate",
+        ),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
+
+    assert fetched_urls == ["https://example.com/page?utm_source=newsletter#hero"]
+    assert len(evidence) == 1
+    assert evidence[0].canonical_url == "https://example.com/page"

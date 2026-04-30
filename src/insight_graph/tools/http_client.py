@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import time
+from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import ParseResult, urlparse
 from urllib.request import Request, urlopen
@@ -21,7 +23,9 @@ ALLOWED_CONTENT_TYPES = {
 
 
 class FetchError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, kind: str = "unknown") -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 class FetchedPage(BaseModel):
@@ -36,6 +40,32 @@ def fetch_text(
     url: str,
     timeout: float = 10.0,
     max_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+    retries: int = 0,
+    backoff_seconds: float = 0.0,
+    sleep_func: Callable[[float], None] | None = None,
+) -> FetchedPage:
+    sleep = sleep_func or time.sleep
+    attempts = max(0, retries) + 1
+    last_error: FetchError | None = None
+    for attempt in range(attempts):
+        try:
+            return _fetch_text_once(url, timeout=timeout, max_bytes=max_bytes)
+        except FetchError as exc:
+            last_error = exc
+            if attempt >= attempts - 1 or not _is_retryable(exc):
+                raise
+            if backoff_seconds > 0:
+                sleep(backoff_seconds)
+    if last_error is not None:
+        raise last_error
+    raise FetchError("Unknown fetch error", kind="unknown")
+
+
+def _fetch_text_once(
+    url: str,
+    *,
+    timeout: float,
+    max_bytes: int,
 ) -> FetchedPage:
     parsed = urlparse(url)
     _validate_url(parsed)
@@ -47,15 +77,18 @@ def fetch_text(
             _validate_url(urlparse(final_url))
             status_code = getattr(response, "status", 200)
             if status_code < 200 or status_code >= 300:
-                raise FetchError(f"Unexpected HTTP status: {status_code}")
+                raise FetchError(f"Unexpected HTTP status: {status_code}", kind="http_status")
             content_type = response.headers.get("Content-Type", "")
             _validate_content_type(content_type)
             content_length = _content_length_from_headers(response.headers)
             if content_length is not None and content_length > max_bytes:
-                raise FetchError(f"Response body too large: {content_length} bytes")
+                raise FetchError(
+                    f"Response body too large: {content_length} bytes",
+                    kind="too_large",
+                )
             body = _read_bounded_body(response, max_bytes)
             if not body:
-                raise FetchError("Empty response body")
+                raise FetchError("Empty response body", kind="empty")
             encoding = _encoding_from_content_type(content_type)
             text = _decode_body(body, encoding)
             return FetchedPage(
@@ -66,18 +99,21 @@ def fetch_text(
                 body=body,
             )
     except HTTPError as exc:
-        raise FetchError(f"HTTP error while fetching URL: {exc.code}") from exc
+        raise FetchError(f"HTTP error while fetching URL: {exc.code}", kind="http_status") from exc
     except URLError as exc:
-        raise FetchError(f"Network error while fetching URL: {exc.reason}") from exc
+        raise FetchError(f"Network error while fetching URL: {exc.reason}", kind="network") from exc
 
 
 def _validate_url(parsed: ParseResult) -> None:
     if parsed.scheme not in {"http", "https"}:
-        raise FetchError(f"Unsupported URL scheme: {parsed.scheme or 'missing'}")
+        raise FetchError(
+            f"Unsupported URL scheme: {parsed.scheme or 'missing'}",
+            kind="blocked_url",
+        )
     if not parsed.netloc or not parsed.hostname:
-        raise FetchError("URL host is required")
+        raise FetchError("URL host is required", kind="blocked_url")
     if _host_is_blocked(parsed.hostname, parsed.port):
-        raise FetchError("URL host is not allowed")
+        raise FetchError("URL host is not allowed", kind="blocked_url")
 
 
 def _host_is_blocked(host: str, port: int | None) -> bool:
@@ -95,7 +131,7 @@ def _resolve_host_ips(host: str, port: int | None) -> list[str]:
     try:
         return [info[4][0] for info in socket.getaddrinfo(host, port or 443)]
     except socket.gaierror as exc:
-        raise FetchError(f"Unable to resolve URL host: {host}") from exc
+        raise FetchError(f"Unable to resolve URL host: {host}", kind="dns") from exc
 
 
 def _is_blocked_ip(value: str) -> bool:
@@ -127,7 +163,7 @@ def _validate_content_type(content_type: str) -> None:
         return
     if media_type in ALLOWED_CONTENT_TYPES or media_type.endswith("+xml"):
         return
-    raise FetchError(f"Unsupported content type: {media_type}")
+    raise FetchError(f"Unsupported content type: {media_type}", kind="content_type")
 
 
 def _read_bounded_body(response, max_bytes: int) -> bytes:
@@ -139,7 +175,7 @@ def _read_bounded_body(response, max_bytes: int) -> bytes:
             break
         total += len(chunk)
         if total > max_bytes:
-            raise FetchError(f"Response body too large: {total} bytes")
+            raise FetchError(f"Response body too large: {total} bytes", kind="too_large")
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -166,3 +202,15 @@ def _decode_body(body: bytes, encoding: str) -> str:
         return body.decode(encoding, errors="replace")
     except LookupError:
         return body.decode("utf-8", errors="replace")
+
+
+def _is_retryable(error: FetchError) -> bool:
+    if error.kind == "network":
+        return True
+    if error.kind != "http_status":
+        return False
+    message = str(error)
+    for status_code in range(500, 600):
+        if str(status_code) in message:
+            return True
+    return False

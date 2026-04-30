@@ -245,7 +245,7 @@ flowchart TB
     end
 ```
 
-`Evidence` 是轻量结构，包含 title、source URL、snippet、source type、verified、chunk/page/section、search candidate 和 fetch status 等字段。search candidate metadata 会保留 provider、rank、query 和原始 snippet；抓取失败或无内容时会生成 unverified diagnostic evidence，方便诊断 live run，但不会进入最终 References。
+`Evidence` 是轻量结构，包含 title、source URL、canonical URL、snippet、source type、verified、verification metadata、chunk/page/section、search candidate 和 fetch status 等字段。search candidate metadata 会保留 provider、rank、query 和原始 snippet；抓取失败或无内容时会生成 unverified diagnostic evidence，记录稳定的 fetch error kind，方便诊断 live run，但不会进入最终 References。
 
 ---
 
@@ -300,8 +300,9 @@ flowchart TB
 ### 2. Collector / Executor
 
 - **工具执行**：执行 Planner 指定工具，生成 verified evidence。
-- **Pre-fetch**：live research 下可对 web search 候选 URL 做 bounded fetch，并传播 retrieval query。
+- **Pre-fetch**：live research 下可对 web search 候选 URL 做 bounded fetch，并传播 retrieval query；候选和最终 evidence 会基于 canonical URL 去重。
 - **Live failure policy**：联网搜索没有证据或 provider 异常时记录失败/证据不足，不自动混入 `mock_search` 证据。
+- **Source semantics**：URL evidence 会分类为 `official_site`、`docs`、`github`、`news`、`blog`、`sec`、`paper` 或 `unknown`，并记录 `reachable`、`source_trusted`、`claim_supported` 等 verification metadata。
 - **多轮采集**：支持 per-subtask tool rounds、follow-up section/tool queries 和全局 evidence budgets。
 - **证据管理**：维护 `evidence_pool` 和 `global_evidence_pool`，执行去重、排序、caps 和 section status 更新。
 
