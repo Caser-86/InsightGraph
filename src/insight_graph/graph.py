@@ -8,6 +8,7 @@ from insight_graph.agents.collector import collect_evidence
 from insight_graph.agents.critic import critique_analysis
 from insight_graph.agents.planner import plan_research
 from insight_graph.agents.reporter import write_report
+from insight_graph.memory.writeback import write_report_memories
 from insight_graph.persistence.checkpoints import CheckpointRecord, CheckpointStore
 from insight_graph.state import GraphState
 
@@ -54,8 +55,11 @@ def run_research(user_request: str) -> GraphState:
     compiled = build_graph()
     result = compiled.invoke(GraphState(user_request=user_request))
     if isinstance(result, GraphState):
+        write_report_memories(result)
         return result
-    return GraphState.model_validate(result)
+    state = GraphState.model_validate(result)
+    write_report_memories(state)
+    return state
 
 
 def run_research_with_events(
@@ -112,6 +116,7 @@ def run_research_with_events(
     state = _run_stage_with_events(
         "reporter", write_report, state, emit_event, run_id, checkpoint_store
     )
+    write_report_memories(state, run_id=run_id)
     emit_event({"type": "report_ready"})
     return state
 
