@@ -585,9 +585,10 @@ def test_search_document_vector_mode_overrides_env_for_one_call(
         ],
     )
 
-    def fake_rank(chunks, query):
+    def fake_rank(chunks, query, *, mode=None):
         assert query == "anything"
-        assert document_index_module.get_document_retrieval_mode() == "vector"
+        assert mode == "vector"
+        assert document_index_module.get_document_retrieval_mode() == "deterministic"
         return [chunks[1], chunks[0]]
 
     monkeypatch.setattr(search_document_module, "rank_document_chunks", fake_rank)

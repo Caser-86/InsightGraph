@@ -53,6 +53,31 @@ def test_rank_document_chunks_uses_vector_ranker_only_when_opted_in(monkeypatch)
     assert [chunk.index for chunk in vector_ranked] == [1]
 
 
+def test_rank_document_chunks_explicit_mode_overrides_env_without_mutation(
+    monkeypatch,
+) -> None:
+    chunks = [
+        DocumentIndexChunk(text="alpha evidence", index=0),
+        DocumentIndexChunk(text="beta evidence", index=1),
+    ]
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", "deterministic")
+
+    def vector_ranker(items, query):
+        assert query == "alpha"
+        assert get_document_retrieval_mode() == "deterministic"
+        return [items[1]]
+
+    ranked = rank_document_chunks(
+        chunks,
+        "alpha",
+        mode="vector",
+        vector_ranker=vector_ranker,
+    )
+
+    assert [chunk.index for chunk in ranked] == [1]
+    assert get_document_retrieval_mode() == "deterministic"
+
+
 def test_rank_document_chunks_uses_deterministic_vector_fallback(monkeypatch) -> None:
     chunks = [
         DocumentIndexChunk(text="alpha lexical match", index=0),

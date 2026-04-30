@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -178,25 +177,6 @@ def _rank_chunks(
         )
         for chunk in candidates
     ]
-    ranked = _rank_document_chunks_with_mode(index_chunks, query, mode)
+    ranked = rank_document_chunks(index_chunks, query, mode=mode)
     chunks_by_index = {chunk.index: chunk for chunk in candidates}
     return [chunks_by_index[chunk.index] for chunk in ranked if chunk.index in chunks_by_index]
-
-
-def _rank_document_chunks_with_mode(
-    chunks: list[DocumentIndexChunk],
-    query: str,
-    mode: SearchDocumentMode | None,
-) -> list[DocumentIndexChunk]:
-    if mode is None:
-        return rank_document_chunks(chunks, query)
-
-    previous_mode = os.environ.get("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL")
-    os.environ["INSIGHT_GRAPH_DOCUMENT_RETRIEVAL"] = mode
-    try:
-        return rank_document_chunks(chunks, query)
-    finally:
-        if previous_mode is None:
-            os.environ.pop("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", None)
-        else:
-            os.environ["INSIGHT_GRAPH_DOCUMENT_RETRIEVAL"] = previous_mode

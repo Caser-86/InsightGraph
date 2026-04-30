@@ -197,9 +197,11 @@ def rank_document_chunks(
     chunks: Sequence[DocumentIndexChunk],
     query: str,
     *,
+    mode: DocumentRetrievalMode | None = None,
     vector_ranker: VectorRanker | None = None,
 ) -> list[DocumentIndexChunk]:
-    if get_document_retrieval_mode() == "vector":
+    retrieval_mode = mode if mode is not None else get_document_retrieval_mode()
+    if retrieval_mode == "vector":
         if vector_ranker is not None:
             return vector_ranker(chunks, query)
         return _rank_chunks_by_deterministic_vector(chunks, query)
