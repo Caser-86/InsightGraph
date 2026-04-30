@@ -259,6 +259,11 @@ def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dic
     unique_source_types = {item.source_type for item in verified_evidence}
     duplicate_source_rate = _duplicate_source_rate(verified_evidence)
     evidence_per_section = _evidence_per_section(state, verified_evidence)
+    claim_count_per_section = _claim_count_per_section(state, verified_ids)
+    unsupported_claim_count_per_section = _unsupported_claim_count_per_section(
+        state,
+        verified_ids,
+    )
 
     return {
         "section_count": len(headings),
@@ -274,9 +279,14 @@ def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dic
         "evidence_per_section": evidence_per_section,
         "average_evidence_per_section": _average_count(evidence_per_section.values()),
         "official_source_coverage_score": _official_source_coverage_score(state),
+        "claim_count": claim_count,
+        "claim_count_per_section": claim_count_per_section,
+        "evidence_count_per_claim": _evidence_count_per_claim(state),
+        "unsupported_claim_count_per_section": unsupported_claim_count_per_section,
         "unsupported_finding_count": unsupported_finding_count,
         "unsupported_matrix_row_count": unsupported_matrix_row_count,
         "unsupported_claim_count": unsupported_claim_count,
+        "citation_support_ratio": _percentage(supported_claim_count, claim_count),
         "citation_support_score": 100
         if claim_count == 0
         else _percentage(supported_claim_count, claim_count),
@@ -301,9 +311,14 @@ def _empty_report_quality_metrics() -> dict[str, Any]:
         "evidence_per_section": {},
         "average_evidence_per_section": 0,
         "official_source_coverage_score": 0,
+        "claim_count": 0,
+        "claim_count_per_section": {},
+        "evidence_count_per_claim": 0,
+        "unsupported_claim_count_per_section": {},
         "unsupported_finding_count": 0,
         "unsupported_matrix_row_count": 0,
         "unsupported_claim_count": 0,
+        "citation_support_ratio": 0,
         "citation_support_score": 0,
         "duplicate_source_rate": 0,
         "collection_round_count": 0,
@@ -357,6 +372,62 @@ def _evidence_per_section(
             continue
         counts[section_id] = counts.get(section_id, 0) + 1
     return counts
+
+
+def _claim_count_per_section(state: GraphState, verified_ids: set[str]) -> dict[str, int]:
+    counts = _section_count_template(state)
+    for finding in state.findings:
+        section_id = _claim_section_id(finding.evidence_ids, state, verified_ids)
+        counts[section_id] = counts.get(section_id, 0) + 1
+    for row in state.competitive_matrix:
+        section_id = _claim_section_id(row.evidence_ids, state, verified_ids)
+        counts[section_id] = counts.get(section_id, 0) + 1
+    return counts
+
+
+def _unsupported_claim_count_per_section(
+    state: GraphState,
+    verified_ids: set[str],
+) -> dict[str, int]:
+    counts = _section_count_template(state)
+    for finding in state.findings:
+        if _evidence_ids_supported(finding.evidence_ids, verified_ids):
+            continue
+        section_id = _claim_section_id(finding.evidence_ids, state, verified_ids)
+        counts[section_id] = counts.get(section_id, 0) + 1
+    for row in state.competitive_matrix:
+        if _evidence_ids_supported(row.evidence_ids, verified_ids):
+            continue
+        section_id = _claim_section_id(row.evidence_ids, state, verified_ids)
+        counts[section_id] = counts.get(section_id, 0) + 1
+    return counts
+
+
+def _section_count_template(state: GraphState) -> dict[str, int]:
+    return {
+        str(section.get("section_id")): 0
+        for section in state.section_research_plan
+        if isinstance(section.get("section_id"), str) and section.get("section_id")
+    }
+
+
+def _claim_section_id(
+    evidence_ids: list[str],
+    state: GraphState,
+    verified_ids: set[str],
+) -> str:
+    evidence_by_id = {item.id: item for item in state.evidence_pool if item.id in verified_ids}
+    for evidence_id in evidence_ids:
+        evidence = evidence_by_id.get(evidence_id)
+        if evidence is not None and evidence.section_id:
+            return evidence.section_id
+    return "unassigned"
+
+
+def _evidence_count_per_claim(state: GraphState) -> int:
+    claim_evidence_counts = [len(finding.evidence_ids) for finding in state.findings]
+    claim_evidence_counts.extend(len(row.evidence_ids) for row in state.competitive_matrix)
+    return _average_count(claim_evidence_counts)
 
 
 def _average_count(values: Iterable[int]) -> int:
@@ -446,6 +517,10 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "average_citation_support_score": _average_quality(
             case_results, "citation_support_score"
         ),
+        "average_claim_count": _average_quality(case_results, "claim_count"),
+        "average_evidence_count_per_claim": _average_quality(
+            case_results, "evidence_count_per_claim"
+        ),
         "total_unsupported_claims": sum(
             int(item.get("quality", {}).get("unsupported_claim_count", 0))
             for item in case_results
@@ -530,9 +605,11 @@ def format_markdown(payload: dict[str, Any]) -> str:
             "## Report Quality",
             "",
             "| Query | Section coverage | Report depth | Source diversity | Citation support "
-            "| Evidence/section | Official source coverage | Unsupported claims "
+            "| Evidence/section | Claims | Evidence/claim | Official source coverage "
+            "| Unsupported claims "
             "| Duplicate source rate | Collection rounds | Stop reason |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: "
+            "| ---: | ---: | --- |",
         ]
     )
     for item in payload["cases"]:
@@ -547,6 +624,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
                     str(quality.get("source_diversity_score", 0)),
                     str(quality.get("citation_support_score", 0)),
                     str(quality.get("average_evidence_per_section", 0)),
+                    str(quality.get("claim_count", 0)),
+                    str(quality.get("evidence_count_per_claim", 0)),
                     str(quality.get("official_source_coverage_score", 0)),
                     str(quality.get("unsupported_claim_count", 0)),
                     str(quality.get("duplicate_source_rate", 0)),
@@ -590,9 +669,10 @@ def format_markdown(payload: dict[str, Any]) -> str:
             "## Report Quality Summary",
             "",
             "| Avg section coverage | Avg report depth | Avg source diversity "
-            "| Avg citation support | Avg evidence/section | Avg official source coverage "
+            "| Avg citation support | Avg evidence/section | Avg claims | Avg evidence/claim "
+            "| Avg official source coverage "
             "| Unsupported claims | Avg duplicate source rate | Avg collection rounds |",
-            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             "| "
             + " | ".join(
                 [
@@ -601,6 +681,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
                     str(summary.get("average_source_diversity_score", 0)),
                     str(summary.get("average_citation_support_score", 0)),
                     str(summary.get("average_evidence_per_section", 0)),
+                    str(summary.get("average_claim_count", 0)),
+                    str(summary.get("average_evidence_count_per_claim", 0)),
                     str(summary.get("average_official_source_coverage_score", 0)),
                     str(summary.get("total_unsupported_claims", 0)),
                     str(summary.get("average_duplicate_source_rate", 0)),
