@@ -57,3 +57,27 @@ def test_live_benchmark_is_documented_as_manual_opt_in() -> None:
     assert "INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1" in docs
     assert "network/LLM cost" in docs
     assert "live-research" in docs
+
+
+def test_final_docs_align_to_live_research_product_path() -> None:
+    root = Path(__file__).parents[1]
+    docs = {
+        "roadmap": (root / "docs" / "roadmap.md").read_text(encoding="utf-8"),
+        "architecture": (root / "docs" / "architecture.md").read_text(encoding="utf-8"),
+        "reference": (root / "docs" / "reference-parity-roadmap.md").read_text(
+            encoding="utf-8"
+        ),
+        "report_quality": (root / "docs" / "report-quality-roadmap.md").read_text(
+            encoding="utf-8"
+        ),
+    }
+
+    combined = "\n".join(docs.values())
+    assert "product path is `live-research`" in combined
+    assert "Offline remains the deterministic testing/CI fallback" in combined
+    assert "Batch 14 docs final alignment complete" in combined
+    assert "The active project route is now `docs/report-quality-roadmap.md`" not in docs[
+        "roadmap"
+    ]
+    assert "Need reference-style live benchmark profile" not in docs["reference"]
+    assert "Memory-on/off quality eval proof" not in docs["reference"]

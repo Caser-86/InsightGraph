@@ -1,10 +1,12 @@
 # Roadmap
 
-## Canonical Route
+## Current Product Path
 
-The active project route is now `docs/report-quality-roadmap.md`.
+The product path is `live-research`.
 
-Future work must follow that document unless the user explicitly approves a route change. The previous near-term engineering work is considered complete enough for the next phase. Do not continue adding deployment, dashboard, smoke-test, auth, storage, or eval convenience features unless they directly support the report-quality route or fix a bug/security/CI failure.
+Offline remains the deterministic testing/CI fallback. Network, LLM, database, external embedding, full trace payload, and live benchmark behavior remain explicit opt-in surfaces.
+
+Batch 14 docs final alignment complete: completed product-roadmap work is reflected in README, configuration, architecture, scripts, and roadmap docs. The four deferred items remain outside the current scope until explicitly approved.
 
 ## Near-term priorities
 
@@ -36,5 +38,7 @@ Future work must follow that document unless the user explicitly approves a rout
 
 ## Deferred work
 
-- Add automatic job resume semantics only after persistence contract is stable; manual retry is already implemented.
-- Add built-in rate limits only when API moves beyond local MVP usage; public demos should use reverse proxy or API gateway limits.
+- MCP runtime invocation behind allowlist.
+- Real sandboxed Python/code execution.
+- `/tasks` API compatibility aliases unless a real consumer requires them.
+- Force-push/release/deploy automation.

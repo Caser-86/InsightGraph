@@ -2,6 +2,8 @@
 
 This roadmap uses `wenyi-research-agent` as the reference standard for a production-grade deep research agent. InsightGraph keeps deterministic/offline defaults; live LLM, network, database, embeddings, MCP, and code execution remain explicit opt-in surfaces.
 
+Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. Batch 14 docs final alignment complete.
+
 ## Current Position
 
 | Reference capability | InsightGraph status | Gap | Priority |
@@ -16,15 +18,15 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
 | Long PDF/RAG retrieval | `search_document` tool + chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Need pgvector/TOC production RAG and live validation | High |
-| PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
-| pgvector memory | Store/search/delete + deterministic/external embeddings + Planner context injection | Need eval proof | High |
-| Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
+| PostgreSQL checkpoint resume | Store + event/API resume hooks + migration layer + SQLite worker resume claim implemented | Keep hardening restart E2E as bugs appear | Low |
+| pgvector memory | Store/search/delete + deterministic/external embeddings + Planner context injection + writeback/API/eval proof implemented | Improve memory quality over time | Low |
+| Full LLM observability | Trace IDs, redacted JSONL trace controls, dashboard panels, and runner summary implemented | Extend to relevance judge if needed | Low |
 | LLM provider presets | Local/self-hosted presets plus Qwen/DashScope config are implemented on the OpenAI-compatible client | Add Minimax preset if needed | Medium |
-| MCP registry/runtime | Spec registry only | Need safe runtime invocation | Medium |
-| Code execution | Restricted expression boundary | Need real sandbox only if approved | Low |
-| API parity | `/research/jobs` API exists | Need `/tasks` compatibility aliases if required | Medium |
-| Dashboard parity | Dashboard exists | Need richer trace/tool/citation panels | Medium |
-| Production benchmark | Eval Bench exists | Need reference-style live benchmark profile | High |
+| MCP registry/runtime | Spec registry only | Deferred pending explicit approval | Deferred |
+| Code execution | Restricted expression boundary | Real sandbox deferred pending explicit approval | Deferred |
+| API parity | `/research/jobs` API exists | `/tasks` aliases deferred until a real consumer requires them | Deferred |
+| Dashboard parity | Dashboard evidence/citation/quality panels implemented | Continue polish as needed | Low |
+| Production benchmark | Manual opt-in live benchmark implemented | Keep live runs manual/cost-aware | Low |
 
 ## Execution Order
 
@@ -53,14 +55,14 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ### Phase C: Production Persistence And Runtime Parity
 
-18. PostgreSQL migration layer for checkpoint and memory tables.
-19. API/background restart resume E2E test.
-20. Memory-on/off quality eval proof.
-21. MCP runtime invocation behind explicit allowlist.
-22. Python sandbox execution only if approved.
-23. `/tasks` API compatibility layer.
-24. Dashboard parity panels for traces, tools, citations, and token summary.
-25. Reference-style production benchmark.
+18. PostgreSQL migration layer for checkpoint and memory tables. **Implemented.**
+19. API/background restart resume E2E path. **Implemented via checkpoint resume and SQLite worker claim; keep hardening as bugs appear.**
+20. Memory quality eval proof. **Implemented.**
+21. MCP runtime invocation behind explicit allowlist. **Deferred until explicit approval.**
+22. Python sandbox execution only if approved. **Deferred until explicit approval.**
+23. `/tasks` API compatibility layer. **Deferred until a real consumer requires it.**
+24. Dashboard parity panels for traces, tools, citations, and token summary. **Implemented.**
+25. Reference-style production benchmark. **Implemented as manual opt-in live benchmark.**
 
 ## Non-Negotiable Acceptance Criteria
 
@@ -72,4 +74,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 18 starts with the PostgreSQL migration layer for checkpoint and memory tables.
+Next work should be chosen from explicit user priorities. Deferred items stay out of scope until approved.
