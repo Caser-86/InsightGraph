@@ -785,6 +785,54 @@ def test_executor_uses_replan_requests_for_retry_follow_up_query(monkeypatch) ->
     assert updated.tool_call_log[0].query == observed["query"]
 
 
+def test_executor_uses_unsupported_claim_replan_hints_for_retry_query(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    previous = Evidence(
+        id="official",
+        subtask_id="collect",
+        title="Official Evidence",
+        source_url="https://example.com/official",
+        snippet="Official evidence has enough words for relevance.",
+        source_type="official_site",
+        verified=True,
+    )
+    observed: dict[str, str] = {}
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed["query"] = query
+            assert name == "fake"
+            assert subtask_id == "collect"
+            return []
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        iterations=1,
+        evidence_pool=[previous],
+        global_evidence_pool=[previous],
+        replan_requests=[
+            {
+                "type": "unsupported_claim",
+                "claim": "Copilot audit logging",
+                "reason": "snippet lacks lexical support",
+                "missing_section": "security",
+                "missing_entity": "GitHub Copilot",
+                "missing_source_type": "docs",
+                "unsupported_claim_hint": "Copilot audit logging",
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    execute_subtasks(state)
+
+    assert "unsupported claim: Copilot audit logging" in observed["query"]
+    assert "section: security" in observed["query"]
+    assert "entity: GitHub Copilot" in observed["query"]
+    assert "missing source type: docs" in observed["query"]
+
+
 def test_executor_assigns_evidence_to_matching_sections(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
     pricing = Evidence(
