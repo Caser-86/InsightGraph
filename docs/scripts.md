@@ -54,9 +54,14 @@ python scripts/benchmark_research.py --markdown
 ```bash
 python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
 INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1 python scripts/benchmark_live_research.py --output reports/live-benchmark.json --case "Compare Cursor, OpenCode, and GitHub Copilot"
+python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json --case-file docs/benchmarks/live-research-cases.json
 ```
 
-该脚本是手动/opt-in live benchmark，固定使用 `live-research` preset。未传 `--allow-live` 且未设置 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1` 时会退出，不写 artifact。启用后会访问真实网络/LLM provider，可能产生 network/LLM cost。JSON artifact 包含 URL validity count、citation precision proxy、source diversity、report depth、runtime、LLM call count 和 token totals。
+该脚本是手动/opt-in live benchmark，固定使用 `live-research` preset。未传 `--allow-live` 且未设置 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1` 时会退出，不写 artifact。启用后会访问真实网络/LLM provider，可能产生 network/LLM cost。Do not commit generated live benchmark reports；只提交 curated case profiles 和文档。
+
+`docs/benchmarks/live-research-cases.json` 保存 curated benchmark case profiles，包括 AI coding agents、public company analysis、SEC filing risk analysis 和 technology trend analysis。每个 case 包含 `expected_sections`、`required_source_types`、`minimum_source_diversity` 和 `report_depth_target_words`。
+
+JSON artifact 是安全的指标摘要，不包含生成的 live report 正文。主要字段包括 `url_validation_rate`、`citation_precision_proxy`、`source_diversity_by_type`、`source_diversity_by_domain`、`section_coverage`、`report_depth_words`、`runtime_ms`、`llm_call_count`、`tool_call_count` 和 `total_tokens`。
 
 ## validate_sources.py
 
