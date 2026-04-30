@@ -1,11 +1,11 @@
 import json
 import re
-from urllib.parse import urlparse
 
 from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
 from insight_graph.tools.search_providers import SearchResult
+from insight_graph.tools.url_canonicalization import canonicalize_url
 
 
 def pre_fetch_results(
@@ -16,7 +16,12 @@ def pre_fetch_results(
 ) -> list[Evidence]:
     evidence: list[Evidence] = []
     fetch_limit = min(limit, get_research_budgets().max_fetches)
+    seen_canonical_urls: set[str] = set()
     for rank, result in enumerate(results[:fetch_limit], start=1):
+        canonical_url = canonicalize_url(result.url)
+        if canonical_url in seen_canonical_urls:
+            continue
+        seen_canonical_urls.add(canonical_url)
         try:
             fetched = fetch_url(_fetch_query(result.url, query), subtask_id)
         except Exception as exc:
@@ -53,6 +58,7 @@ def _attach_search_metadata(
             "search_rank": rank,
             "search_query": query,
             "search_snippet": result.snippet,
+            "canonical_url": canonicalize_url(evidence.source_url),
             "fetch_status": fetch_status,
             "fetch_error": fetch_error,
         }
@@ -76,6 +82,7 @@ def _diagnostic_evidence(
         source_url=result.url,
         snippet=result.snippet or fetch_error,
         verified=False,
+        canonical_url=canonicalize_url(result.url),
         search_provider=result.source,
         search_rank=rank,
         search_query=query,
@@ -86,6 +93,8 @@ def _diagnostic_evidence(
 
 
 def _url_slug(url: str) -> str:
+    from urllib.parse import urlparse
+
     parsed = urlparse(url)
     raw = f"{parsed.netloc}{parsed.path}".strip("/") or url
     return re.sub(r"[^a-zA-Z0-9]+", "-", raw).strip("-").lower() or "candidate"

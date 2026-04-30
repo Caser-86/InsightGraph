@@ -70,6 +70,19 @@ def test_evidence_stores_search_candidate_metadata() -> None:
     assert evidence.fetch_error is None
 
 
+def test_evidence_stores_canonical_url() -> None:
+    evidence = Evidence(
+        id="e1",
+        subtask_id="s1",
+        title="Cursor pricing",
+        source_url="https://cursor.com/pricing?utm_source=x",
+        snippet="Cursor publishes pricing tiers on its pricing page.",
+        canonical_url="https://cursor.com/pricing",
+    )
+
+    assert evidence.canonical_url == "https://cursor.com/pricing"
+
+
 def test_graph_state_starts_with_empty_collections() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 

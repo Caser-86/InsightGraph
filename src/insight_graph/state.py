@@ -25,6 +25,7 @@ class Evidence(BaseModel):
     snippet: str
     source_type: SourceType = "unknown"
     verified: bool = False
+    canonical_url: str | None = None
     chunk_index: int | None = None
     document_page: int | None = None
     section_heading: str | None = None

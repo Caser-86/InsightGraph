@@ -204,3 +204,41 @@ def test_pre_fetch_results_attaches_search_query_metadata(monkeypatch) -> None:
     assert evidence[0].search_query == "pricing strategy"
     assert evidence[0].search_snippet == "Search snippet."
     assert evidence[0].search_provider == "duckduckgo"
+
+
+def test_pre_fetch_deduplicates_candidates_by_canonical_url(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    fetched_urls = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        fetched_urls.append(url)
+        return [
+            Evidence(
+                id="kept",
+                subtask_id=subtask_id,
+                title="Kept",
+                source_url="https://example.com/page?utm_source=newsletter#hero",
+                snippet="Kept evidence snippet.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(
+            title="Tracked",
+            url="https://example.com/page?utm_source=newsletter#hero",
+            snippet="tracked",
+        ),
+        SearchResult(
+            title="Canonical duplicate",
+            url="https://EXAMPLE.com:443/page",
+            snippet="duplicate",
+        ),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
+
+    assert fetched_urls == ["https://example.com/page?utm_source=newsletter#hero"]
+    assert len(evidence) == 1
+    assert evidence[0].canonical_url == "https://example.com/page"

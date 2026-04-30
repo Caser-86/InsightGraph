@@ -143,6 +143,42 @@ def test_executor_stops_tool_rounds_without_section_plan_when_no_new_evidence(
     assert updated.collection_stop_reason == "no_new_evidence"
 
 
+def test_executor_deduplicates_evidence_by_canonical_url(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    first = Evidence(
+        id="first",
+        subtask_id="collect",
+        title="First Evidence",
+        source_url="https://example.com/page?utm_source=newsletter",
+        canonical_url="https://example.com/page",
+        snippet="First evidence has enough words for relevance.",
+        verified=True,
+    )
+    second = Evidence(
+        id="second",
+        subtask_id="collect",
+        title="Second Evidence",
+        source_url="https://EXAMPLE.com:443/page#section",
+        canonical_url="https://example.com/page",
+        snippet="Second evidence has enough words for relevance.",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [first, second]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["first"]
+
+
 def test_executor_records_conversation_summary_when_compression_enabled(
     monkeypatch,
 ) -> None:
