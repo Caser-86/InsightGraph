@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added opt-in `search_document` tool for local TOC/page/vector-style document retrieval.
 - Added opt-in external/local embedding provider boundary for research memory.
 - Added opt-in local JSON document vector indexing via `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH`.
 - Added `INSIGHT_GRAPH_LLM_PROVIDER` presets for local/self-hosted OpenAI-compatible LLM runtimes and optional Qwen/DashScope config.

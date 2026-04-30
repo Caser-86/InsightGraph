@@ -15,7 +15,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
-| Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Need search_document tool and live validation | High |
+| Long PDF/RAG retrieval | `search_document` tool + chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Need pgvector/TOC production RAG and live validation | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic/external embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
@@ -48,7 +48,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 13. Stage-aware model routing policy. **Implemented.**
 14. Persisted document vector index. **Implemented.**
 15. External embedding provider boundary. **Implemented.**
-16. `search_document` tool for TOC/page/vector retrieval.
+16. `search_document` tool for TOC/page/vector retrieval. **Implemented.**
 17. PDF fetch/retrieval validation script.
 
 ### Phase C: Production Persistence And Runtime Parity
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 16 starts with the `search_document` tool for TOC/page/vector retrieval. The first implementation should expose the persisted document index through an explicit tool while keeping local/offline defaults.
+Phase 17 starts with the PDF fetch/retrieval validation script. The first implementation should validate local and fetched PDF evidence metadata without requiring network access by default.

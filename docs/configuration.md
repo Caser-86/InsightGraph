@@ -24,6 +24,8 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 
 需要从本地 TXT/Markdown/HTML/PDF 文档生成 evidence 时，可设置 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 并把用户请求写成本地文件路径，例如 `README.md`。当前 `document_reader` 读取当前工作目录内的 `.txt`、`.md`, `.markdown`, `.html`, `.htm`, `.pdf` 文件；长文档会返回最多 5 条 500 字符 snippets，并在相邻 snippets 间保留 100 字符重叠；也可用 JSON 输入提供检索词，例如 `{"path":"report.pdf","query":"enterprise pricing"}`，此时会用 deterministic lexical matching 排序 chunks，不调用 embedding 或 LLM。文档 evidence 会记录可选的 `chunk_index`、`document_page` 和 `section_heading` 元数据，用于后续 TOC/page-aware retrieval。不读取工作目录外路径、不读取 URL，也不做 PDF OCR 或向量语义检索。若同时启用搜索工具，Planner 会按 web search、GitHub search、news search、document reader、mock search 的顺序选择第一个启用工具。
 
+需要显式使用参考项目风格的大文档检索工具名时，可设置 `INSIGHT_GRAPH_USE_SEARCH_DOCUMENT=1`。`search_document` 是本地离线工具，支持 plain path 或 JSON：`{"path":"report.pdf","query":"enterprise pricing","mode":"vector","page":3,"section":"Risk","limit":3}`。它复用本地 document parser、chunk/page/section metadata、`INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` 持久索引和 `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` 排序逻辑；仍不读取 URL、不越界、不做 OCR，也不是完整 pgvector/TOC 生产 RAG。
+
 需要安全浏览本地项目素材时，可使用只读文件工具：`INSIGHT_GRAPH_USE_READ_FILE=1` 将用户请求作为 cwd 内安全文本文件路径读取，当前支持 `.txt`、`.md`、`.markdown`、`.py`、`.json`、`.toml`、`.yaml`、`.yml` 且单文件不超过 64 KiB；`INSIGHT_GRAPH_USE_LIST_DIRECTORY=1` 将用户请求作为 cwd 内目录路径列出一层内容。第一版只读文件工具不会写文件、不会递归扫描、不会读取工作目录外路径，也不会执行代码。`INSIGHT_GRAPH_USE_WRITE_FILE=1` 将用户请求作为 JSON 写入请求处理，格式为 `{"path":"notes.md","content":"Notes."}`。第一版 `write_file` 只会在 cwd 内创建新的安全文本文件，不覆盖已有文件、不自动创建父目录、不执行代码；若同时启用 read/list 工具，Planner 优先选择只读工具。
 
 | 变量 | 说明 | 默认值 |
@@ -34,6 +36,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_USE_SEC_FILINGS` | `1` / `true` / `yes` 时 Planner 可为已知上市公司 ticker/name 使用 SEC EDGAR filings evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_SEC_FINANCIALS` | `1` / `true` / `yes` 时 Planner 可为已知上市公司 ticker/name 使用 SEC companyfacts revenue/net income/assets evidence | 未启用 |
 | `INSIGHT_GRAPH_USE_NEWS_SEARCH` | `1` / `true` / `yes` 时 Planner collect subtask 使用 deterministic `news_search`；若同时启用 web 或 GitHub search，则前者优先 | 未启用 |
+| `INSIGHT_GRAPH_USE_SEARCH_DOCUMENT` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `search_document`；搜索工具和 SEC 工具优先，`document_reader` 次之 | 未启用 |
 | `INSIGHT_GRAPH_USE_DOCUMENT_READER` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地 `document_reader`；若同时启用搜索工具，则搜索工具优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_READ_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `read_file`；搜索工具和 `document_reader` 优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_LIST_DIRECTORY` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `list_directory`；搜索工具、`document_reader` 和 `read_file` 优先 | 未启用 |
