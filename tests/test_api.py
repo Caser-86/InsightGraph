@@ -8,6 +8,8 @@ from starlette.websockets import WebSocketDisconnect
 import insight_graph.api as api_module
 import insight_graph.research_jobs as jobs_module
 from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS, LIVE_RESEARCH_PRESET_DEFAULTS
+from insight_graph.memory.embeddings import embed_text
+from insight_graph.memory.store import InMemoryResearchMemoryStore, ResearchMemoryRecord
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Critique,
@@ -516,6 +518,52 @@ def test_research_jobs_create_accepts_api_key_when_configured(monkeypatch) -> No
     assert response.status_code == 202
     assert response.json()["status"] == "queued"
     assert len(fake_executor.submissions) == 1
+
+
+def test_memory_endpoints_list_search_and_delete_records(monkeypatch) -> None:
+    store = InMemoryResearchMemoryStore()
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="m1",
+            text="pricing evidence",
+            embedding=embed_text("pricing evidence"),
+            metadata={"user_id": "u1", "memory_type": "supported_claim"},
+        )
+    )
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="m2",
+            text="risk evidence",
+            embedding=embed_text("risk evidence"),
+            metadata={"user_id": "u2", "memory_type": "reference"},
+        )
+    )
+    monkeypatch.setattr(api_module, "get_research_memory_store", lambda: store)
+    client = TestClient(api_module.app)
+
+    list_response = client.get("/memory")
+    search_response = client.post(
+        "/memory/search",
+        json={"query": "pricing", "limit": 1, "metadata_filter": {"user_id": "u1"}},
+    )
+    delete_response = client.delete("/memory/m1")
+
+    assert list_response.status_code == 200
+    assert [item["memory_id"] for item in list_response.json()["records"]] == ["m1", "m2"]
+    assert search_response.status_code == 200
+    assert search_response.json()["records"][0]["memory_id"] == "m1"
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"deleted": True}
+    assert [record.memory_id for record in store.list_memories()] == ["m2"]
+
+
+def test_memory_endpoints_require_api_key_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_API_KEY", "demo-key")
+    client = TestClient(api_module.app)
+
+    assert client.get("/memory").status_code == 401
+    assert client.post("/memory/search", json={"query": "pricing"}).status_code == 401
+    assert client.delete("/memory/m1").status_code == 401
 
 
 def test_research_jobs_list_rejects_missing_api_key_when_configured(monkeypatch) -> None:
