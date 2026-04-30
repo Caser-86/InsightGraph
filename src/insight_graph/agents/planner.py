@@ -33,6 +33,7 @@ def plan_research(state: GraphState) -> GraphState:
         state.resolved_entities,
         collection_tools,
         state.iterations + 1,
+        state.replan_requests,
     )
     state.subtasks = [
         Subtask(
@@ -152,11 +153,22 @@ def _build_query_strategies(
     resolved_entities: list[dict[str, object]],
     collection_tools: list[str],
     round_index: int,
+    replan_requests: list[dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     strategies: list[dict[str, object]] = []
     entity_names = _entity_names(resolved_entities)
     entity_aliases = _entity_aliases(resolved_entities)
     official_domains = _official_domains(resolved_entities)
+    if round_index > 1 and replan_requests:
+        return _build_replan_query_strategies(
+            user_request,
+            replan_requests,
+            collection_tools,
+            round_index,
+            entity_names,
+            entity_aliases,
+            official_domains,
+        )
     for section in section_plan:
         section_id = str(section.get("section_id", "")).strip()
         source_types = _section_source_types(section)
@@ -181,6 +193,80 @@ def _build_query_strategies(
                     "entity_names": entity_names,
                     "round": round_index,
                     "reason": "section_source_requirement",
+                }
+            )
+    return strategies
+
+
+def _build_replan_query_strategies(
+    user_request: str,
+    replan_requests: list[dict[str, object]],
+    collection_tools: list[str],
+    round_index: int,
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> list[dict[str, object]]:
+    strategies: list[dict[str, object]] = []
+    for request in replan_requests:
+        request_type = request.get("type")
+        if request_type == "missing_section_evidence":
+            missing_source_types = _string_values(request.get("missing_source_types", []))
+            source_types = missing_source_types or ["unknown"]
+            section_id = str(request.get("section_id", "")).strip()
+            for source_type in source_types:
+                tool_name = _tool_for_source_type(source_type, collection_tools)
+                if tool_name is None:
+                    continue
+                strategies.append(
+                    {
+                        "strategy_id": _strategy_id(
+                            round_index,
+                            section_id,
+                            source_type,
+                            len(strategies) + 1,
+                        ),
+                        "section_id": section_id,
+                        "tool_name": tool_name,
+                        "query": _replan_missing_evidence_query(
+                            user_request,
+                            request,
+                            source_type,
+                            entity_names,
+                            entity_aliases,
+                            official_domains,
+                        ),
+                        "source_type": source_type,
+                        "entity_names": entity_names,
+                        "round": round_index,
+                        "reason": "missing_section_evidence",
+                    }
+                )
+        elif request_type == "unsupported_claim":
+            tool_name = _tool_for_source_type("official_site", collection_tools)
+            if tool_name is None:
+                continue
+            strategies.append(
+                {
+                    "strategy_id": _strategy_id(
+                        round_index,
+                        "unsupported-claim",
+                        "official_site",
+                        len(strategies) + 1,
+                    ),
+                    "section_id": "unsupported-claim",
+                    "tool_name": tool_name,
+                    "query": _replan_unsupported_claim_query(
+                        user_request,
+                        request,
+                        entity_names,
+                        entity_aliases,
+                        official_domains,
+                    ),
+                    "source_type": "official_site",
+                    "entity_names": entity_names,
+                    "round": round_index,
+                    "reason": "unsupported_claim",
                 }
             )
     return strategies
@@ -233,6 +319,62 @@ def _strategy_query(
     if official_domains:
         parts.append(f"official domains: {', '.join(official_domains)}")
     return " | ".join(parts)
+
+
+def _replan_missing_evidence_query(
+    user_request: str,
+    request: dict[str, object],
+    source_type: str,
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> str:
+    parts = [user_request]
+    section_id = str(request.get("section_id", "")).strip()
+    if section_id:
+        parts.append(f"section: {section_id}")
+    parts.append(f"source type: {source_type}")
+    missing_source_types = _string_values(request.get("missing_source_types", []))
+    if missing_source_types:
+        parts.append(f"missing source types: {', '.join(missing_source_types)}")
+    missing_evidence = request.get("missing_evidence")
+    if isinstance(missing_evidence, int):
+        parts.append(f"missing evidence: {missing_evidence}")
+    parts.extend(_entity_query_parts(entity_names, entity_aliases, official_domains))
+    return " | ".join(parts)
+
+
+def _replan_unsupported_claim_query(
+    user_request: str,
+    request: dict[str, object],
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> str:
+    parts = [user_request]
+    claim = request.get("claim")
+    if isinstance(claim, str) and claim:
+        parts.append(f"unsupported claim: {claim}")
+    reason = request.get("reason")
+    if isinstance(reason, str) and reason:
+        parts.append(f"reason: {reason}")
+    parts.extend(_entity_query_parts(entity_names, entity_aliases, official_domains))
+    return " | ".join(parts)
+
+
+def _entity_query_parts(
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> list[str]:
+    parts = []
+    if entity_names:
+        parts.append(f"entities: {', '.join(entity_names)}")
+    if entity_aliases:
+        parts.append(f"aliases: {', '.join(entity_aliases)}")
+    if official_domains:
+        parts.append(f"official domains: {', '.join(official_domains)}")
+    return parts
 
 
 def _entity_names(resolved_entities: list[dict[str, object]]) -> list[str]:

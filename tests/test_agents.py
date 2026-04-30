@@ -432,6 +432,58 @@ def test_planner_query_strategy_uses_required_source_types(monkeypatch) -> None:
     assert ("official_site", "web_search") in source_tool_pairs
 
 
+def test_planner_replan_strategy_uses_missing_source_types(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot pricing",
+        iterations=1,
+        replan_requests=[
+            {
+                "type": "missing_section_evidence",
+                "section_id": "market-signals",
+                "missing_evidence": 2,
+                "missing_source_types": ["news"],
+            }
+        ],
+    )
+
+    updated = plan_research(state)
+
+    follow_up = updated.query_strategies[0]
+    assert follow_up["strategy_id"].startswith("r2-")
+    assert follow_up["section_id"] == "market-signals"
+    assert follow_up["source_type"] == "news"
+    assert follow_up["tool_name"] == "news_search"
+    assert "missing evidence: 2" in follow_up["query"]
+    assert "missing source types: news" in follow_up["query"]
+
+
+def test_planner_replan_strategy_uses_unsupported_claim(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot pricing",
+        iterations=1,
+        replan_requests=[
+            {
+                "type": "unsupported_claim",
+                "claim": "Copilot enterprise security includes audit logging.",
+                "reason": "snippet lacks lexical support",
+            }
+        ],
+    )
+
+    updated = plan_research(state)
+
+    follow_up = updated.query_strategies[0]
+    assert follow_up["strategy_id"].startswith("r2-unsupported-claim")
+    assert follow_up["reason"] == "unsupported_claim"
+    assert "unsupported claim: Copilot enterprise security includes audit logging." in follow_up[
+        "query"
+    ]
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
