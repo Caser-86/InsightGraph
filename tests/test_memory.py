@@ -23,6 +23,9 @@ class FakeCursor:
     def fetchall(self):
         return [] if self.row is None else [self.row]
 
+    def fetchone(self):
+        return None
+
 
 class FakeConnection:
     def __init__(self, row=None) -> None:
@@ -113,6 +116,10 @@ def test_pgvector_memory_store_emits_schema_insert_and_search_sql() -> None:
     store.search([0.1, 0.2], limit=3)
 
     statements = [statement for statement, _ in connection.cursor_obj.statements]
+    assert any(
+        "CREATE TABLE IF NOT EXISTS insight_graph_schema_migrations" in sql
+        for sql in statements
+    )
     assert any("CREATE EXTENSION IF NOT EXISTS vector" in sql for sql in statements)
     assert any("CREATE TABLE IF NOT EXISTS insight_graph_memories" in sql for sql in statements)
     assert any("ON CONFLICT (memory_id) DO UPDATE" in sql for sql in statements)

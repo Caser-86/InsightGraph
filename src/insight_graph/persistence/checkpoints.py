@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from insight_graph.persistence.migrations import Migration, run_migrations
 from insight_graph.state import GraphState
 
 
@@ -52,18 +53,7 @@ class PostgresCheckpointStore:
 
     def ensure_schema(self) -> None:
         connection = self._connection_factory()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS insight_graph_checkpoints (
-                    run_id TEXT PRIMARY KEY,
-                    node_name TEXT NOT NULL,
-                    state_payload JSONB NOT NULL,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        connection.commit()
+        run_migrations(connection, [_checkpoint_table_migration()])
 
     def save_checkpoint(self, record: CheckpointRecord) -> None:
         connection = self._connection_factory()
@@ -122,3 +112,19 @@ def _connect_postgres(dsn: str) -> Any:
             "PostgreSQL checkpoints require installing the optional psycopg dependency."
         ) from exc
     return psycopg.connect(dsn)
+
+
+def _checkpoint_table_migration() -> Migration:
+    def apply(cursor: Any) -> None:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS insight_graph_checkpoints (
+                run_id TEXT PRIMARY KEY,
+                node_name TEXT NOT NULL,
+                state_payload JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+
+    return Migration("001_create_checkpoints", apply)
