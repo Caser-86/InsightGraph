@@ -6,6 +6,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import Callable
 from typing import Literal
 
@@ -109,13 +110,15 @@ def build_memory_record(
     metadata: dict[str, object] | None = None,
     dimensions: int = 64,
 ) -> ResearchMemoryRecord:
-    provider = get_embedding_provider()
+    config = resolve_embedding_config()
+    if config.dimensions is None:
+        config = replace(config, dimensions=dimensions)
     merged_metadata = dict(metadata or {})
-    merged_metadata["embedding_provider"] = provider
+    merged_metadata["embedding_provider"] = config.provider
     return ResearchMemoryRecord(
         memory_id=memory_id,
         text=text,
-        embedding=deterministic_text_embedding(text, dimensions=dimensions),
+        embedding=embed_text(text, config=config),
         metadata=merged_metadata,
     )
 

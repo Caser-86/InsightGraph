@@ -43,6 +43,42 @@ def test_build_memory_record_generates_embedding_and_metadata() -> None:
     assert record.text == "Grounded finding about pricing."
     assert record.metadata == {"run_id": "run-1", "embedding_provider": "deterministic"}
     assert len(record.embedding) == 8
+    assert record.embedding == deterministic_text_embedding("Grounded finding about pricing.", dimensions=8)
+
+
+def test_build_memory_record_uses_configured_embedding_provider(monkeypatch) -> None:
+    calls: list[tuple[str, EmbeddingConfig | None]] = []
+
+    def fake_embed_text(text: str, *, config: EmbeddingConfig | None = None) -> list[float]:
+        calls.append((text, config))
+        return [0.1, 0.2, 0.3]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "local_http")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", "http://localhost:8000/embed")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_MODEL", "local-model")
+    monkeypatch.setattr(embeddings, "embed_text", fake_embed_text)
+
+    record = build_memory_record(
+        memory_id="m2",
+        text="Grounded finding about retention.",
+        metadata={"run_id": "run-2"},
+        dimensions=3,
+    )
+
+    assert record.embedding == [0.1, 0.2, 0.3]
+    assert record.metadata == {"run_id": "run-2", "embedding_provider": "local_http"}
+    assert calls == [
+        (
+            "Grounded finding about retention.",
+            EmbeddingConfig(
+                provider="local_http",
+                base_url="http://localhost:8000/embed",
+                api_key=None,
+                model="local-model",
+                dimensions=3,
+            ),
+        )
+    ]
 
 
 def test_get_embedding_provider_defaults_to_deterministic(monkeypatch) -> None:
