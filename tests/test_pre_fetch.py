@@ -23,9 +23,14 @@ def test_pre_fetch_results_limits_and_flattens_evidence(monkeypatch) -> None:
 
     monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
     results = [
-        SearchResult(title="One", url="https://example.com/one", snippet="one"),
-        SearchResult(title="Two", url="https://example.com/two", snippet="two"),
-        SearchResult(title="Three", url="https://example.com/three", snippet="three"),
+        SearchResult(title="One", url="https://example.com/one", snippet="one", source="fake"),
+        SearchResult(title="Two", url="https://example.com/two", snippet="two", source="fake"),
+        SearchResult(
+            title="Three",
+            url="https://example.com/three",
+            snippet="three",
+            source="fake",
+        ),
     ]
 
     evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
@@ -33,9 +38,16 @@ def test_pre_fetch_results_limits_and_flattens_evidence(monkeypatch) -> None:
     assert fetched_urls == ["https://example.com/one", "https://example.com/two"]
     assert [item.id for item in evidence] == ["one", "two"]
     assert all(item.subtask_id == "s1" for item in evidence)
+    assert [(item.search_provider, item.search_rank) for item in evidence] == [
+        ("fake", 1),
+        ("fake", 2),
+    ]
+    assert [item.search_query for item in evidence] == [None, None]
+    assert [item.search_snippet for item in evidence] == ["one", "two"]
+    assert [item.fetch_status for item in evidence] == ["fetched", "fetched"]
 
 
-def test_pre_fetch_results_skips_empty_evidence(monkeypatch) -> None:
+def test_pre_fetch_results_records_empty_evidence_candidate(monkeypatch) -> None:
     pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
 
     def fake_fetch_url(url: str, subtask_id: str):
@@ -60,10 +72,19 @@ def test_pre_fetch_results_skips_empty_evidence(monkeypatch) -> None:
 
     evidence = pre_fetch_module.pre_fetch_results(results, "s1")
 
-    assert [item.id for item in evidence] == ["kept"]
+    assert [item.id for item in evidence] == [
+        "fetch-missing-example-com-empty",
+        "kept",
+    ]
+    assert evidence[0].verified is False
+    assert evidence[0].source_url == "https://example.com/empty"
+    assert evidence[0].fetch_status == "empty"
+    assert evidence[0].fetch_error == "fetch returned no evidence"
+    assert evidence[0].search_provider == "mock"
+    assert evidence[0].search_rank == 1
 
 
-def test_pre_fetch_results_continues_after_fetch_error(monkeypatch) -> None:
+def test_pre_fetch_results_records_fetch_error_candidate(monkeypatch) -> None:
     pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
 
     def fake_fetch_url(url: str, subtask_id: str):
@@ -88,7 +109,15 @@ def test_pre_fetch_results_continues_after_fetch_error(monkeypatch) -> None:
 
     evidence = pre_fetch_module.pre_fetch_results(results, "s1")
 
-    assert [item.id for item in evidence] == ["kept"]
+    assert [item.id for item in evidence] == [
+        "fetch-failed-example-com-broken",
+        "kept",
+    ]
+    assert evidence[0].verified is False
+    assert evidence[0].source_url == "https://example.com/broken"
+    assert evidence[0].fetch_status == "failed"
+    assert evidence[0].fetch_error == "fetch failed"
+    assert evidence[0].search_rank == 1
 
 
 def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
@@ -108,7 +137,9 @@ def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
 
     evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
 
-    assert evidence == []
+    assert [item.id for item in evidence] == ["fetch-missing-example-com-one"]
+    assert evidence[0].verified is False
+    assert evidence[0].fetch_status == "empty"
     assert fetched_urls == ["https://example.com/one"]
 
 
@@ -130,7 +161,46 @@ def test_pre_fetch_results_passes_query_to_fetch_url(monkeypatch) -> None:
         query="pricing strategy",
     )
 
-    assert evidence == []
+    assert [item.id for item in evidence] == ["fetch-missing-example-com-one"]
+    assert evidence[0].verified is False
+    assert evidence[0].search_query == "pricing strategy"
     assert observed_queries == [
         '{"url":"https://example.com/one","query":"pricing strategy"}'
     ]
+
+
+def test_pre_fetch_results_attaches_search_query_metadata(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        return [
+            Evidence(
+                id="kept",
+                subtask_id=subtask_id,
+                title="Kept",
+                source_url="https://example.com/kept",
+                snippet="Kept evidence snippet.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(
+            title="Kept result",
+            url="https://example.com/kept",
+            snippet="Search snippet.",
+            source="duckduckgo",
+        )
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(
+        results,
+        "s1",
+        limit=1,
+        query="pricing strategy",
+    )
+
+    assert evidence[0].search_query == "pricing strategy"
+    assert evidence[0].search_snippet == "Search snippet."
+    assert evidence[0].search_provider == "duckduckgo"

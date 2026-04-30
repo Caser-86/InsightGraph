@@ -1208,6 +1208,29 @@ def test_deterministic_analyst_matrix_empty_without_verified_evidence() -> None:
     assert updated.competitive_matrix == []
 
 
+def test_deterministic_analyst_ignores_unverified_fetch_diagnostics() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="fetch-failed-example-com-cursor",
+                subtask_id="collect",
+                title="Cursor result (fetch failed)",
+                source_url="https://example.com/cursor",
+                snippet="Cursor search result snippet.",
+                verified=False,
+                fetch_status="failed",
+                fetch_error="network failed",
+            )
+        ],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert updated.findings == []
+    assert updated.competitive_matrix == []
+
+
 def test_llm_analyst_parses_competitive_matrix(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")

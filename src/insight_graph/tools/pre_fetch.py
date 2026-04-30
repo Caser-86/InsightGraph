@@ -1,4 +1,6 @@
 import json
+import re
+from urllib.parse import urlparse
 
 from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.state import Evidence
@@ -14,11 +16,19 @@ def pre_fetch_results(
 ) -> list[Evidence]:
     evidence: list[Evidence] = []
     fetch_limit = min(limit, get_research_budgets().max_fetches)
-    for result in results[:fetch_limit]:
+    for rank, result in enumerate(results[:fetch_limit], start=1):
         try:
-            evidence.extend(fetch_url(_fetch_query(result.url, query), subtask_id))
-        except Exception:
+            fetched = fetch_url(_fetch_query(result.url, query), subtask_id)
+        except Exception as exc:
+            evidence.append(_diagnostic_evidence(result, subtask_id, rank, query, exc))
             continue
+        if not fetched:
+            evidence.append(_diagnostic_evidence(result, subtask_id, rank, query, None))
+            continue
+        evidence.extend(
+            _attach_search_metadata(item, result, rank, query, fetch_status="fetched")
+            for item in fetched
+        )
     return evidence
 
 
@@ -26,3 +36,56 @@ def _fetch_query(url: str, query: str | None) -> str:
     if not query:
         return url
     return json.dumps({"url": url, "query": query}, separators=(",", ":"))
+
+
+def _attach_search_metadata(
+    evidence: Evidence,
+    result: SearchResult,
+    rank: int,
+    query: str | None,
+    *,
+    fetch_status: str,
+    fetch_error: str | None = None,
+) -> Evidence:
+    return evidence.model_copy(
+        update={
+            "search_provider": result.source,
+            "search_rank": rank,
+            "search_query": query,
+            "search_snippet": result.snippet,
+            "fetch_status": fetch_status,
+            "fetch_error": fetch_error,
+        }
+    )
+
+
+def _diagnostic_evidence(
+    result: SearchResult,
+    subtask_id: str,
+    rank: int,
+    query: str | None,
+    error: Exception | None,
+) -> Evidence:
+    fetch_status = "failed" if error is not None else "empty"
+    fetch_error = str(error) if error is not None else "fetch returned no evidence"
+    prefix = "fetch-failed" if error is not None else "fetch-missing"
+    return Evidence(
+        id=f"{prefix}-{_url_slug(result.url)}",
+        subtask_id=subtask_id,
+        title=f"{result.title} (fetch {fetch_status})",
+        source_url=result.url,
+        snippet=result.snippet or fetch_error,
+        verified=False,
+        search_provider=result.source,
+        search_rank=rank,
+        search_query=query,
+        search_snippet=result.snippet,
+        fetch_status=fetch_status,
+        fetch_error=fetch_error,
+    )
+
+
+def _url_slug(url: str) -> str:
+    parsed = urlparse(url)
+    raw = f"{parsed.netloc}{parsed.path}".strip("/") or url
+    return re.sub(r"[^a-zA-Z0-9]+", "-", raw).strip("-").lower() or "candidate"

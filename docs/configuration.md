@@ -6,7 +6,7 @@ Use `--preset live-research` for a reference-style networked research run. It se
 
 ## Search Provider 配置
 
-`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。搜索结果会通过 bounded pre-fetch pipeline 转为 verified evidence：fetch attempts 同时受 search limit 和 `INSIGHT_GRAPH_MAX_FETCHES` 约束，单个 URL fetch 失败不会中断其他结果，原始 query 会传给 `fetch_url` 用于长 HTML/PDF chunk ranking。需要在工具层使用真实搜索时，可显式启用 DuckDuckGo 后直接调用 `web_search` 或通过 `ToolRegistry` 运行该工具：
+`web_search` 默认使用 deterministic mock provider，测试和默认 CLI 不访问公网。搜索结果会通过 bounded pre-fetch pipeline 转为 evidence：fetch attempts 同时受 search limit 和 `INSIGHT_GRAPH_MAX_FETCHES` 约束，单个 URL fetch 失败不会中断其他结果，原始 query 会传给 `fetch_url` 用于长 HTML/PDF chunk ranking。成功抓取的 evidence 会保留 search provider、rank、query 和 search snippet；抓取失败或无内容的 candidate 会生成 unverified diagnostic evidence，记录 `fetch_status` 和 `fetch_error`，但不会进入最终 References。需要在工具层使用真实搜索时，可显式启用 DuckDuckGo 后直接调用 `web_search` 或通过 `ToolRegistry` 运行该工具：
 
 ```bash
 INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c "from insight_graph.tools.web_search import web_search; print(web_search('Compare Cursor, OpenCode, and GitHub Copilot'))"

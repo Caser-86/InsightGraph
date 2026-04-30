@@ -61,7 +61,11 @@ def analyze_evidence(
 
 
 def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
-    evidence_ids = [item.id for item in state.evidence_pool]
+    evidence_ids = [item.id for item in state.evidence_pool if item.verified]
+    if not evidence_ids:
+        state.findings = []
+        state.competitive_matrix = []
+        return state
     state.findings = [
         Finding(
             title="Official sources establish baseline product positioning",

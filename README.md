@@ -245,7 +245,7 @@ flowchart TB
     end
 ```
 
-`Evidence` 是轻量结构，包含 title、source URL、snippet、source type、verified、chunk/page/section 等字段。报告质量 metadata 通过 `GraphState` 承载，避免破坏公共 API 形状。
+`Evidence` 是轻量结构，包含 title、source URL、snippet、source type、verified、chunk/page/section、search candidate 和 fetch status 等字段。search candidate metadata 会保留 provider、rank、query 和原始 snippet；抓取失败或无内容时会生成 unverified diagnostic evidence，方便诊断 live run，但不会进入最终 References。
 
 ---
 

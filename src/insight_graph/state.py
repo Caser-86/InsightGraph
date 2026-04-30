@@ -29,6 +29,12 @@ class Evidence(BaseModel):
     document_page: int | None = None
     section_heading: str | None = None
     section_id: str | None = None
+    search_provider: str | None = None
+    search_rank: int | None = None
+    search_query: str | None = None
+    search_snippet: str | None = None
+    fetch_status: Literal["fetched", "empty", "failed"] | None = None
+    fetch_error: str | None = None
 
     @property
     def source_domain(self) -> str:

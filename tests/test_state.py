@@ -47,6 +47,29 @@ def test_evidence_requires_source_url() -> None:
     assert evidence.source_domain == "cursor.com"
 
 
+def test_evidence_stores_search_candidate_metadata() -> None:
+    evidence = Evidence(
+        id="e1",
+        subtask_id="s1",
+        title="Cursor pricing",
+        source_url="https://cursor.com/pricing",
+        snippet="Cursor publishes pricing tiers on its pricing page.",
+        search_provider="duckduckgo",
+        search_rank=2,
+        search_query="cursor pricing",
+        search_snippet="Search result snippet.",
+        fetch_status="fetched",
+        fetch_error=None,
+    )
+
+    assert evidence.search_provider == "duckduckgo"
+    assert evidence.search_rank == 2
+    assert evidence.search_query == "cursor pricing"
+    assert evidence.search_snippet == "Search result snippet."
+    assert evidence.fetch_status == "fetched"
+    assert evidence.fetch_error is None
+
+
 def test_graph_state_starts_with_empty_collections() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 
