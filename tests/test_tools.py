@@ -16,6 +16,7 @@ from insight_graph.tools import (
     list_directory,
     news_search,
     read_file,
+    search_document,
     sec_filings,
     sec_financials,
     web_search,
@@ -100,6 +101,10 @@ def test_tools_package_exports_sec_filings_callable() -> None:
 
 def test_tools_package_exports_document_reader_callable() -> None:
     assert callable(document_reader)
+
+
+def test_tools_package_exports_search_document_callable() -> None:
+    assert callable(search_document)
 
 
 def test_tools_package_exports_readonly_file_tool_callables() -> None:
@@ -445,6 +450,25 @@ def test_search_document_plain_path_returns_docs_evidence_like_document_reader(
     assert evidence[0].verified is True
     assert evidence[0].chunk_index == 1
     assert evidence[0].section_heading == "Market Report"
+
+
+def test_tool_registry_dispatches_search_document(tmp_path, monkeypatch) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    document = docs_dir / "Market Report.md"
+    document.write_text(
+        "# Market Report\n\nCursor launches features.",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = ToolRegistry().run("search_document", "docs/Market Report.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].verified is True
+    assert evidence[0].source_url == document.resolve().as_uri()
 
 
 def test_search_document_json_query_ranks_matching_chunks(tmp_path, monkeypatch) -> None:

@@ -125,6 +125,8 @@ def _collection_tool_name(user_request: str) -> str:
         user_request
     ):
         return "sec_financials"
+    if _is_truthy_env("INSIGHT_GRAPH_USE_SEARCH_DOCUMENT"):
+        return "search_document"
     if _is_truthy_env("INSIGHT_GRAPH_USE_DOCUMENT_READER"):
         return "document_reader"
     if _is_truthy_env("INSIGHT_GRAPH_USE_READ_FILE"):
