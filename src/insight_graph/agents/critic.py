@@ -54,7 +54,7 @@ def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
                 }
             )
     for item in state.citation_support:
-        if item.get("support_status") == "unsupported":
+        if item.get("support_status") != "supported":
             requests.append(
                 {
                     "type": "unsupported_claim",

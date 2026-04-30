@@ -2520,6 +2520,60 @@ def test_critic_rejects_findings_with_weak_snippet_support() -> None:
     }
 
 
+def test_critic_rejects_partial_citation_support() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="verified-source",
+                subtask_id="collect",
+                title="Verified Source",
+                source_url="https://example.com/source",
+                snippet="Copilot enterprise security includes encryption controls.",
+                verified=True,
+            ),
+            Evidence(
+                id="verified-source-2",
+                subtask_id="collect",
+                title="Verified Source 2",
+                source_url="https://example.com/source-2",
+                snippet="Cursor pricing includes team plans.",
+                verified=True,
+            ),
+            Evidence(
+                id="verified-source-3",
+                subtask_id="collect",
+                title="Verified Source 3",
+                source_url="https://example.com/source-3",
+                snippet="OpenCode is an open source coding agent.",
+                verified=True,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Security",
+                summary=(
+                    "Copilot enterprise security includes audit logging and encryption "
+                    "controls."
+                ),
+                evidence_ids=["verified-source"],
+            )
+        ],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.critique is not None
+    assert updated.critique.passed is False
+    assert "citation support" in updated.critique.missing_topics
+    assert updated.citation_support[0]["support_status"] == "partial"
+    assert updated.replan_requests[-1] == {
+        "type": "unsupported_claim",
+        "claim": "Security",
+        "reason": "partial lexical support",
+    }
+
+
 def test_critic_creates_missing_evidence_replan_requests() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
@@ -2722,6 +2776,14 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
             "support_score": 0.0,
             "matched_terms": [],
         },
+        {
+            "claim": "Partial claim",
+            "support_status": "partial",
+            "evidence_ids": ["cursor-pricing"],
+            "unsupported_reason": "partial lexical support",
+            "support_score": 0.75,
+            "matched_terms": ["cursor", "pricing"],
+        },
     ]
 
     updated = write_report(state)
@@ -2734,6 +2796,10 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
     ) in updated.report_markdown
     assert (
         "| Unsupported claim | unsupported |  | missing verified evidence; support_score=0.0 |"
+    ) in updated.report_markdown
+    assert (
+        "| Partial claim | partial | cursor-pricing | "
+        "partial lexical support; support_score=0.75; matched_terms=cursor, pricing |"
     ) in updated.report_markdown
     support_section = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
     assert "unverified-source" not in support_section
