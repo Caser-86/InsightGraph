@@ -493,6 +493,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
           <label>Query
             <textarea id="query-input" spellcheck="true"></textarea>
           </label>
+          <label>Event type filter
+            <input id="event-type-filter" autocomplete="off" placeholder="stage_started, tool_call, report_ready">
+          </label>
+          <label>Event stage filter
+            <input id="event-stage-filter" autocomplete="off" placeholder="planner, collector, analyst">
+          </label>
+          <label>Trace ID filter
+            <input id="trace-id-filter" autocomplete="off" placeholder="trace id">
+          </label>
           <div class="actions">
             <button id="submit-job" class="btn primary" type="button">Submit job</button>
             <button id="refresh-now" class="btn ghost" type="button">Refresh</button>
@@ -564,6 +573,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
       apiKey: document.getElementById('api-key'),
       preset: document.getElementById('preset-input'),
       query: document.getElementById('query-input'),
+      eventTypeFilter: document.getElementById('event-type-filter'),
+      eventStageFilter: document.getElementById('event-stage-filter'),
+      traceIdFilter: document.getElementById('trace-id-filter'),
       submit: document.getElementById('submit-job'),
       refresh: document.getElementById('refresh-now'),
       message: document.getElementById('message'),
@@ -691,12 +703,22 @@ _DASHBOARD_HTML = r"""<!doctype html>
       state.streamTerminal = false;
     }
 
+    function appendEventFilters(url) {
+      const eventType = els.eventTypeFilter.value.trim();
+      const eventStage = els.eventStageFilter.value.trim();
+      const traceId = els.traceIdFilter.value.trim();
+      if (eventType) url.searchParams.set('event_type', eventType);
+      if (eventStage) url.searchParams.set('event_stage', eventStage);
+      if (traceId) url.searchParams.set('trace_id', traceId);
+      return url;
+    }
+
     function jobStreamUrl(jobId) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = new URL(`${protocol}//${window.location.host}/research/jobs/${encodeURIComponent(jobId)}/stream`);
       const key = els.apiKey.value.trim();
       if (key) url.searchParams.set('api_key', key);
-      return url.toString();
+      return appendEventFilters(url).toString();
     }
 
     function mergeSnapshotJob(job) {

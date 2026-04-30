@@ -1845,6 +1845,90 @@ def test_publish_research_job_event_persists_job_detail_events() -> None:
     ]
 
 
+def test_get_research_job_filters_events_by_type_stage_and_trace_id() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="filtered-event-job",
+        query="Filter events",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner", "trace_id": "trace-a"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "collector", "trace_id": "trace-b"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "tool_call", "stage": "collector", "trace_id": "trace-a"},
+    )
+
+    response = TestClient(api_module.app).get(
+        f"/research/jobs/{job.id}?event_type=stage_started&event_stage=collector&trace_id=trace-b"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["events"] == [
+        {
+            "type": "stage_started",
+            "stage": "collector",
+            "trace_id": "trace-b",
+            "sequence": 2,
+        }
+    ]
+
+
+def test_research_job_stream_replays_filtered_events() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="filtered-stream-job",
+        query="Filtered stream events",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "planner", "trace_id": "trace-a"},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "stage_started", "stage": "collector", "trace_id": "trace-b"},
+    )
+    client = TestClient(api_module.app)
+
+    with client.websocket_connect(
+        f"/research/jobs/{job.id}/stream?event_stage=collector&trace_id=trace-b"
+    ) as websocket:
+        snapshot = websocket.receive_json()
+        event = websocket.receive_json()
+
+    assert snapshot["type"] == "job_snapshot"
+    assert event == {
+        "type": "stage_started",
+        "stage": "collector",
+        "trace_id": "trace-b",
+        "sequence": 2,
+    }
+
+
+def test_dashboard_exposes_event_filter_controls() -> None:
+    html = api_module.dashboard_html()
+
+    assert "event-type-filter" in html
+    assert "event-stage-filter" in html
+    assert "trace-id-filter" in html
+    assert "appendEventFilters" in html
+
+
 def test_research_job_stream_replays_persisted_events_after_memory_clear() -> None:
     jobs_module.reset_research_jobs_state()
     job = jobs_module.ResearchJob(
