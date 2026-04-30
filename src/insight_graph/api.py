@@ -566,6 +566,41 @@ def _cached_research_job_events(job_id: str) -> list[dict[str, Any]]:
     return _persisted_research_job_events(job_id)
 
 
+def _filter_research_job_events(
+    events: list[dict[str, Any]],
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in events
+        if _research_job_event_matches(
+            event,
+            event_type=event_type,
+            event_stage=event_stage,
+            trace_id=trace_id,
+        )
+    ]
+
+
+def _research_job_event_matches(
+    event: dict[str, Any],
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> bool:
+    if event_type and event.get("type") != event_type:
+        return False
+    if event_stage and event.get("stage") != event_stage:
+        return False
+    if trace_id and event.get("trace_id") != trace_id:
+        return False
+    return True
+
+
 def _subscribe_research_job_events(job_id: str) -> Queue[dict[str, Any]]:
     queue: Queue[dict[str, Any]] = Queue()
     with _RESEARCH_JOB_EVENT_LOCK:
@@ -1032,8 +1067,21 @@ async def _send_research_job_stream_event(websocket: WebSocket, job_id: str) -> 
     return job["status"] in {"succeeded", "failed", "cancelled"}
 
 
-async def _send_cached_research_job_events(websocket: WebSocket, job_id: str) -> None:
-    for event in _cached_research_job_events(job_id):
+async def _send_cached_research_job_events(
+    websocket: WebSocket,
+    job_id: str,
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> None:
+    events = _filter_research_job_events(
+        _cached_research_job_events(job_id),
+        event_type=event_type,
+        event_stage=event_stage,
+        trace_id=trace_id,
+    )
+    for event in events:
         await websocket.send_json(event)
 
 
@@ -1042,13 +1090,22 @@ async def stream_research_job(
     websocket: WebSocket,
     job_id: str,
     api_key: str | None = None,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
 ) -> None:
     if not _api_key_is_authorized(api_key):
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     await websocket.accept()
     terminal = await _send_research_job_stream_event(websocket, job_id)
-    await _send_cached_research_job_events(websocket, job_id)
+    await _send_cached_research_job_events(
+        websocket,
+        job_id,
+        event_type=event_type,
+        event_stage=event_stage,
+        trace_id=trace_id,
+    )
     if terminal:
         await websocket.close()
         return
@@ -1061,7 +1118,16 @@ async def stream_research_job(
                 event_queue,
                 _RESEARCH_JOB_STREAM_INTERVAL_SECONDS,
             )
-            if event is not None and event["type"] != "stream_closed":
+            if (
+                event is not None
+                and event["type"] != "stream_closed"
+                and _research_job_event_matches(
+                    event,
+                    event_type=event_type,
+                    event_stage=event_stage,
+                    trace_id=trace_id,
+                )
+            ):
                 await websocket.send_json(event)
             terminal = await _send_research_job_stream_event(websocket, job_id)
             if terminal:
@@ -1089,8 +1155,21 @@ async def stream_research_job(
         404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
     },
 )
-def get_research_job(job_id: str) -> dict[str, Any]:
-    return _with_research_job_progress(get_research_job_record(job_id))
+def get_research_job(
+    job_id: str,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> dict[str, Any]:
+    job = _with_research_job_progress(get_research_job_record(job_id))
+    if any([event_type, event_stage, trace_id]):
+        job["events"] = _filter_research_job_events(
+            job.get("events") or [],
+            event_type=event_type,
+            event_stage=event_stage,
+            trace_id=trace_id,
+        )
+    return job
 
 
 def _run_research_job(job_id: str) -> None:
