@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from insight_graph.state import (
     Critique,
@@ -89,3 +90,64 @@ def test_live_benchmark_writes_metrics_artifact_with_fake_research(tmp_path, mon
     assert payload["cases"][0]["llm_call_count"] == 1
     assert payload["cases"][0]["total_tokens"] == 42
     assert not os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH")
+
+
+def test_live_benchmark_case_profiles_define_quality_targets() -> None:
+    case_path = Path("docs/benchmarks/live-research-cases.json")
+
+    payload = json.loads(case_path.read_text(encoding="utf-8"))
+
+    case_ids = {case["id"] for case in payload["cases"]}
+    assert case_ids == {
+        "ai-coding-agents",
+        "public-company-analysis",
+        "sec-filing-risk-analysis",
+        "technology-trend-analysis",
+    }
+    for case in payload["cases"]:
+        assert case["query"]
+        assert case["expected_sections"]
+        assert case["required_source_types"]
+        assert case["minimum_source_diversity"] >= 2
+        assert case["report_depth_target_words"] >= 500
+
+
+def test_live_benchmark_loads_case_profiles_from_file(tmp_path, monkeypatch) -> None:
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "id": "custom-case",
+                        "query": "Compare Cursor and Copilot",
+                        "expected_sections": ["Executive Summary", "References"],
+                        "required_source_types": ["official_site", "docs"],
+                        "minimum_source_diversity": 2,
+                        "report_depth_target_words": 700,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "live.json"
+    observed_queries: list[str] = []
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_queries.append(query)
+        return make_live_state(query)
+
+    exit_code = benchmark_module.main(
+        ["--allow-live", "--output", str(output), "--case-file", str(case_file)],
+        run_research_func=fake_run_research,
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert observed_queries == ["Compare Cursor and Copilot"]
+    assert payload["cases"][0]["case_id"] == "custom-case"
+    assert payload["cases"][0]["expected_sections"] == ["Executive Summary", "References"]
+    assert payload["cases"][0]["required_source_types"] == ["official_site", "docs"]
+    assert payload["cases"][0]["minimum_source_diversity"] == 2
+    assert payload["cases"][0]["report_depth_target_words"] == 700
