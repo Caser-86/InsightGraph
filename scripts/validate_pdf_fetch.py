@@ -71,7 +71,10 @@ def _write_fixtures(workspace: Path) -> None:
     _write_minimal_pdf(workspace / "local.pdf", "Local PDF alpha evidence.")
     _write_minimal_pdf(workspace / "searchable.pdf", f"{long_alpha}\f{long_beta}")
     _write_minimal_pdf(workspace / "remote.pdf", "Remote PDF alpha evidence.")
-    _write_minimal_pdf(workspace / "remote-searchable.pdf", f"{long_remote_alpha}\f{long_remote_pricing}")
+    _write_minimal_pdf(
+        workspace / "remote-searchable.pdf",
+        f"{long_remote_alpha}\f{long_remote_pricing}",
+    )
     (workspace / "bad.pdf").write_bytes(b"%PDF-1.4\nnot a valid pdf")
     (workspace / "empty.pdf").write_bytes(b"")
 
@@ -89,11 +92,9 @@ def _write_minimal_pdf(path: Path, text: str) -> None:
         escaped_text = page_text.replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
         content = f"BT /F1 12 Tf 72 720 Td ({escaped_text}) Tj ET"
         page_objects.append(
-            (
-                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                f"/Resources << /Font << /F1 {font_obj} 0 R >> >> "
-                f"/Contents {content_obj} 0 R >>"
-            )
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 {font_obj} 0 R >> >> "
+            f"/Contents {content_obj} 0 R >>"
         )
         page_objects.append(f"<< /Length {len(content.encode())} >>\nstream\n{content}\nendstream")
     objects.append(f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(pages)} >>")
@@ -242,7 +243,13 @@ def _case_passed(case: ValidationCase, evidence: list[Evidence]) -> bool:
     )
 
 
-def _case_payload(case: ValidationCase, evidence: list[Evidence], *, passed: bool, error: str | None) -> dict[str, Any]:
+def _case_payload(
+    case: ValidationCase,
+    evidence: list[Evidence],
+    *,
+    passed: bool,
+    error: str | None,
+) -> dict[str, Any]:
     item = evidence[0] if evidence else None
     return {
         "name": case.name,
@@ -292,7 +299,8 @@ def format_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# PDF Fetch Validation",
         "",
-        "| Case | Passed | Evidence | Expected | Title | Source type | Verified | URL scheme | Chunk | Page | Snippet check | Error |",
+        "| Case | Passed | Evidence | Expected | Title | Source type | Verified | "
+        "URL scheme | Chunk | Page | Snippet check | Error |",
         "| --- | --- | ---: | ---: | --- | --- | --- | --- | ---: | ---: | --- | --- |",
     ]
     for case in payload["cases"]:
@@ -351,15 +359,27 @@ def _markdown_cell(value: Any) -> str:
     return str(value).replace("\n", " ").replace("|", r"\|")
 
 
-def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> int:
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
-    parser = ValidationArgumentParser(description="Validate PDF fetch and retrieval evidence.", stderr=stderr)
+    parser = ValidationArgumentParser(
+        description="Validate PDF fetch and retrieval evidence.",
+        stderr=stderr,
+    )
     parser.add_argument("--markdown", action="store_true", help="write Markdown instead of JSON")
     try:
         args = parser.parse_args(argv)
         payload = run_validation()
-        output = format_markdown(payload) if args.markdown else json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        output = (
+            format_markdown(payload)
+            if args.markdown
+            else json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        )
         stdout.write(output)
     except SystemExit as exc:
         return int(exc.code)

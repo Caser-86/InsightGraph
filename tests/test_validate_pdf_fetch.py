@@ -109,7 +109,11 @@ def test_format_markdown_writes_summary_table():
     output = format_markdown(payload)
 
     assert output.startswith("# PDF Fetch Validation")
-    assert "| document_reader_pdf_success | true | 1 | 1 | local.pdf | docs | true | file | 1 | 1 | true |  |" in output
+    success_row = (
+        "| document_reader_pdf_success | true | 1 | 1 | local.pdf | docs | true | file | "
+        "1 | 1 | true |  |"
+    )
+    assert success_row in output
     assert "## Summary" in output
     assert "| 7 | 7 | 0 | true | 5 |" in output
     assert output.endswith("\n")
