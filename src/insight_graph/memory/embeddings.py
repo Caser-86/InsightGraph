@@ -1,17 +1,93 @@
 import hashlib
+import json
 import math
 import os
 import re
+import urllib.request
+from dataclasses import dataclass
+from typing import Callable
 from typing import Literal
 
 from insight_graph.memory.store import ResearchMemoryRecord
 
-EmbeddingProvider = Literal["deterministic"]
+EmbeddingProvider = Literal["deterministic", "openai_compatible", "local_http"]
+EmbeddingTransport = Callable[[str, dict[str, object], dict[str, str]], object]
+
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    provider: EmbeddingProvider = "deterministic"
+    base_url: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+    dimensions: int | None = None
+
+
+class EmbeddingProviderError(RuntimeError):
+    pass
+
+
+def resolve_embedding_config(
+    *,
+    provider: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    dimensions: int | None = None,
+) -> EmbeddingConfig:
+    resolved_provider = _env_or_value(provider, "INSIGHT_GRAPH_EMBEDDING_PROVIDER", "deterministic")
+    normalized_provider = resolved_provider.strip().lower()
+    if normalized_provider not in {"deterministic", "openai_compatible", "local_http"}:
+        raise ValueError(f"Unsupported embedding provider: {resolved_provider}")
+
+    return EmbeddingConfig(
+        provider=normalized_provider,  # type: ignore[arg-type]
+        base_url=_env_or_value(base_url, "INSIGHT_GRAPH_EMBEDDING_BASE_URL", None),
+        api_key=_env_or_value(api_key, "INSIGHT_GRAPH_EMBEDDING_API_KEY", None),
+        model=_env_or_value(model, "INSIGHT_GRAPH_EMBEDDING_MODEL", None),
+        dimensions=_resolve_dimensions(dimensions),
+    )
 
 
 def get_embedding_provider() -> EmbeddingProvider:
     provider = os.environ.get("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "deterministic").strip().lower()
-    return "deterministic" if provider != "deterministic" else "deterministic"
+    if provider in {"deterministic", "openai_compatible", "local_http"}:
+        return provider  # type: ignore[return-value]
+    return "deterministic"
+
+
+def embed_text(
+    text: str,
+    *,
+    config: EmbeddingConfig | None = None,
+    transport: EmbeddingTransport | None = None,
+) -> list[float]:
+    config = config or resolve_embedding_config()
+    if config.provider == "deterministic":
+        return deterministic_text_embedding(text, dimensions=config.dimensions or 64)
+
+    if not config.base_url:
+        raise EmbeddingProviderError("Embedding provider requires base_url")
+
+    transport = transport or _default_http_transport
+    if config.provider == "openai_compatible":
+        headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
+        response = transport(
+            f"{config.base_url.rstrip('/')}/embeddings",
+            {"model": config.model, "input": text},
+            headers,
+        )
+        return _parse_embedding_response(response, dimensions=config.dimensions)
+
+    if config.provider == "local_http":
+        response = transport(
+            config.base_url,
+            {"text": text, "model": config.model, "dimensions": config.dimensions},
+            {},
+        )
+        return _parse_embedding_response(response, dimensions=config.dimensions)
+
+    raise EmbeddingProviderError(f"Unsupported embedding provider: {config.provider}")
 
 
 def build_memory_record(
@@ -49,3 +125,61 @@ def deterministic_text_embedding(text: str, *, dimensions: int = 64) -> list[flo
 
 def _tokenize(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) >= 2]
+
+
+def _env_or_value(value: str | None, env_name: str, default: str | None) -> str | None:
+    if value is not None:
+        return value
+    env_value = os.environ.get(env_name)
+    if env_value is None:
+        return default
+    stripped = env_value.strip()
+    return stripped or default
+
+
+def _resolve_dimensions(dimensions: int | None) -> int | None:
+    if dimensions is not None:
+        return dimensions
+    env_value = os.environ.get("INSIGHT_GRAPH_EMBEDDING_DIMENSIONS")
+    if env_value is None or not env_value.strip():
+        return None
+    return int(env_value)
+
+
+def _default_http_transport(url: str, payload: dict[str, object], headers: dict[str, str]) -> object:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", **headers},
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _parse_embedding_response(response: object, *, dimensions: int | None) -> list[float]:
+    embedding: object
+    if isinstance(response, dict) and "embedding" in response:
+        embedding = response["embedding"]
+    elif isinstance(response, dict) and isinstance(response.get("data"), list) and response["data"]:
+        first = response["data"][0]
+        if not isinstance(first, dict) or "embedding" not in first:
+            raise EmbeddingProviderError("Embedding response missing data[0].embedding")
+        embedding = first["embedding"]
+    else:
+        raise EmbeddingProviderError("Embedding response missing embedding")
+
+    if not isinstance(embedding, list):
+        raise EmbeddingProviderError("Embedding response must contain a list")
+
+    vector: list[float] = []
+    for value in embedding:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise EmbeddingProviderError("Embedding response contains non-finite numeric value")
+        vector.append(float(value))
+
+    if dimensions is not None and len(vector) != dimensions:
+        raise EmbeddingProviderError(
+            f"Embedding response dimension mismatch: expected {dimensions}, got {len(vector)}"
+        )
+    return vector
