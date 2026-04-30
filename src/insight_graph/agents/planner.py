@@ -14,11 +14,15 @@ from insight_graph.tools.sec_filings import has_sec_filing_target
 
 
 def plan_research(state: GraphState) -> GraphState:
-    state.memory_context = state.memory_context or _memory_context_for_request(state.user_request)
     state.domain_profile = detect_domain_profile(state.user_request).id
     state.resolved_entities = [
         entity.to_payload() for entity in resolve_entities(state.user_request)
     ]
+    state.memory_context = state.memory_context or _memory_context_for_request(
+        state.user_request,
+        state.domain_profile,
+        state.resolved_entities,
+    )
     state.section_research_plan = [
         section.to_payload()
         for section in build_section_research_plan(
@@ -64,17 +68,39 @@ def plan_research(state: GraphState) -> GraphState:
     return state
 
 
-def _memory_context_for_request(user_request: str) -> list[dict[str, object]]:
+def _memory_context_for_request(
+    user_request: str,
+    domain_profile: str,
+    resolved_entities: list[dict[str, object]],
+) -> list[dict[str, object]]:
     if not _is_truthy_env("INSIGHT_GRAPH_USE_MEMORY_CONTEXT"):
         return []
     store = get_research_memory_store()
     config = memory_embedding_config()
+    metadata_filter = {
+        **embedding_metadata_filter(config),
+        "domain_profile": domain_profile,
+        "support_status": ["supported", "fresh_evidence"],
+        "expired": False,
+    }
+    entity_ids = _memory_entity_ids(resolved_entities)
+    if entity_ids:
+        metadata_filter["entity_id"] = entity_ids
     records = store.search(
         embed_text(user_request, config=config),
         limit=3,
-        metadata_filter=embedding_metadata_filter(config),
+        metadata_filter=metadata_filter,
     )
     return [_memory_record_payload(record) for record in records]
+
+
+def _memory_entity_ids(resolved_entities: list[dict[str, object]]) -> list[str]:
+    entity_ids = []
+    for entity in resolved_entities:
+        entity_id = entity.get("id")
+        if isinstance(entity_id, str) and entity_id:
+            entity_ids.append(entity_id)
+    return entity_ids
 
 
 def _memory_record_payload(record: ResearchMemoryRecord) -> dict[str, object]:

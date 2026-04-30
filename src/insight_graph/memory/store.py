@@ -213,7 +213,16 @@ def _metadata_matches(
 ) -> bool:
     if not metadata_filter:
         return True
-    return all(metadata.get(key) == value for key, value in metadata_filter.items())
+    return all(
+        _metadata_value_matches(metadata.get(key), value)
+        for key, value in metadata_filter.items()
+    )
+
+
+def _metadata_value_matches(actual: object, expected: object) -> bool:
+    if isinstance(expected, list):
+        return actual in expected
+    return actual == expected
 
 
 def _vector_literal(values: list[float]) -> str:
