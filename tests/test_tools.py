@@ -535,6 +535,33 @@ def test_search_document_page_filters_by_document_page(tmp_path, monkeypatch) ->
     assert evidence[0].chunk_index == 2
 
 
+def test_search_document_page_range_filters_by_document_page(
+    tmp_path, monkeypatch
+) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    document = tmp_path / "pages.md"
+    document.write_text("page text", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        search_document_module,
+        "_read_document_chunks",
+        lambda _path: [
+            document_reader_module.DocumentChunk("page one details", 0, page=1),
+            document_reader_module.DocumentChunk("page two details", 1, page=2),
+            document_reader_module.DocumentChunk("page three details", 2, page=3),
+        ],
+    )
+
+    evidence = search_document_module.search_document(
+        '{"path":"pages.md","page_start":2,"page_end":3}',
+        "s1",
+    )
+
+    assert [item.document_page for item in evidence] == [2, 3]
+    assert [item.snippet for item in evidence] == ["page two details", "page three details"]
+
+
 def test_search_document_section_filters_case_insensitively(tmp_path, monkeypatch) -> None:
     search_document_module = importlib.import_module("insight_graph.tools.search_document")
     document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
@@ -601,6 +628,42 @@ def test_search_document_vector_mode_overrides_env_for_one_call(
     assert evidence[0].snippet == "vector first"
     assert evidence[0].chunk_index == 2
     assert document_index_module.get_document_retrieval_mode() == "deterministic"
+
+
+def test_search_document_paths_ranks_across_documents_and_preserves_source_url(
+    tmp_path, monkeypatch
+) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def fake_read(path):
+        if path.name == "first.md":
+            return [
+                document_reader_module.DocumentChunk("generic notes", 0),
+                document_reader_module.DocumentChunk("enterprise pricing only", 1),
+            ]
+        return [
+            document_reader_module.DocumentChunk("enterprise pricing discounts", 0),
+        ]
+
+    monkeypatch.setattr(search_document_module, "_read_document_chunks", fake_read)
+
+    evidence = search_document_module.search_document(
+        '{"paths":["first.md","second.md"],"query":"enterprise pricing discounts","limit":2}',
+        "s1",
+    )
+
+    assert [item.snippet for item in evidence] == [
+        "enterprise pricing discounts",
+        "enterprise pricing only",
+    ]
+    assert evidence[0].source_url == second.as_uri()
+    assert evidence[1].source_url == first.as_uri()
 
 
 @pytest.mark.parametrize(
@@ -900,6 +963,60 @@ def test_document_reader_writes_document_index_when_configured(
     entry = payload["documents"][str(document.resolve())]
     assert payload["version"] == 1
     assert entry["chunks"][0]["text"] == "# Indexed enterprise pricing details"
+
+
+def test_document_reader_writes_pdf_outline_labels_to_document_index(
+    tmp_path, monkeypatch
+) -> None:
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    document = tmp_path / "outlined.pdf"
+    document.write_bytes(b"%PDF fake")
+    index_path = tmp_path / "cache" / "documents.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    class FakeDestination:
+        def __init__(self, title, page_index):
+            self.title = title
+            self.page_index = page_index
+
+    class FakePage:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            return self.text
+
+    class FakeReader:
+        is_encrypted = False
+
+        def __init__(self, _handle):
+            self.pages = [
+                FakePage("Executive overview. " * 20),
+                FakePage("Pricing details with enterprise packaging. " * 10),
+            ]
+            self.outline = [
+                FakeDestination("Executive Summary", 0),
+                FakeDestination("Pricing", 1),
+            ]
+
+        def get_destination_page_number(self, destination):
+            return destination.page_index
+
+    monkeypatch.setattr(document_reader_module, "PdfReader", FakeReader)
+
+    evidence = document_reader(
+        '{"path":"outlined.pdf","query":"enterprise packaging"}',
+        "s1",
+    )
+
+    assert evidence[0].section_heading == "Pricing"
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    chunks = payload["documents"][str(document.resolve())]["chunks"]
+    assert {chunk["section_heading"] for chunk in chunks} >= {
+        "Executive Summary",
+        "Pricing",
+    }
 
 
 def test_document_reader_reuses_persisted_chunks_for_second_query(
