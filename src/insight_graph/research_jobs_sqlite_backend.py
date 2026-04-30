@@ -457,6 +457,44 @@ class SQLiteResearchJobsBackend:
             connection.commit()
         return self.get(job_id)
 
+    def claim_next_for_worker(
+        self,
+        *,
+        worker_id: str,
+        now: str,
+        lease_expires_at: str,
+    ) -> ResearchJob | None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._requeue_expired_running(connection, now=now)
+            current = connection.execute(
+                """
+                SELECT * FROM research_jobs
+                WHERE status = 'queued'
+                ORDER BY created_order ASC
+                LIMIT 1
+                """
+            ).fetchone()
+            if current is None:
+                connection.rollback()
+                return None
+            started_at = current["started_at"] or now
+            connection.execute(
+                """
+                UPDATE research_jobs
+                SET status = 'running',
+                    started_at = ?,
+                    worker_id = ?,
+                    heartbeat_at = ?,
+                    lease_expires_at = ?,
+                    attempt_count = attempt_count + 1
+                WHERE id = ? AND status = 'queued'
+                """,
+                (started_at, worker_id, now, lease_expires_at, current["id"]),
+            )
+            connection.commit()
+        return self.get(str(current["id"]))
+
     def heartbeat(
         self,
         job_id: str,

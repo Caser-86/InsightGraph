@@ -167,6 +167,39 @@ def test_sqlite_backend_claims_queued_job_for_worker(tmp_path) -> None:
     assert row["attempt_count"] == 1
 
 
+def test_sqlite_backend_claims_next_queued_job_for_worker(tmp_path) -> None:
+    backend = SQLiteResearchJobsBackend(tmp_path / "jobs.sqlite3")
+    backend.initialize()
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="job-2",
+                query="Second",
+                preset=ResearchPreset.offline,
+                created_order=2,
+                created_at="2026-04-28T10:00:02Z",
+            ),
+            ResearchJob(
+                id="job-1",
+                query="First",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-28T10:00:00Z",
+            ),
+        ]
+    )
+
+    claimed = backend.claim_next_for_worker(
+        worker_id="worker-a",
+        now="2026-04-28T10:00:03Z",
+        lease_expires_at="2026-04-28T10:05:03Z",
+    )
+
+    assert claimed is not None
+    assert claimed.id == "job-1"
+    assert claimed.status == "running"
+
+
 def test_sqlite_backend_refuses_active_lease_from_another_worker(tmp_path) -> None:
     backend = SQLiteResearchJobsBackend(tmp_path / "jobs.sqlite3")
     backend.initialize()

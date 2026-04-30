@@ -162,6 +162,32 @@ def test_sqlite_research_job_execution_hides_lease_metadata(monkeypatch, tmp_pat
     assert "attempt_count" not in detail
 
 
+def test_api_startup_worker_poller_runs_queued_sqlite_jobs(monkeypatch, tmp_path) -> None:
+    clear_live_env(monkeypatch)
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    jobs_module.configure_research_jobs_sqlite_backend(sqlite_path)
+    created = jobs_module.create_research_job(
+        query="Queued before startup",
+        preset=api_module.ResearchPreset.offline,
+        created_at="2026-04-28T10:00:00Z",
+    )
+    jobs_module.configure_research_jobs_in_memory_backend()
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "sqlite")
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", str(sqlite_path))
+    monkeypatch.setenv("INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER", "1")
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", lambda query: make_api_state(query))
+
+    try:
+        api_module._initialize_research_jobs_from_env()
+        detail = jobs_module.get_research_job(created["job_id"])
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert detail["status"] == "succeeded"
+    assert detail["result"]["report_markdown"] == "# InsightGraph Research Report\n"
+
+
 def test_research_job_workflow_passes_checkpoint_resume_options(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_CHECKPOINT_RESUME", "1")
     store = object()
