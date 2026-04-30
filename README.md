@@ -419,6 +419,9 @@ insight-graph-eval --case-file docs/evals/default.json --markdown --output repor
 # CI-ready Eval Gate
 insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure
 
+# Manual live benchmark, may incur network/LLM cost
+python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
+
 # Deployment smoke CLI help
 insight-graph-smoke --help
 ```
@@ -536,6 +539,7 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 | `scripts/run_research.py` | 命令行执行研究任务 |
 | `scripts/run_with_llm_log.py` | 执行任务并写入 LLM trace / token / call summary |
 | `scripts/benchmark_research.py` | 运行 offline benchmark，支持 Markdown 输出 |
+| `scripts/benchmark_live_research.py` | 手动 opt-in 运行 `live-research` benchmark；需要 `--allow-live` 或 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1`，可能产生 network/LLM cost |
 | `scripts/summarize_eval_report.py` | 汇总 Eval JSON 报告 |
 | `scripts/append_eval_history.py` | 追加 CI eval history artifact |
 | `scripts/validate_document_reader.py` | 验证本地 document reader 行为 |

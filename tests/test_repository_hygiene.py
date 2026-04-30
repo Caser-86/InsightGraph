@@ -40,3 +40,20 @@ def test_generated_showcase_report_is_not_tracked() -> None:
     root = Path(__file__).parents[1]
 
     assert not (root / "reports" / "ai-coding-agents-technical-review.md").exists()
+
+
+def test_live_benchmark_is_documented_as_manual_opt_in() -> None:
+    root = Path(__file__).parents[1]
+    docs = "\n".join(
+        [
+            (root / "README.md").read_text(encoding="utf-8"),
+            (root / "docs" / "scripts.md").read_text(encoding="utf-8"),
+            (root / "docs" / "configuration.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "scripts/benchmark_live_research.py" in docs
+    assert "--allow-live" in docs
+    assert "INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1" in docs
+    assert "network/LLM cost" in docs
+    assert "live-research" in docs
