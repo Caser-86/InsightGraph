@@ -87,6 +87,16 @@ Terminal job retention applies only to `succeeded`, `failed`, and `cancelled` jo
 - SQLite cleanup deletes matching terminal rows from the `research_jobs` table and keeps the `next_sequence` counter intact.
 - artifact retention is external: report downloads are generated from retained job records only; CI artifacts, exported files, and external object storage are not deleted by research job cleanup.
 
+## Restart And Resume Smoke Path
+
+SQLite jobs can be resumed after an API process restart when startup worker processing is enabled.
+
+- Set `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite` and `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` to persist queued/running jobs.
+- Set `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1` to let API startup claim queued jobs and expired running jobs.
+- Running jobs use worker leases; expired running jobs are requeued before the next worker claim.
+- Set `INSIGHT_GRAPH_CHECKPOINT_RESUME=1` to pass the job ID as the checkpoint `run_id` and resume from the latest checkpoint when one exists.
+- A successful restart/resume smoke path covers queued jobs, expired running jobs, checkpoint resume routing, and SQLite worker claim ownership.
+
 ```json
 {
   "counts": {
