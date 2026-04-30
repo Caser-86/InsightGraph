@@ -484,6 +484,17 @@ def test_load_eval_cases_reads_case_file(tmp_path) -> None:
     ]
 
 
+def test_default_eval_config_declares_offline_quality_gates() -> None:
+    payload = json.loads(eval_module.Path("docs/evals/default.json").read_text(encoding="utf-8"))
+
+    assert payload["quality_gates"] == {
+        "min_section_coverage": 100,
+        "min_citation_support": 90,
+        "min_source_diversity": 60,
+        "max_unsupported_claims": 0,
+    }
+
+
 def test_main_uses_case_file(monkeypatch, tmp_path) -> None:
     observed_cases: list[eval_module.EvalCase] = []
     case_file = tmp_path / "cases.json"
@@ -520,6 +531,55 @@ def test_main_uses_case_file(monkeypatch, tmp_path) -> None:
     assert observed_cases == [
         eval_module.EvalCase(query="Compare Cursor", min_references=4)
     ]
+
+
+def test_main_applies_quality_gates_from_case_file(monkeypatch, tmp_path, capsys) -> None:
+    case_file = tmp_path / "cases.json"
+    case_file.write_text(
+        json.dumps(
+            {
+                "cases": [{"query": "Compare Cursor"}],
+                "quality_gates": {
+                    "min_section_coverage": 90,
+                    "min_citation_support": 95,
+                    "min_source_diversity": 80,
+                    "max_unsupported_claims": 0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    payload = {
+        "cases": [],
+        "summary": {
+            "case_count": 1,
+            "average_score": 90,
+            "passed_count": 1,
+            "failed_count": 0,
+            "failed_rules": {},
+            "total_duration_ms": 0,
+            "all_critique_passed": True,
+            "total_findings": 1,
+            "total_competitive_matrix_rows": 1,
+            "total_references": 2,
+            "total_tool_calls": 1,
+            "total_llm_calls": 0,
+            "average_section_coverage_score": 80,
+            "average_citation_support_score": 90,
+            "average_source_diversity_score": 70,
+            "total_unsupported_claims": 1,
+        },
+    }
+    monkeypatch.setattr(eval_module, "build_eval_payload", lambda cases=None: payload)
+
+    exit_code = eval_module.main(["--case-file", str(case_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Eval gate failed: average section coverage 80 < 90" in captured.err
+    assert "Eval gate failed: average citation support 90 < 95" in captured.err
+    assert "Eval gate failed: average source diversity 70 < 80" in captured.err
+    assert "Eval gate failed: unsupported claims 1 > 0" in captured.err
 
 
 def test_main_returns_two_for_malformed_case_file(tmp_path, capsys) -> None:

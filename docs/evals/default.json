@@ -1,4 +1,10 @@
 {
+  "quality_gates": {
+    "min_section_coverage": 100,
+    "min_citation_support": 90,
+    "min_source_diversity": 60,
+    "max_unsupported_claims": 0
+  },
   "cases": [
     {
       "query": "Compare Cursor, OpenCode, and GitHub Copilot",
