@@ -413,6 +413,7 @@ def test_planner_builds_query_strategies_for_section_sources(monkeypatch) -> Non
         "query",
         "source_type",
         "entity_names",
+        "outline_questions",
         "round",
         "reason",
     }
@@ -422,6 +423,27 @@ def test_planner_builds_query_strategies_for_section_sources(monkeypatch) -> Non
     assert strategy["entity_names"] == ["Cursor", "GitHub Copilot"]
     assert strategy["round"] == 1
     assert "executive-summary" in strategy["query"]
+
+
+def test_planner_query_strategy_uses_report_outline_questions(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot pricing")
+
+    updated = plan_research(state)
+
+    pricing_strategy = next(
+        strategy
+        for strategy in updated.query_strategies
+        if strategy["section_id"] == "pricing-and-packaging"
+    )
+    pricing_section = next(
+        section
+        for section in updated.section_research_plan
+        if section["section_id"] == "pricing-and-packaging"
+    )
+    assert pricing_strategy["outline_questions"] == pricing_section["questions"]
+    assert "questions:" in pricing_strategy["query"]
+    assert str(pricing_section["questions"][0]) in pricing_strategy["query"]
 
 
 def test_planner_query_strategy_includes_entity_aliases(monkeypatch) -> None:
