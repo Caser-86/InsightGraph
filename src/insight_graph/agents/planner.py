@@ -1,6 +1,6 @@
 import os
 
-from insight_graph.memory.embeddings import embed_text
+from insight_graph.memory.embeddings import embed_text, memory_embedding_config
 from insight_graph.memory.store import ResearchMemoryRecord, get_research_memory_store
 from insight_graph.report_quality.domain_profiles import detect_domain_profile, get_domain_profile
 from insight_graph.report_quality.entity_resolver import resolve_entities
@@ -55,7 +55,10 @@ def _memory_context_for_request(user_request: str) -> list[dict[str, object]]:
     if not _is_truthy_env("INSIGHT_GRAPH_USE_MEMORY_CONTEXT"):
         return []
     store = get_research_memory_store()
-    records = store.search(embed_text(user_request), limit=3)
+    records = store.search(
+        embed_text(user_request, config=memory_embedding_config()),
+        limit=3,
+    )
     return [_memory_record_payload(record) for record in records]
 
 

@@ -113,9 +113,7 @@ def build_memory_record(
     metadata: dict[str, object] | None = None,
     dimensions: int = 64,
 ) -> ResearchMemoryRecord:
-    config = resolve_embedding_config()
-    if config.dimensions is None and config.provider != "openai_compatible":
-        config = replace(config, dimensions=dimensions)
+    config = memory_embedding_config(dimensions=dimensions)
     merged_metadata = dict(metadata or {})
     merged_metadata["embedding_provider"] = config.provider
     return ResearchMemoryRecord(
@@ -124,6 +122,13 @@ def build_memory_record(
         embedding=embed_text(text, config=config),
         metadata=merged_metadata,
     )
+
+
+def memory_embedding_config(*, dimensions: int = 64) -> EmbeddingConfig:
+    config = resolve_embedding_config()
+    if config.dimensions is None and config.provider != "openai_compatible":
+        return replace(config, dimensions=dimensions)
+    return config
 
 
 def deterministic_text_embedding(text: str, *, dimensions: int = 64) -> list[float]:

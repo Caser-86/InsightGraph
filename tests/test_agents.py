@@ -279,7 +279,12 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
                 )
             ]
 
-    monkeypatch.setattr(planner_module, "embed_text", lambda text: [0.25, 0.75])
+    def fake_embed_text(text, *, config=None):
+        assert config is not None
+        assert config.dimensions == 64
+        return [0.25, 0.75]
+
+    monkeypatch.setattr(planner_module, "embed_text", fake_embed_text)
     monkeypatch.setattr(planner_module, "get_research_memory_store", lambda: FakeMemoryStore())
     state = GraphState(user_request="Compare Cursor enterprise pricing")
 
