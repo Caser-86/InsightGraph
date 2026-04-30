@@ -4,13 +4,7 @@ This guide shows how to reproduce the MVP demo and inspect the generated report,
 
 ## Showcase Report
 
-The checked-in showcase report is:
-
-```text
-reports/ai-coding-agents-technical-review.md
-```
-
-It compares Cursor, OpenCode, Claude Code, GitHub Copilot, and Codeium/Windsurf for a technical-review audience. The report was generated through the InsightGraph research workflow and validated with the offline source validator.
+The showcase report is generated locally rather than checked into git. Generate it with the Live LLM command below and save it under `reports/ai-coding-agents-technical-review.md` when needed.
 
 ## Offline Smoke Demo
 
@@ -139,12 +133,7 @@ Run the offline source validator:
 python scripts/validate_sources.py reports/ai-coding-agents-technical-review.md --markdown
 ```
 
-Expected result for the checked-in report:
-
-```text
-OK: true
-Issues: 0
-```
+The report file is ignored because it is a generated artifact.
 
 ## Demo Notes
 

@@ -89,7 +89,7 @@ Boundary:
 - InsightGraph defaults should remain deterministic/offline unless live behavior is explicitly opt-in.
 - Security-sensitive output remains explicit rather than compressed.
 - Test/build verification claims still require fresh command output before reporting success.
-- Existing repository workflow with `docs/superpowers/specs` and `docs/superpowers/plans` remains unchanged.
+- Historical agent planning/spec files are consolidated; keep only current actionable roadmap files under `docs/superpowers/plans`.
 
 ## Upstream Files Reviewed
 

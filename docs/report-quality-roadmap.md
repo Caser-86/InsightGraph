@@ -539,7 +539,7 @@ These rules are mandatory for future work:
 
 ## Next Required Step
 
-Phases 1-10 are implemented. The next approved direction is the reference-quality deep-research route in `docs/superpowers/plans/2026-04-29-reference-quality-deep-research.md`. Phase 11 starts with bounded multi-round collection for live research and collection-depth Eval metrics before adding heavyweight dependencies:
+Phases 1-10 are implemented. Historical agent planning documents were consolidated into the current execution roadmap at `docs/superpowers/plans/2026-04-30-remaining-product-roadmap.md`. Phase 11 starts with bounded multi-round collection for live research and collection-depth Eval metrics before adding heavyweight dependencies:
 
 - Research Depth v1 adds section follow-up collection rounds, no-new-evidence stopping, max-round stopping, and collection-depth eval output.
 - Critic records section replan `strategy_key` values in `tried_strategies` and skips duplicate section follow-up strategies.
