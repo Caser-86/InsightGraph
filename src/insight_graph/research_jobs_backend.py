@@ -122,6 +122,19 @@ class InMemoryResearchJobsBackend:
             for job in sorted(finished_jobs, key=lambda item: item.created_order)[:overflow]:
                 del self._jobs[job.id]
 
+    def delete_terminal_before(self, finished_before: str) -> int:
+        with self._lock:
+            expired_ids = [
+                job.id
+                for job in self._jobs.values()
+                if job.status in TERMINAL_RESEARCH_JOB_STATUSES
+                and job.finished_at is not None
+                and job.finished_at < finished_before
+            ]
+            for job_id in expired_ids:
+                del self._jobs[job_id]
+            return len(expired_ids)
+
     def snapshot(self) -> ResearchJobsBackendSnapshot:
         with self._lock:
             return ResearchJobsBackendSnapshot(

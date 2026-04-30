@@ -133,6 +133,48 @@ def test_in_memory_research_jobs_backend_prunes_oldest_terminal_jobs_only() -> N
     assert backend.get("new-finished") is not None
 
 
+def test_in_memory_research_jobs_backend_deletes_terminal_jobs_before_cutoff() -> None:
+    backend = InMemoryResearchJobsBackend(store_path=None)
+    backend.reset(
+        jobs=[
+            ResearchJob(
+                id="old-terminal",
+                query="Old",
+                preset=ResearchPreset.offline,
+                created_order=1,
+                created_at="2026-04-01T10:00:00Z",
+                status="succeeded",
+                finished_at="2026-04-01T10:05:00Z",
+            ),
+            ResearchJob(
+                id="new-terminal",
+                query="New",
+                preset=ResearchPreset.offline,
+                created_order=2,
+                created_at="2026-04-15T10:00:00Z",
+                status="failed",
+                finished_at="2026-04-15T10:05:00Z",
+            ),
+            ResearchJob(
+                id="old-running",
+                query="Running",
+                preset=ResearchPreset.offline,
+                created_order=3,
+                created_at="2026-04-01T10:00:00Z",
+                status="running",
+                finished_at="2026-04-01T10:05:00Z",
+            ),
+        ]
+    )
+
+    deleted = backend.delete_terminal_before("2026-04-10T00:00:00Z")
+
+    assert deleted == 1
+    assert backend.get("old-terminal") is None
+    assert backend.get("new-terminal") is not None
+    assert backend.get("old-running") is not None
+
+
 def test_in_memory_research_jobs_backend_snapshot_restores_jobs_and_sequence() -> None:
     backend = InMemoryResearchJobsBackend(store_path=None)
     original = ResearchJob(

@@ -309,6 +309,22 @@ class SQLiteResearchJobsBackend:
                 )
             connection.commit()
 
+    def delete_terminal_before(self, finished_before: str) -> int:
+        placeholders = ",".join("?" for _ in TERMINAL_RESEARCH_JOB_STATUSES)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                f"""
+                DELETE FROM research_jobs
+                WHERE status IN ({placeholders})
+                  AND finished_at IS NOT NULL
+                  AND finished_at < ?
+                """,
+                (*tuple(TERMINAL_RESEARCH_JOB_STATUSES), finished_before),
+            )
+            connection.commit()
+        return cursor.rowcount
+
     def snapshot(self) -> ResearchJobsBackendSnapshot:
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM research_jobs").fetchall()

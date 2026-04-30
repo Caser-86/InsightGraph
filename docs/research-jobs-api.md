@@ -77,6 +77,16 @@ curl http://127.0.0.1:8000/research/jobs/summary
 
 Summary includes all status counts, `active_count`, `active_limit`, queued job summaries, and running job summaries. `queue_position` is 1-based and dynamic for queued jobs only.
 
+## Retention And Cleanup
+
+Terminal job retention applies only to `succeeded`, `failed`, and `cancelled` jobs. Queued and running jobs are never deleted by cleanup.
+
+- Count-based retention is controlled by the retained job limit and prunes the oldest terminal jobs when new jobs are created or completed.
+- Time-based terminal job retention is opt-in with `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS`.
+- On API startup, jobs with `finished_at` older than the configured cutoff are deleted.
+- SQLite cleanup deletes matching terminal rows from the `research_jobs` table and keeps the `next_sequence` counter intact.
+- artifact retention is external: report downloads are generated from retained job records only; CI artifacts, exported files, and external object storage are not deleted by research job cleanup.
+
 ```json
 {
   "counts": {
