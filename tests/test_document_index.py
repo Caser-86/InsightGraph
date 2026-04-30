@@ -1,3 +1,5 @@
+import json
+
 import insight_graph.report_quality.document_index as document_index
 from insight_graph.report_quality.document_index import (
     DocumentIndexChunk,
@@ -83,3 +85,111 @@ def test_get_document_retrieval_mode_defaults_to_deterministic(monkeypatch) -> N
 
     monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", "vector")
     assert get_document_retrieval_mode() == "vector"
+
+
+def test_get_document_index_path_uses_configured_environment_path(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", raising=False)
+    assert document_index.get_document_index_path() is None
+
+    index_path = tmp_path / "documents.json"
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    assert document_index.get_document_index_path() == index_path
+
+
+def test_document_vector_index_saves_and_loads_document_entry_with_chunks(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("# Overview\nAlpha evidence", encoding="utf-8")
+    index_path = tmp_path / "cache" / "documents.json"
+    chunks = [
+        DocumentIndexChunk(
+            text="Alpha evidence",
+            index=0,
+            page=3,
+            section_heading="Overview",
+        )
+    ]
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+    index.store_document(document_path, chunks)
+    index.save()
+
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    entry = payload["documents"][str(document_path.resolve())]
+    assert payload["version"] == 1
+    assert entry["chunks"][0]["text"] == "Alpha evidence"
+    assert entry["chunks"][0]["embedding"]
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+    fresh_chunks = loaded.get_fresh_chunks(document_path)
+
+    assert len(fresh_chunks) == 1
+    assert fresh_chunks[0].text == "Alpha evidence"
+    assert fresh_chunks[0].index == 0
+    assert fresh_chunks[0].page == 3
+    assert fresh_chunks[0].section_heading == "Overview"
+    assert fresh_chunks[0].embedding
+
+
+def test_document_vector_index_reuses_fresh_entry_when_metadata_matches(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+    index.store_document(document_path, [DocumentIndexChunk(text="Alpha evidence", index=0)])
+    index.save()
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+
+    assert [chunk.text for chunk in loaded.get_fresh_chunks(document_path)] == ["Alpha evidence"]
+
+
+def test_document_vector_index_returns_no_fresh_chunks_when_metadata_changes(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+    index.store_document(document_path, [DocumentIndexChunk(text="Alpha evidence", index=0)])
+    index.save()
+    document_path.write_text("Alpha evidence changed", encoding="utf-8")
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+
+    assert loaded.get_fresh_chunks(document_path) == []
+
+
+def test_document_vector_index_loads_corrupt_json_as_empty_index(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+    index_path.write_text("{not json", encoding="utf-8")
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+
+    assert index.get_fresh_chunks(document_path) == []
+
+
+def test_build_index_chunks_includes_deterministic_embeddings(monkeypatch) -> None:
+    calls = []
+
+    def fake_embedding(text: str, *, dimensions: int = 64):
+        calls.append(text)
+        return [0.25, 0.75]
+
+    monkeypatch.setattr(
+        document_index,
+        "deterministic_text_embedding",
+        fake_embedding,
+        raising=False,
+    )
+
+    indexed = document_index.build_index_chunks(
+        [DocumentIndexChunk(text="Alpha evidence", index=4, section_heading="Overview")]
+    )
+
+    assert calls == ["Overview Alpha evidence"]
+    assert indexed[0].embedding == [0.25, 0.75]
+    assert indexed[0].text == "Alpha evidence"
+    assert indexed[0].index == 4
