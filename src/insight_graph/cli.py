@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.state import GraphState, LLMCallRecord
 
@@ -111,6 +112,7 @@ def _markdown_table_cell(value: str) -> str:
 
 
 def _build_research_json_payload(state: GraphState) -> dict[str, object]:
+    quality = build_report_quality_metrics(state, state.report_markdown or "")
     return {
         "user_request": state.user_request,
         "trace_id": state.trace_id,
@@ -128,7 +130,28 @@ def _build_research_json_payload(state: GraphState) -> dict[str, object]:
         ],
         "llm_call_log": [record.model_dump(mode="json") for record in state.llm_call_log],
         "iterations": state.iterations,
+        "quality": quality,
+        "quality_cards": _build_quality_cards(state, quality),
     }
+
+
+def _build_quality_cards(state: GraphState, quality: dict[str, object]) -> dict[str, object]:
+    return {
+        "section_coverage_score": quality.get("section_coverage_score", 0),
+        "citation_support_score": quality.get("citation_support_score", 0),
+        "source_diversity_score": quality.get("source_diversity_score", 0),
+        "unsupported_claim_count": quality.get("unsupported_claim_count", 0),
+        "url_validation_rate": _url_validation_rate(state),
+        "total_tokens": sum(record.total_tokens or 0 for record in state.llm_call_log),
+        "runtime_seconds": None,
+    }
+
+
+def _url_validation_rate(state: GraphState) -> int:
+    if not state.url_validation:
+        return 100
+    valid_count = sum(1 for item in state.url_validation if item.get("valid") is True)
+    return round(valid_count / len(state.url_validation) * 100)
 
 
 @app.callback()
