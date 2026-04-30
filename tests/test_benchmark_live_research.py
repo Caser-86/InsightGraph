@@ -26,6 +26,18 @@ def make_live_state(query: str) -> GraphState:
                 source_type="official_site",
                 verified=True,
                 reachable=True,
+                section_id="executive-summary",
+            ),
+            Evidence(
+                id="source-2",
+                subtask_id="collect",
+                title="Docs Source",
+                source_url="https://docs.example.com/source",
+                snippet="Documentation evidence.",
+                source_type="docs",
+                verified=True,
+                reachable=False,
+                section_id="references",
             )
         ],
         findings=[
@@ -75,7 +87,15 @@ def test_live_benchmark_writes_metrics_artifact_with_fake_research(tmp_path, mon
         return make_live_state(query)
 
     exit_code = benchmark_module.main(
-        ["--allow-live", "--output", str(output), "--case", "Compare Cursor"],
+        [
+            "--allow-live",
+            "--output",
+            str(output),
+            "--case",
+            "Compare Cursor",
+            "--expected-section",
+            "References",
+        ],
         run_research_func=fake_run_research,
     )
 
@@ -84,11 +104,29 @@ def test_live_benchmark_writes_metrics_artifact_with_fake_research(tmp_path, mon
     assert observed_queries == ["Compare Cursor"]
     assert payload["preset"] == "live-research"
     assert payload["cases"][0]["url_validity_count"] == 1
+    assert payload["cases"][0]["url_validation_rate"] == 50
     assert payload["cases"][0]["citation_precision_proxy"] == 100
-    assert payload["cases"][0]["source_diversity_count"] == 1
+    assert payload["cases"][0]["source_diversity_count"] == 2
+    assert payload["cases"][0]["source_diversity_by_type"] == {
+        "docs": 1,
+        "official_site": 1,
+    }
+    assert payload["cases"][0]["source_diversity_by_domain"] == {
+        "docs.example.com": 1,
+        "example.com": 1,
+    }
     assert payload["cases"][0]["report_depth_words"] > 0
+    assert payload["cases"][0]["section_coverage"] == 100
+    assert payload["cases"][0]["expected_sections_present"] == ["References"]
+    assert payload["cases"][0]["expected_sections_missing"] == []
     assert payload["cases"][0]["llm_call_count"] == 1
+    assert payload["cases"][0]["tool_call_count"] == 1
     assert payload["cases"][0]["total_tokens"] == 42
+    assert payload["summary"]["total_tool_calls"] == 1
+    assert payload["summary"]["average_url_validation_rate"] == 50
+    assert payload["summary"]["average_citation_precision_proxy"] == 100
+    assert payload["summary"]["average_report_depth_words"] > 0
+    assert payload["summary"]["average_section_coverage"] == 100
     assert not os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH")
 
 
