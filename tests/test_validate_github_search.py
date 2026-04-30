@@ -41,8 +41,8 @@ def test_run_validation_success_cases_include_expected_metadata() -> None:
     live_case = case_by_name(payload, "live_provider_fake_success")
     assert live_case["passed"] is True
     assert live_case["provider"] == "live-fake"
-    assert live_case["evidence_count"] == 1
-    assert live_case["expected_evidence_count"] == 1
+    assert live_case["evidence_count"] == 3
+    assert live_case["expected_evidence_count"] == 3
     assert live_case["first_title"] == "example/insightgraph"
     assert live_case["source_type"] == "github"
     assert live_case["verified"] is True
@@ -58,7 +58,7 @@ def test_run_validation_summary_counts_results() -> None:
         "passed_count": 2,
         "failed_count": 0,
         "all_passed": True,
-        "total_evidence_count": 4,
+        "total_evidence_count": 6,
     }
 
 
@@ -111,7 +111,7 @@ def test_format_markdown_writes_summary_table() -> None:
         "OpenCode Repository | github | true | github.com |  |"
     ) in output
     assert "## Summary" in output
-    assert "| 2 | 2 | 0 | true | 4 |" in output
+    assert "| 2 | 2 | 0 | true | 6 |" in output
     assert output.endswith("\n")
 
 

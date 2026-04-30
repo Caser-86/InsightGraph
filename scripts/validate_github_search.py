@@ -60,7 +60,7 @@ def run_validation(search: SearchFn = github_search) -> dict[str, Any]:
             "live_provider_fake_success",
             "live-fake",
             "InsightGraph competitive intelligence",
-            1,
+            3,
             "example/insightgraph",
         ),
     ]
@@ -86,15 +86,18 @@ def _run_case(case: ValidationCase, search: SearchFn) -> dict[str, Any]:
 def _case_environment(case: ValidationCase, search: SearchFn) -> Iterator[None]:
     previous_provider = os.environ.get("INSIGHT_GRAPH_GITHUB_PROVIDER")
     previous_limit = os.environ.get("INSIGHT_GRAPH_GITHUB_LIMIT")
+    previous_details = os.environ.get("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS")
     original_fetch = github_search_module.fetch_github_json
     original_headers = github_search_module._github_headers
     try:
         if case.provider == "mock":
             os.environ.pop("INSIGHT_GRAPH_GITHUB_PROVIDER", None)
             os.environ.pop("INSIGHT_GRAPH_GITHUB_LIMIT", None)
+            os.environ.pop("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS", None)
         else:
             os.environ["INSIGHT_GRAPH_GITHUB_PROVIDER"] = "live"
             os.environ["INSIGHT_GRAPH_GITHUB_LIMIT"] = "1"
+            os.environ["INSIGHT_GRAPH_GITHUB_FETCH_DETAILS"] = "1"
             if search is github_search:
                 github_search_module.fetch_github_json = _fake_github_json
                 github_search_module._github_headers = _fake_github_headers
@@ -104,13 +107,30 @@ def _case_environment(case: ValidationCase, search: SearchFn) -> Iterator[None]:
         github_search_module._github_headers = original_headers
         _restore_env("INSIGHT_GRAPH_GITHUB_PROVIDER", previous_provider)
         _restore_env("INSIGHT_GRAPH_GITHUB_LIMIT", previous_limit)
+        _restore_env("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS", previous_details)
 
 
 def _fake_github_json(
     url: str,
     headers: dict[str, str],
     timeout: float,
-) -> dict[str, Any]:
+):
+    if url == "https://api.github.com/repos/example/insightgraph/readme":
+        return {
+            "html_url": "https://github.com/example/insightgraph#readme",
+            "content": "T2ZmbGluZSBmYWtlIFJFQURNRSBldmlkZW5jZS4=",
+            "encoding": "base64",
+        }
+    if url == "https://api.github.com/repos/example/insightgraph/releases?per_page=1":
+        return [
+            {
+                "name": "v0.1.0",
+                "tag_name": "v0.1.0",
+                "html_url": "https://github.com/example/insightgraph/releases/tag/v0.1.0",
+                "body": "Offline fake release evidence.",
+                "published_at": "2026-04-27T00:00:00Z",
+            }
+        ]
     return {
         "items": [
             {
