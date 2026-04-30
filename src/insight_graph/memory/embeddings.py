@@ -111,7 +111,7 @@ def build_memory_record(
     dimensions: int = 64,
 ) -> ResearchMemoryRecord:
     config = resolve_embedding_config()
-    if config.dimensions is None:
+    if config.dimensions is None and config.provider != "openai_compatible":
         config = replace(config, dimensions=dimensions)
     merged_metadata = dict(metadata or {})
     merged_metadata["embedding_provider"] = config.provider
@@ -183,11 +183,12 @@ def _default_http_transport(url: str, payload: dict[str, object], headers: dict[
 
     try:
         with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
-            body = response.read().decode("utf-8")
+            body_bytes = response.read()
     except (urllib.error.HTTPError, urllib.error.URLError, OSError, TimeoutError):
         raise EmbeddingProviderError("Embedding provider HTTP request failed") from None
 
     try:
+        body = body_bytes.decode("utf-8")
         return json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise EmbeddingProviderError("Embedding provider JSON response was invalid") from None

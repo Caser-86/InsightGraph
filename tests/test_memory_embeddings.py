@@ -81,6 +81,70 @@ def test_build_memory_record_uses_configured_embedding_provider(monkeypatch) -> 
     ]
 
 
+def test_build_memory_record_does_not_force_dimensions_for_openai_compatible(monkeypatch) -> None:
+    calls: list[EmbeddingConfig | None] = []
+
+    def fake_embed_text(_text: str, *, config: EmbeddingConfig | None = None) -> list[float]:
+        calls.append(config)
+        return [0.1, 0.2, 0.3, 0.4]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", "http://example.test/v1")
+    monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_DIMENSIONS", raising=False)
+    monkeypatch.setattr(embeddings, "embed_text", fake_embed_text)
+
+    record = build_memory_record(
+        memory_id="m3",
+        text="Grounded finding about expansion.",
+        dimensions=3,
+    )
+
+    assert record.embedding == [0.1, 0.2, 0.3, 0.4]
+    assert record.metadata == {"embedding_provider": "openai_compatible"}
+    assert calls == [
+        EmbeddingConfig(
+            provider="openai_compatible",
+            base_url="http://example.test/v1",
+            api_key=None,
+            model=None,
+            dimensions=None,
+        )
+    ]
+
+
+def test_build_memory_record_uses_configured_dimensions_for_openai_compatible(monkeypatch) -> None:
+    calls: list[EmbeddingConfig | None] = []
+
+    def fake_embed_text(_text: str, *, config: EmbeddingConfig | None = None) -> list[float]:
+        calls.append(config)
+        return [0.1, 0.2]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_BASE_URL", "http://example.test/v1")
+    monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("INSIGHT_GRAPH_EMBEDDING_DIMENSIONS", "2")
+    monkeypatch.setattr(embeddings, "embed_text", fake_embed_text)
+
+    build_memory_record(
+        memory_id="m4",
+        text="Grounded finding about conversion.",
+        dimensions=3,
+    )
+
+    assert calls == [
+        EmbeddingConfig(
+            provider="openai_compatible",
+            base_url="http://example.test/v1",
+            api_key=None,
+            model=None,
+            dimensions=2,
+        )
+    ]
+
+
 def test_get_embedding_provider_defaults_to_deterministic(monkeypatch) -> None:
     monkeypatch.delenv("INSIGHT_GRAPH_EMBEDDING_PROVIDER", raising=False)
     assert get_embedding_provider() == "deterministic"
@@ -376,6 +440,34 @@ def test_default_http_transport_wraps_invalid_json_safely(monkeypatch) -> None:
 
         def read(self) -> bytes:
             return b"not json containing secret-token"
+
+    monkeypatch.setattr(
+        embeddings.urllib.request,
+        "urlopen",
+        lambda _request, *, timeout: FakeResponse(),
+    )
+
+    try:
+        embeddings._default_http_transport("http://example.test/embed", {"text": "hello"}, {})
+    except EmbeddingProviderError as exc:
+        assert "Embedding provider JSON response was invalid" in str(exc)
+        assert "secret-token" not in str(exc)
+        assert exc.__cause__ is None
+        assert exc.__suppress_context__ is True
+    else:
+        raise AssertionError("expected EmbeddingProviderError")
+
+
+def test_default_http_transport_wraps_invalid_utf8_safely(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"\xffsecret-token"
 
     monkeypatch.setattr(
         embeddings.urllib.request,
