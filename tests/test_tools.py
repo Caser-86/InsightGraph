@@ -679,6 +679,15 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     assert evidence[0].verified is True
     assert evidence[0].chunk_index == 1
     assert evidence[0].section_heading == "Market Report"
+    assert evidence[0].snippet_start == 0
+    assert evidence[0].snippet_end == len(evidence[0].snippet)
+    assert evidence[0].citation_span == {
+        "page": None,
+        "section_heading": "Market Report",
+        "chunk_index": 1,
+        "snippet_start": 0,
+        "snippet_end": len(evidence[0].snippet),
+    }
 
 
 def test_search_document_plain_path_returns_docs_evidence_like_document_reader(
@@ -710,6 +719,15 @@ def test_search_document_plain_path_returns_docs_evidence_like_document_reader(
     assert evidence[0].verified is True
     assert evidence[0].chunk_index == 1
     assert evidence[0].section_heading == "Market Report"
+    assert evidence[0].snippet_start == 0
+    assert evidence[0].snippet_end == len(evidence[0].snippet)
+    assert evidence[0].citation_span == {
+        "page": None,
+        "section_heading": "Market Report",
+        "chunk_index": 1,
+        "snippet_start": 0,
+        "snippet_end": len(evidence[0].snippet),
+    }
 
 
 def test_tool_registry_dispatches_search_document(tmp_path, monkeypatch) -> None:

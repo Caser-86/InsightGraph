@@ -39,6 +39,8 @@ class Evidence(BaseModel):
     chunk_index: int | None = None
     document_page: int | None = None
     section_heading: str | None = None
+    snippet_start: int | None = None
+    snippet_end: int | None = None
     section_id: str | None = None
     search_provider: str | None = None
     search_rank: int | None = None
@@ -55,6 +57,18 @@ class Evidence(BaseModel):
     @property
     def source_domain(self) -> str:
         return urlparse(self.source_url).netloc.lower()
+
+    @property
+    def citation_span(self) -> dict[str, object] | None:
+        if self.snippet_start is None or self.snippet_end is None:
+            return None
+        return {
+            "page": self.document_page,
+            "section_heading": self.section_heading,
+            "chunk_index": self.chunk_index,
+            "snippet_start": self.snippet_start,
+            "snippet_end": self.snippet_end,
+        }
 
 
 class Finding(BaseModel):

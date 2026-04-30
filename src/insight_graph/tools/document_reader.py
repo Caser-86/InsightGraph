@@ -46,6 +46,8 @@ class DocumentChunk:
     index: int
     page: int | None = None
     section_heading: str | None = None
+    start: int = 0
+    end: int = 0
 
 
 def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
@@ -250,6 +252,8 @@ def _document_chunks_from_index(
             index=chunk.index,
             page=chunk.page,
             section_heading=chunk.section_heading,
+            start=0,
+            end=len(chunk.text),
         )
         for chunk in chunks
     ]
@@ -281,6 +285,8 @@ def _chunk_snippets(
                 index=0,
                 page=_page_for_start(0, page_starts),
                 section_heading=_section_for_start(0, section_headings),
+                start=0,
+                end=len(text),
             )
         ]
     step = MAX_SNIPPET_CHARS - SNIPPET_OVERLAP_CHARS
@@ -290,6 +296,8 @@ def _chunk_snippets(
             index=index,
             page=_page_for_start(start, page_starts),
             section_heading=_section_for_start(start, section_headings),
+            start=start,
+            end=start + len(text[start : start + MAX_SNIPPET_CHARS]),
         )
         for index, start in enumerate(range(0, len(text), step))
         if text[start : start + MAX_SNIPPET_CHARS]
@@ -334,6 +342,8 @@ def _build_evidence(
         chunk_index=chunk_number,
         document_page=chunk.page,
         section_heading=chunk.section_heading,
+        snippet_start=chunk.start,
+        snippet_end=chunk.end,
     )
 
 
