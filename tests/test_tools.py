@@ -755,6 +755,51 @@ def test_document_reader_ignores_document_index_when_unset(
     assert evidence[0].snippet == "plain in-memory text"
 
 
+def test_document_reader_does_not_clobber_document_when_index_path_matches_source(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "source.md"
+    original_text = "source document text"
+    document.write_text(original_text, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(document))
+
+    evidence = document_reader("source.md", "s1")
+
+    assert evidence[0].snippet == original_text
+    assert document.read_text(encoding="utf-8") == original_text
+
+
+def test_document_reader_does_not_clobber_existing_non_index_json(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "source.md"
+    document.write_text("source document text", encoding="utf-8")
+    index_path = tmp_path / "not-index.json"
+    index_text = '{"owner":"other-tool"}'
+    index_path.write_text(index_text, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    evidence = document_reader("source.md", "s1")
+
+    assert evidence[0].snippet == "source document text"
+    assert index_path.read_text(encoding="utf-8") == index_text
+
+
+def test_document_reader_normalizes_page_offsets_before_chunk_assignment() -> None:
+    document_reader_module = importlib.import_module(
+        "insight_graph.tools.document_reader"
+    )
+
+    page_starts = document_reader_module._normalize_page_starts(
+        "first page\n\n\nsecond page",
+        [(0, 1), (13, 2)],
+    )
+
+    assert page_starts == [(0, 1), (10, 2)]
+
+
 def test_document_reader_json_query_falls_back_when_no_terms_match(
     tmp_path, monkeypatch
 ) -> None:

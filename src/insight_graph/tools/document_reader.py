@@ -24,6 +24,7 @@ PDF_SUFFIXES = {".pdf"}
 MAX_SNIPPET_CHARS = 500
 SNIPPET_OVERLAP_CHARS = 100
 MAX_DOCUMENT_EVIDENCE = 5
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,12 +57,13 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     if path is None or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
         return []
 
-    index_path = get_document_index_path()
+    index_path = _usable_document_index_path(path)
     if index_path is not None:
         try:
             index = DocumentVectorIndex.load(index_path)
             fresh_chunks = index.get_fresh_chunks(path)
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as error:
+            LOGGER.debug("Falling back after document index read failed: %s", error)
             return _read_evidence(root, path, parsed_query, subtask_id)
 
         if fresh_chunks:
@@ -80,8 +82,11 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
         try:
             index.store_document(path, _document_index_chunks(chunks))
             index.save()
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError) as error:
+            LOGGER.warning(
+                "Document index write failed; using in-memory chunks: %s",
+                error,
+            )
         snippets = _select_chunks(chunks, parsed_query.retrieval_query)
         return [
             _build_evidence(root, path, subtask_id, chunk)
@@ -116,14 +121,60 @@ def _read_document_chunks(path: Path) -> list[DocumentChunk]:
     except (OSError, UnicodeDecodeError, PdfReadError):
         return []
 
-    normalized_text = _normalize_snippet(
-        _extract_text(document_text.text, path.suffix.lower())
-    )
+    extracted_text = _extract_text(document_text.text, path.suffix.lower())
+    normalized_text = _normalize_snippet(extracted_text)
     return _chunk_snippets(
         normalized_text,
-        document_text.page_starts,
+        _normalize_page_starts(extracted_text, document_text.page_starts),
         _extract_section_headings(document_text.text, normalized_text),
     )
+
+
+def _usable_document_index_path(document_path: Path) -> Path | None:
+    index_path = get_document_index_path()
+    if index_path is None:
+        return None
+    try:
+        resolved_index_path = index_path.resolve()
+        resolved_document_path = document_path.resolve()
+    except OSError as error:
+        LOGGER.debug("Ignoring document index path that could not resolve: %s", error)
+        return None
+    if resolved_index_path == resolved_document_path:
+        LOGGER.warning(
+            "Ignoring document index path because it matches the document path"
+        )
+        return None
+    if not resolved_index_path.exists():
+        return resolved_index_path
+    if _has_document_index_schema(resolved_index_path):
+        return resolved_index_path
+    LOGGER.warning("Ignoring existing file without document index schema")
+    return None
+
+
+def _has_document_index_schema(index_path: Path) -> bool:
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return False
+    except json.JSONDecodeError:
+        return True
+    return (
+        isinstance(payload, dict)
+        and payload.get("version") == 1
+        and isinstance(payload.get("documents"), dict)
+    )
+
+
+def _normalize_page_starts(
+    text: str,
+    page_starts: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    return [
+        (len(_normalize_snippet(text[:start])), page_number)
+        for start, page_number in page_starts
+    ]
 
 
 def _parse_document_reader_query(query: str) -> DocumentReaderQuery | None:
