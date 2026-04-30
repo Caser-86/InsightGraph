@@ -109,10 +109,11 @@ class PgVectorResearchMemoryStore:
                 """
                 SELECT memory_id, text, embedding, metadata
                 FROM insight_graph_memories
+                WHERE vector_dims(embedding) = vector_dims(%s::vector)
                 ORDER BY embedding <-> %s::vector
                 LIMIT %s
                 """,
-                (_vector_literal(embedding), limit),
+                (_vector_literal(embedding), _vector_literal(embedding), limit),
             )
             rows = cursor.fetchall()
         return [
