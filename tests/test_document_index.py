@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 
 import insight_graph.report_quality.document_index as document_index
 from insight_graph.report_quality.document_index import (
@@ -107,6 +109,7 @@ def test_document_vector_index_saves_and_loads_document_entry_with_chunks(tmp_pa
             index=0,
             page=3,
             section_heading="Overview",
+            score=42,
         )
     ]
 
@@ -119,6 +122,7 @@ def test_document_vector_index_saves_and_loads_document_entry_with_chunks(tmp_pa
     assert payload["version"] == 1
     assert entry["chunks"][0]["text"] == "Alpha evidence"
     assert entry["chunks"][0]["embedding"]
+    assert entry["chunks"][0]["score"] == 42
 
     loaded = document_index.DocumentVectorIndex.load(index_path)
     fresh_chunks = loaded.get_fresh_chunks(document_path)
@@ -129,6 +133,7 @@ def test_document_vector_index_saves_and_loads_document_entry_with_chunks(tmp_pa
     assert fresh_chunks[0].page == 3
     assert fresh_chunks[0].section_heading == "Overview"
     assert fresh_chunks[0].embedding
+    assert fresh_chunks[0].score == 42
 
 
 def test_document_vector_index_reuses_fresh_entry_when_metadata_matches(tmp_path) -> None:
@@ -158,6 +163,69 @@ def test_document_vector_index_returns_no_fresh_chunks_when_metadata_changes(tmp
     loaded = document_index.DocumentVectorIndex.load(index_path)
 
     assert loaded.get_fresh_chunks(document_path) == []
+
+
+def test_document_vector_index_rejects_entry_when_content_hash_changes(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    original_stat = document_path.stat()
+    index_path = tmp_path / "documents.json"
+
+    index = document_index.DocumentVectorIndex.load(index_path)
+    index.store_document(document_path, [DocumentIndexChunk(text="Alpha evidence", index=0)])
+    index.save()
+    document_path.write_text("Omega evidence", encoding="utf-8")
+    os.utime(
+        document_path,
+        ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+    )
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+
+    assert document_path.stat().st_size == original_stat.st_size
+    assert document_path.stat().st_mtime_ns == original_stat.st_mtime_ns
+    assert loaded.get_fresh_chunks(document_path) == []
+
+
+def test_document_vector_index_skips_malformed_chunk_payloads(tmp_path) -> None:
+    document_path = tmp_path / "report.md"
+    document_path.write_text("Alpha evidence", encoding="utf-8")
+    stat = document_path.stat()
+    index_path = tmp_path / "documents.json"
+    chunk = {
+        "text": "Alpha evidence",
+        "index": 0,
+        "page": 1,
+        "section_heading": "Overview",
+        "embedding": [1, 2.5],
+        "score": 7,
+    }
+    payload = {
+        "version": 1,
+        "documents": {
+            str(document_path.resolve()): {
+                "mtime_ns": stat.st_mtime_ns,
+                "size": stat.st_size,
+                "content_hash": hashlib.sha256(document_path.read_bytes()).hexdigest(),
+                "chunks": [
+                    {**chunk, "text": 123},
+                    {**chunk, "index": "bad"},
+                    {**chunk, "page": "bad"},
+                    {**chunk, "section_heading": 123},
+                    {**chunk, "embedding": [1, None]},
+                    chunk,
+                ],
+            }
+        },
+    }
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = document_index.DocumentVectorIndex.load(index_path)
+    fresh_chunks = loaded.get_fresh_chunks(document_path)
+
+    assert len(fresh_chunks) == 1
+    assert fresh_chunks[0].embedding == [1.0, 2.5]
+    assert fresh_chunks[0].score == 7
 
 
 def test_document_vector_index_loads_corrupt_json_as_empty_index(tmp_path) -> None:

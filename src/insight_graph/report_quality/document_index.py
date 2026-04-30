@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -73,11 +74,20 @@ class DocumentVectorIndex:
             return []
         if entry.get("mtime_ns") != stat.st_mtime_ns or entry.get("size") != stat.st_size:
             return []
+        if entry.get("content_hash") != _hash_document_content(path):
+            return []
 
         chunks = entry.get("chunks")
         if not isinstance(chunks, list):
             return []
-        return [_indexed_chunk_from_json(chunk) for chunk in chunks if isinstance(chunk, dict)]
+        indexed_chunks = []
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            indexed_chunk = _indexed_chunk_from_json(chunk)
+            if indexed_chunk is not None:
+                indexed_chunks.append(indexed_chunk)
+        return indexed_chunks
 
     def store_document(self, document_path: Path, chunks: Sequence[DocumentIndexChunk]) -> None:
         path = Path(document_path)
@@ -85,6 +95,7 @@ class DocumentVectorIndex:
         self._documents[str(path.resolve())] = {
             "mtime_ns": stat.st_mtime_ns,
             "size": stat.st_size,
+            "content_hash": _hash_document_content(path),
             "chunks": [_indexed_chunk_to_json(chunk) for chunk in build_index_chunks(chunks)],
         }
 
@@ -119,20 +130,52 @@ def _indexed_chunk_to_json(chunk: IndexedDocumentChunk) -> dict[str, Any]:
         "page": chunk.page,
         "section_heading": chunk.section_heading,
         "embedding": chunk.embedding,
+        "score": chunk.score,
     }
 
 
-def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk:
-    embedding = payload.get("embedding")
+def _indexed_chunk_from_json(payload: dict[str, Any]) -> IndexedDocumentChunk | None:
+    text = payload.get("text")
+    index = payload.get("index")
+    page = payload.get("page")
+    section_heading = payload.get("section_heading")
+    score = payload.get("score", 0)
+    embedding = _embedding_from_json(payload.get("embedding"))
+    if not isinstance(text, str):
+        return None
+    if not isinstance(index, int) or isinstance(index, bool):
+        return None
+    if page is not None and (not isinstance(page, int) or isinstance(page, bool)):
+        return None
+    if section_heading is not None and not isinstance(section_heading, str):
+        return None
+    if embedding is None:
+        return None
+    if not isinstance(score, int) or isinstance(score, bool):
+        return None
     return IndexedDocumentChunk(
-        text=str(payload.get("text", "")),
-        index=int(payload.get("index", 0)),
-        page=payload.get("page") if isinstance(payload.get("page"), int) else None,
-        section_heading=payload.get("section_heading")
-        if isinstance(payload.get("section_heading"), str)
-        else None,
-        embedding=embedding if isinstance(embedding, list) else [],
+        text=text,
+        index=index,
+        page=page,
+        section_heading=section_heading,
+        embedding=embedding,
+        score=score,
     )
+
+
+def _embedding_from_json(value: Any) -> list[float] | None:
+    if not isinstance(value, list):
+        return None
+    embedding = []
+    for item in value:
+        if not isinstance(item, (int, float)) or isinstance(item, bool):
+            return None
+        embedding.append(float(item))
+    return embedding
+
+
+def _hash_document_content(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def rank_document_chunks(
