@@ -85,6 +85,7 @@ def test_run_research_with_events_emits_stage_events(monkeypatch) -> None:
     )
 
     assert result.report_markdown is not None
+    assert result.trace_id
     assert [
         (event["type"], event.get("stage"))
         for event in events
@@ -101,6 +102,11 @@ def test_run_research_with_events_emits_stage_events(monkeypatch) -> None:
         ("stage_started", "reporter"),
         ("stage_finished", "reporter"),
     ]
+    assert all(
+        event.get("trace_id") == result.trace_id
+        for event in events
+        if event["type"] in {"stage_started", "stage_finished", "report_ready"}
+    )
 
 
 def test_run_research_with_events_emits_tool_and_report_events(monkeypatch) -> None:
@@ -117,7 +123,7 @@ def test_run_research_with_events_emits_tool_and_report_events(monkeypatch) -> N
     report_events = [event for event in events if event["type"] == "report_ready"]
     assert tool_events
     assert tool_events[0]["record"]["tool_name"] == "mock_search"
-    assert report_events == [{"type": "report_ready"}]
+    assert report_events == [{"type": "report_ready", "trace_id": result.trace_id}]
     assert result.report_markdown is not None
 
 
@@ -193,7 +199,11 @@ def test_run_research_with_events_resumes_after_loaded_checkpoint(monkeypatch) -
         "critic",
         "reporter",
     ]
-    assert events[0] == {"type": "resumed_from_checkpoint", "stage": "collector"}
+    assert events[0] == {
+        "type": "resumed_from_checkpoint",
+        "stage": "collector",
+        "trace_id": result.trace_id,
+    }
 
 
 def test_run_research_with_events_resumes_failed_critic_at_retry(monkeypatch) -> None:

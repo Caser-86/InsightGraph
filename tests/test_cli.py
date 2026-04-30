@@ -504,6 +504,8 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    trace_id = payload.pop("trace_id")
+    assert trace_id
     assert payload == {
         "user_request": "Compare AI coding agents",
         "report_markdown": "# Report\n",

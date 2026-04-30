@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -113,6 +114,7 @@ class LLMCallRecord(BaseModel):
 
 class GraphState(BaseModel):
     user_request: str
+    trace_id: str = Field(default_factory=lambda: uuid4().hex)
     domain_profile: str | None = None
     resolved_entities: list[dict[str, object]] = Field(default_factory=list)
     memory_context: list[dict[str, object]] = Field(default_factory=list)
