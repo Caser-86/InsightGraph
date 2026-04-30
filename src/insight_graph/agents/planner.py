@@ -224,6 +224,7 @@ def _build_query_strategies(
                     ),
                     "source_type": source_type,
                     "entity_names": entity_names,
+                    "outline_questions": _section_questions(section),
                     "round": round_index,
                     "reason": "section_source_requirement",
                 }
@@ -313,6 +314,13 @@ def _section_source_types(section: dict[str, object]) -> list[str]:
     return source_types or ["unknown"]
 
 
+def _section_questions(section: dict[str, object]) -> list[str]:
+    values = section.get("questions", [])
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str) and value]
+
+
 def _tool_for_source_type(source_type: str, collection_tools: list[str]) -> str | None:
     preferred_tools = {
         "github": "github_search",
@@ -343,6 +351,9 @@ def _strategy_query(
         parts.append(f"section: {section_id}")
     if title:
         parts.append(f"title: {title}")
+    questions = _section_questions(section)
+    if questions:
+        parts.append(f"questions: {'; '.join(questions)}")
     if source_type:
         parts.append(f"source type: {source_type}")
     if entity_names:
