@@ -60,6 +60,10 @@ def test_postgres_checkpoint_store_emits_schema_and_upsert_sql() -> None:
     store.save_checkpoint(record)
 
     statements = [statement for statement, _ in connection.cursor_obj.statements]
+    assert any(
+        "CREATE TABLE IF NOT EXISTS insight_graph_schema_migrations" in sql
+        for sql in statements
+    )
     assert any("CREATE TABLE IF NOT EXISTS insight_graph_checkpoints" in sql for sql in statements)
     assert any("ON CONFLICT (run_id) DO UPDATE" in sql for sql in statements)
     assert connection.commits == 2

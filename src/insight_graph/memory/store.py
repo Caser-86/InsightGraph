@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from insight_graph.persistence.checkpoints import _connect_postgres
+from insight_graph.persistence.migrations import Migration, run_migrations
 
 
 class ResearchMemoryStore(Protocol):
@@ -79,20 +80,7 @@ class PgVectorResearchMemoryStore:
 
     def ensure_schema(self) -> None:
         connection = self._connection_factory()
-        with connection.cursor() as cursor:
-            cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS insight_graph_memories (
-                    memory_id TEXT PRIMARY KEY,
-                    text TEXT NOT NULL,
-                    embedding vector NOT NULL,
-                    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-        connection.commit()
+        run_migrations(connection, [_memory_table_migration()])
 
     def add_memory(self, record: ResearchMemoryRecord) -> None:
         connection = self._connection_factory()
@@ -202,3 +190,21 @@ def _metadata_matches(
 
 def _vector_literal(values: list[float]) -> str:
     return "[" + ",".join(str(value) for value in values) + "]"
+
+
+def _memory_table_migration() -> Migration:
+    def apply(cursor: Any) -> None:
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS insight_graph_memories (
+                memory_id TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                embedding vector NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+
+    return Migration("002_create_memories", apply)
