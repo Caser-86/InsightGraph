@@ -26,6 +26,14 @@ def plan_research(state: GraphState) -> GraphState:
             resolved_entities=state.resolved_entities,
         )
     ]
+    collection_tools = _collection_tool_names(state.user_request)
+    state.query_strategies = _build_query_strategies(
+        state.user_request,
+        state.section_research_plan,
+        state.resolved_entities,
+        collection_tools,
+        state.iterations + 1,
+    )
     state.subtasks = [
         Subtask(
             id="scope",
@@ -37,7 +45,7 @@ def plan_research(state: GraphState) -> GraphState:
             description=_collection_description(state),
             subtask_type="research",
             dependencies=["scope"],
-            suggested_tools=_collection_tool_names(state.user_request),
+            suggested_tools=collection_tools,
         ),
         Subtask(
             id="analyze",
@@ -136,6 +144,98 @@ def _collection_tool_name(user_request: str) -> str:
     if _is_truthy_env("INSIGHT_GRAPH_USE_WRITE_FILE"):
         return "write_file"
     return "mock_search"
+
+
+def _build_query_strategies(
+    user_request: str,
+    section_plan: list[dict[str, object]],
+    resolved_entities: list[dict[str, object]],
+    collection_tools: list[str],
+    round_index: int,
+) -> list[dict[str, object]]:
+    strategies: list[dict[str, object]] = []
+    entity_names = _entity_names(resolved_entities)
+    for section in section_plan:
+        section_id = str(section.get("section_id", "")).strip()
+        source_types = _section_source_types(section)
+        for source_type in source_types:
+            tool_name = _tool_for_source_type(source_type, collection_tools)
+            if tool_name is None:
+                continue
+            strategies.append(
+                {
+                    "strategy_id": _strategy_id(round_index, section_id, source_type, len(strategies) + 1),
+                    "section_id": section_id,
+                    "tool_name": tool_name,
+                    "query": _strategy_query(user_request, section, source_type, entity_names),
+                    "source_type": source_type,
+                    "entity_names": entity_names,
+                    "round": round_index,
+                    "reason": "section_source_requirement",
+                }
+            )
+    return strategies
+
+
+def _section_source_types(section: dict[str, object]) -> list[str]:
+    values = section.get("required_source_types", [])
+    if not isinstance(values, list):
+        return ["unknown"]
+    source_types = [value for value in values if isinstance(value, str) and value]
+    return source_types or ["unknown"]
+
+
+def _tool_for_source_type(source_type: str, collection_tools: list[str]) -> str | None:
+    preferred_tools = {
+        "github": "github_search",
+        "news": "news_search",
+        "sec": "sec_filings",
+        "docs": "document_reader",
+    }
+    preferred_tool = preferred_tools.get(source_type)
+    if preferred_tool in collection_tools:
+        return preferred_tool
+    if "web_search" in collection_tools:
+        return "web_search"
+    return collection_tools[0] if collection_tools else None
+
+
+def _strategy_query(
+    user_request: str,
+    section: dict[str, object],
+    source_type: str,
+    entity_names: list[str],
+) -> str:
+    parts = [user_request]
+    section_id = str(section.get("section_id", "")).strip()
+    title = str(section.get("title", "")).strip()
+    if section_id:
+        parts.append(f"section: {section_id}")
+    if title:
+        parts.append(f"title: {title}")
+    if source_type:
+        parts.append(f"source type: {source_type}")
+    if entity_names:
+        parts.append(f"entities: {', '.join(entity_names)}")
+    return " | ".join(parts)
+
+
+def _entity_names(resolved_entities: list[dict[str, object]]) -> list[str]:
+    names = []
+    for entity in resolved_entities:
+        name = entity.get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def _strategy_id(
+    round_index: int,
+    section_id: str,
+    source_type: str,
+    sequence: int,
+) -> str:
+    return f"r{round_index}-{section_id or 'section'}-{source_type}-{sequence}"
 
 
 def _is_truthy_env(name: str) -> bool:

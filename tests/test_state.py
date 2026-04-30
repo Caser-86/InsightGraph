@@ -112,6 +112,12 @@ def test_graph_state_starts_with_empty_collections() -> None:
     assert state.memory_context == []
 
 
+def test_graph_state_starts_with_empty_query_strategies() -> None:
+    state = GraphState(user_request="Analyze AI coding agents")
+
+    assert state.query_strategies == []
+
+
 def test_competitive_matrix_row_stores_evidence_backed_fields() -> None:
     row = CompetitiveMatrixRow(
         product="Cursor",

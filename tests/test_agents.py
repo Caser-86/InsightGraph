@@ -375,6 +375,32 @@ def test_planner_builds_section_research_plan() -> None:
     assert updated.section_research_plan[0]["min_evidence"] == 2
 
 
+def test_planner_builds_query_strategies_for_section_sources(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot pricing")
+
+    updated = plan_research(state)
+
+    assert updated.query_strategies
+    strategy = updated.query_strategies[0]
+    assert set(strategy) == {
+        "strategy_id",
+        "section_id",
+        "tool_name",
+        "query",
+        "source_type",
+        "entity_names",
+        "round",
+        "reason",
+    }
+    assert strategy["section_id"] == "executive-summary"
+    assert strategy["tool_name"] == "web_search"
+    assert strategy["source_type"] == "official_site"
+    assert strategy["entity_names"] == ["Cursor", "GitHub Copilot"]
+    assert strategy["round"] == 1
+    assert "executive-summary" in strategy["query"]
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")
