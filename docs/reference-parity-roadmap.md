@@ -2,7 +2,7 @@
 
 This roadmap uses `wenyi-research-agent` as the reference standard for a production-grade deep research agent. InsightGraph keeps deterministic/offline defaults; live LLM, network, database, embeddings, MCP, and code execution remain explicit opt-in surfaces.
 
-Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. Batch 14 docs final alignment complete.
+Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. The next optimization goal is generating high-quality, evidence-grounded reports before expanding high-risk runtime surfaces.
 
 ## Current Position
 
@@ -17,7 +17,7 @@ Current product path is `live-research`. Offline remains the deterministic testi
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
-| Long PDF/RAG retrieval | `search_document` tool + chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Need pgvector/TOC production RAG and live validation | High |
+| Long PDF/RAG retrieval | `search_document` tool + chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index + embedding provider boundary | Production RAG hardening remains quality work | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks + migration layer + SQLite worker resume claim implemented | Keep hardening restart E2E as bugs appear | Low |
 | pgvector memory | Store/search/delete + deterministic/external embeddings + Planner context injection + writeback/API/eval proof implemented | Improve memory quality over time | Low |
 | Full LLM observability | Trace IDs, redacted JSONL trace controls, dashboard panels, and runner summary implemented | Extend to relevance judge if needed | Low |
@@ -74,4 +74,4 @@ Current product path is `live-research`. Offline remains the deterministic testi
 
 ## Next Phase
 
-Next work should be chosen from explicit user priorities. Deferred items stay out of scope until approved.
+Next work should follow `docs/roadmap.md`: report quality, benchmark profiles, RAG hardening, memory quality, dashboard productization, and operations hardening first. Deferred items stay out of scope until those optimizations are complete and explicitly approved.

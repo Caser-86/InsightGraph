@@ -75,9 +75,60 @@ def test_final_docs_align_to_live_research_product_path() -> None:
     combined = "\n".join(docs.values())
     assert "product path is `live-research`" in combined
     assert "Offline remains the deterministic testing/CI fallback" in combined
-    assert "Batch 14 docs final alignment complete" in combined
+    assert "The next optimization goal" in combined
     assert "The active project route is now `docs/report-quality-roadmap.md`" not in docs[
         "roadmap"
     ]
     assert "Need reference-style live benchmark profile" not in docs["reference"]
     assert "Memory-on/off quality eval proof" not in docs["reference"]
+
+
+def test_docs_define_high_quality_report_roadmap_and_defer_high_risk_items() -> None:
+    root = Path(__file__).parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    roadmap = (root / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    architecture = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
+    combined = "\n".join([readme, roadmap, architecture])
+
+    assert "生成高质量、可验证深度研究报告" in combined
+    assert "Next Optimization Plan" in roadmap
+    assert "Report Quality v3" in roadmap
+    assert "Live Benchmark Case Profiles" in roadmap
+    assert "Production RAG Hardening" in roadmap
+    assert "Memory Quality Loop" in roadmap
+    assert "Dashboard Productization" in roadmap
+    assert "Deferred Until Other Optimizations Are Complete" in roadmap
+    for item in [
+        "MCP runtime invocation behind allowlist",
+        "Real sandboxed Python/code execution",
+        "`/tasks` API compatibility aliases",
+        "release/deploy/force-push automation",
+    ]:
+        assert item in roadmap
+
+
+def test_readme_uses_reference_style_sections_with_current_project_truths() -> None:
+    readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+
+    expected_sections = [
+        "## 项目结构",
+        "## 核心特性",
+        "## 技术架构",
+        "## 整体执行流程",
+        "## 多智能体协作流程",
+        "## 数据流与证据链路",
+        "## 技术栈",
+        "## 内置工具",
+        "## 执行链路详解",
+        "## 示例输出",
+        "## 效果与亮点",
+        "## 快速开始",
+        "## 配置说明",
+        "## 脚本",
+    ]
+    for section in expected_sections:
+        assert section in readme
+    assert "Planner → Collector/Executor → Analyst → Critic → Reporter" in readme
+    assert "Offline deterministic 是测试/CI fallback" in readme
+    assert "真实 sandboxed Python/code execution 暂不启用" in readme
+    assert "MCP runtime invocation 暂不启用" in readme

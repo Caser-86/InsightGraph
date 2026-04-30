@@ -3,7 +3,7 @@
 This document is the canonical execution route for InsightGraph after `v0.1.32`.
 Future work must follow this route unless the user explicitly approves a route change.
 
-Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. Batch 14 docs final alignment complete.
+Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. The next optimization goal is generating high-quality, evidence-grounded reports; detailed upcoming tasks now live in `docs/roadmap.md`.
 
 ## Route Status
 
@@ -41,7 +41,7 @@ InsightGraph should produce reports with the same practical quality profile as a
 | Citation validation | Basic citation support and reference rebuilding. | Claim-level snippet support validation. |
 | Critic | Structure and citation checks, limited replan. | Missing-evidence replan by section/source/entity. |
 | Reporter | Deterministic or opt-in LLM report from findings/evidence. | Section drafts to final report with strict allowed citations. |
-| Memory/checkpoint | Job metadata JSON/SQLite. | Deferred until quality route is stable. |
+| Memory/checkpoint | PostgreSQL checkpoint, SQLite jobs, pgvector memory, memory writeback/API/eval proof. | Improve memory quality controls and restart hardening over time. |
 
 ## Target Project Shape
 
@@ -499,7 +499,7 @@ Next work queue:
 6. Done: long-document retrieval v2 improves local/remote document chunk ranking with TOC/page/heading awareness before adding embeddings or pgvector.
 7. Done: rendered-page fetch adds opt-in Playwright only after fetch bounds, source attribution, and budgets are stable.
 8. Done: financial analysis tools extend SEC support from recent filing discovery to filing content extraction and simple deterministic financial evidence, without claiming full financial modeling.
-9. Done: persistence and memory defers PostgreSQL checkpoint resume and pgvector long-term memory until a separate infrastructure phase.
+9. Done: persistence and memory added migrations, checkpoint resume hooks, SQLite worker claim, pgvector memory, memory writeback/API, and offline eval proof.
 
 Acceptance criteria:
 
