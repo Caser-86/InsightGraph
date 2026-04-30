@@ -438,6 +438,109 @@ def test_sec_filings_resolves_expanded_company_ticker_without_live_lookup(
     assert observed["url"] == "https://data.sec.gov/submissions/CIK0001108524.json"
 
 
+def test_sec_filings_fetches_10k_content_when_enabled(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    fetched_urls: list[str] = []
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del headers, timeout
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K", "8-K"],
+                    "accessionNumber": [
+                        "0000320193-23-000106",
+                        "0000320193-23-000064",
+                    ],
+                    "filingDate": ["2023-11-03", "2023-05-05"],
+                    "primaryDocument": ["aapl-20230930.htm", "aapl.htm"],
+                }
+            }
+        }
+
+    def fake_fetch_url(query: str, subtask_id: str):
+        fetched_urls.append(query)
+        assert subtask_id == "s1"
+        return [
+            Evidence(
+                id="fetched-sec-risk",
+                subtask_id=subtask_id,
+                title="Apple 10-K Risk Factors",
+                source_url=(
+                    "https://www.sec.gov/Archives/edgar/data/320193/"
+                    "000032019323000106/aapl-20230930.htm"
+                ),
+                snippet="Risk Factors Apple faces supply chain and market risks.",
+                source_type="official_site",
+                verified=True,
+                section_heading="Risk Factors",
+            ),
+            Evidence(
+                id="fetched-sec-overview",
+                subtask_id=subtask_id,
+                title="Apple 10-K Overview",
+                source_url=(
+                    "https://www.sec.gov/Archives/edgar/data/320193/"
+                    "000032019323000106/aapl-20230930.htm"
+                ),
+                snippet="Generic overview.",
+                source_type="official_site",
+                verified=True,
+                section_heading="Overview",
+            ),
+        ]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_SEC_FETCH_FILING_CONTENT", "1")
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+    monkeypatch.setattr(sec_module, "fetch_url", fake_fetch_url)
+
+    evidence = sec_filings("AAPL risk factors", "s1")
+
+    assert [item.id for item in evidence] == [
+        "sec-aapl-10-k-2023-11-03",
+        "sec-aapl-10-k-2023-11-03-content-1",
+        "sec-aapl-8-k-2023-05-05",
+    ]
+    assert evidence[1].title == "AAPL 10-K filing 2023-11-03 content"
+    assert evidence[1].snippet == "Risk Factors Apple faces supply chain and market risks."
+    assert evidence[1].section_heading == "Risk Factors"
+    assert json.loads(fetched_urls[0]) == {
+        "url": (
+            "https://www.sec.gov/Archives/edgar/data/320193/"
+            "000032019323000106/aapl-20230930.htm"
+        ),
+        "query": "risk factors business management discussion analysis",
+    }
+
+
+def test_sec_filings_does_not_fetch_filing_content_by_default(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del url, headers, timeout
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K"],
+                    "accessionNumber": ["0000320193-23-000106"],
+                    "filingDate": ["2023-11-03"],
+                    "primaryDocument": ["aapl-20230930.htm"],
+                }
+            }
+        }
+
+    def fail_fetch_url(query: str, subtask_id: str):
+        raise AssertionError(f"fetch_url should not run by default: {query} {subtask_id}")
+
+    monkeypatch.delenv("INSIGHT_GRAPH_SEC_FETCH_FILING_CONTENT", raising=False)
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+    monkeypatch.setattr(sec_module, "fetch_url", fail_fetch_url)
+
+    evidence = sec_filings("AAPL risk factors", "s1")
+
+    assert [item.id for item in evidence] == ["sec-aapl-10-k-2023-11-03"]
+
+
 def test_sec_financials_resolves_expanded_ticker_alias(monkeypatch) -> None:
     sec_module = importlib.import_module("insight_graph.tools.sec_filings")
     observed: dict[str, object] = {}

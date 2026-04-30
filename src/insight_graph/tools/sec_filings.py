@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from insight_graph.state import Evidence
+from insight_graph.tools.fetch_url import fetch_url
 
 SEC_USER_AGENT = "InsightGraph contact@example.com"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -17,6 +19,15 @@ FINANCIAL_FACTS = (
     ("Revenue", "Revenues"),
     ("Net income", "NetIncomeLoss"),
     ("Assets", "Assets"),
+)
+SEC_CONTENT_QUERY = "risk factors business management discussion analysis"
+SEC_CONTENT_SECTION_PATTERNS = (
+    "risk",
+    "business",
+    "management discussion",
+    "md&a",
+    "mda",
+    "analysis",
 )
 
 KNOWN_TICKER_CIKS = {
@@ -198,6 +209,7 @@ def _filings_to_evidence(
         return []
 
     evidence: list[Evidence] = []
+    filing_count = 0
     for form, accession, filing_date, document in zip(
         forms, accessions, filing_dates, documents, strict=False
     ):
@@ -206,20 +218,88 @@ def _filings_to_evidence(
             continue
         if form not in {"10-K", "10-Q", "8-K", "S-1"}:
             continue
+        base_id = f"sec-{ticker.lower()}-{form.lower()}-{filing_date}"
+        filing_url = _filing_url(cik, accession, document)
         evidence.append(
             Evidence(
-                id=f"sec-{ticker.lower()}-{form.lower()}-{filing_date}",
+                id=base_id,
                 subtask_id=subtask_id,
                 title=f"{ticker} {form} filing {filing_date}",
-                source_url=_filing_url(cik, accession, document),
+                source_url=filing_url,
                 snippet=f"{ticker} filed {form} on {filing_date}.",
                 source_type="official_site",
                 verified=True,
             )
         )
-        if len(evidence) >= DEFAULT_SEC_LIMIT:
+        evidence.extend(
+            _filing_content_evidence(
+                base_id,
+                ticker,
+                form,
+                filing_date,
+                filing_url,
+                subtask_id,
+            )
+        )
+        filing_count += 1
+        if filing_count >= DEFAULT_SEC_LIMIT:
             break
     return evidence
+
+
+def _filing_content_evidence(
+    base_id: str,
+    ticker: str,
+    form: str,
+    filing_date: str,
+    filing_url: str,
+    subtask_id: str,
+) -> list[Evidence]:
+    if not _fetch_filing_content_enabled() or form not in {"10-K", "10-Q"}:
+        return []
+    query = json.dumps(
+        {"url": filing_url, "query": SEC_CONTENT_QUERY},
+        separators=(",", ":"),
+    )
+    try:
+        fetched = fetch_url(query, subtask_id)
+    except Exception:
+        return []
+    evidence: list[Evidence] = []
+    for item in fetched:
+        if not _is_sec_content_section(item):
+            continue
+        evidence.append(
+            Evidence(
+                id=f"{base_id}-content-{len(evidence) + 1}",
+                subtask_id=subtask_id,
+                title=f"{ticker} {form} filing {filing_date} content",
+                source_url=item.source_url,
+                snippet=item.snippet[:500],
+                source_type="official_site",
+                verified=item.verified,
+                reachable=item.reachable,
+                source_trusted=item.source_trusted,
+                claim_supported=item.claim_supported,
+                chunk_index=item.chunk_index,
+                section_heading=item.section_heading,
+            )
+        )
+    return evidence[:2]
+
+
+def _fetch_filing_content_enabled() -> bool:
+    return os.getenv("INSIGHT_GRAPH_SEC_FETCH_FILING_CONTENT", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _is_sec_content_section(item: Evidence) -> bool:
+    section = (item.section_heading or "").casefold()
+    snippet = item.snippet.casefold()
+    return any(pattern in section or pattern in snippet for pattern in SEC_CONTENT_SECTION_PATTERNS)
 
 
 def _filing_url(cik: str, accession: str, document: str) -> str:
