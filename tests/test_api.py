@@ -360,7 +360,18 @@ def test_dashboard_returns_html() -> None:
     assert "reports/eval.json" in response.text
     assert "reports/eval.md" in response.text
     assert 'data-tab="eval"' in response.text
+    assert 'data-tab="evidence"' in response.text
+    assert 'data-tab="citations"' in response.text
+    assert 'data-tab="quality"' in response.text
     assert "Eval Ops" in response.text
+    assert "Evidence & Sources" in response.text
+    assert "Citation Support" in response.text
+    assert "Quality Signals" in response.text
+    assert "renderEvidencePanel" in response.text
+    assert "renderCitationPanel" in response.text
+    assert "renderQualityPanel" in response.text
+    assert "URL Validation" in response.text
+    assert "Token Totals" in response.text
     assert "reports/eval-summary.md" in response.text
     assert "reports/eval-history.md" in response.text
     assert "Dashboard does not fetch GitHub Actions artifacts" in response.text
