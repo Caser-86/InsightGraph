@@ -115,18 +115,18 @@ def test_docs_define_high_quality_report_roadmap_and_defer_high_risk_items() -> 
     combined = "\n".join([readme, roadmap, architecture])
 
     assert "生成高质量、可验证深度研究报告" in combined
-    assert "Next Optimization Plan" in roadmap
-    assert "Report Quality v3" in roadmap
-    assert "Live Benchmark Case Profiles" in roadmap
-    assert "Production RAG Hardening" in roadmap
-    assert "Memory Quality Loop" in roadmap
-    assert "Dashboard Productization" in roadmap
-    assert "Deferred Until Other Optimizations Are Complete" in roadmap
+    assert "Completed Optimization Batches" in roadmap
+    assert "Report Quality v3 - complete" in roadmap
+    assert "Live Benchmark Case Profiles - complete" in roadmap
+    assert "Production RAG Hardening - complete" in roadmap
+    assert "Memory Quality Loop - complete" in roadmap
+    assert "Dashboard Productization - complete" in roadmap
+    assert "Remaining Explicit-Decision Work" in roadmap
     for item in [
         "MCP runtime invocation behind allowlist",
         "Real sandboxed Python/code execution",
         "`/tasks` API compatibility aliases",
-        "release/deploy/force-push automation",
+        "release/deploy automation dry-run only",
     ]:
         assert item in roadmap
 
@@ -197,3 +197,24 @@ def test_deployment_runbook_aligns_operational_env_surfaces() -> None:
     assert "Do not commit generated live benchmark reports" in combined
     assert "Trace Redaction" in docs["docs/deployment.md"]
     assert "Storage Matrix" in docs["docs/deployment.md"]
+
+
+def test_roadmap_and_readme_mark_completed_batches_and_next_priorities() -> None:
+    root = Path(__file__).parents[1]
+    roadmap = (root / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    combined = "\n".join([roadmap, readme])
+
+    assert "## Completed Optimization Batches" in roadmap
+    assert "## Remaining Explicit-Decision Work" in roadmap
+    assert "A-F complete" in combined
+    assert "Report Quality v3 - complete" in roadmap
+    assert "API And Operations Hardening - complete" in roadmap
+    assert "1. `/tasks` API compatibility aliases" in roadmap
+    assert "2. MCP runtime invocation behind allowlist" in roadmap
+    assert "3. release/deploy automation dry-run only" in roadmap
+    assert "4. Real sandboxed Python/code execution" in roadmap
+    assert "release/deploy/force-push automation" not in roadmap
+    assert "Next Optimization Plan" not in roadmap
+    assert "后续优化路线" in readme
+    assert "A-F complete" in readme
