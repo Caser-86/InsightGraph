@@ -69,6 +69,66 @@ def test_in_memory_research_memory_ranks_by_embedding_similarity() -> None:
     assert [record.memory_id for record in results] == ["m1"]
 
 
+def test_in_memory_research_memory_filters_quality_metadata() -> None:
+    store = InMemoryResearchMemoryStore()
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="fresh-supported",
+            text="Cursor pricing evidence",
+            embedding=[1.0, 0.0],
+            metadata={
+                "domain_profile": "competitive_intel",
+                "entity_id": "cursor",
+                "embedding_provider": "deterministic",
+                "support_status": "supported",
+                "expired": False,
+            },
+        )
+    )
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="memory-only",
+            text="Memory-only claim",
+            embedding=[1.0, 0.0],
+            metadata={
+                "domain_profile": "competitive_intel",
+                "entity_id": "cursor",
+                "embedding_provider": "deterministic",
+                "support_status": "summary",
+                "expired": False,
+            },
+        )
+    )
+    store.add_memory(
+        ResearchMemoryRecord(
+            memory_id="expired",
+            text="Expired claim",
+            embedding=[1.0, 0.0],
+            metadata={
+                "domain_profile": "competitive_intel",
+                "entity_id": "cursor",
+                "embedding_provider": "deterministic",
+                "support_status": "supported",
+                "expired": True,
+            },
+        )
+    )
+
+    results = store.search(
+        [1.0, 0.0],
+        limit=10,
+        metadata_filter={
+            "domain_profile": "competitive_intel",
+            "entity_id": ["cursor"],
+            "embedding_provider": "deterministic",
+            "support_status": ["supported", "fresh_evidence"],
+            "expired": False,
+        },
+    )
+
+    assert [record.memory_id for record in results] == ["fresh-supported"]
+
+
 def test_in_memory_research_memory_deletes_by_id_and_metadata() -> None:
     store = InMemoryResearchMemoryStore()
     store.add_memory(

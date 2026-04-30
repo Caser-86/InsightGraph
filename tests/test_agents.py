@@ -274,6 +274,10 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
             assert metadata_filter == {
                 "embedding_provider": "deterministic",
                 "embedding_dimensions": 64,
+                "domain_profile": "competitive_intel",
+                "entity_id": ["cursor"],
+                "support_status": ["supported", "fresh_evidence"],
+                "expired": False,
             }
             observed_embeddings.append(embedding)
             return [
@@ -281,7 +285,7 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
                     memory_id="m1",
                     text="Prior report found enterprise pricing risk.",
                     embedding=[1.0],
-                    metadata={"run_id": "old-run"},
+                    metadata={"run_id": "old-run", "support_status": "supported"},
                 )
             ]
 
@@ -301,7 +305,7 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
         {
             "memory_id": "m1",
             "text": "Prior report found enterprise pricing risk.",
-            "metadata": {"run_id": "old-run"},
+            "metadata": {"run_id": "old-run", "support_status": "supported"},
         }
     ]
 
@@ -325,6 +329,25 @@ def test_planner_uses_memory_context_and_tried_strategies_in_collection_plan() -
     assert "Use 1 retrieved memory context item" in collect.description
     assert "Avoid tried strategies: missing_section_evidence:pricing:news" in collect.description
     assert len(updated.subtasks) == 4
+
+
+def test_analyst_does_not_turn_memory_only_context_into_grounded_claims() -> None:
+    state = GraphState(
+        user_request="Compare Cursor enterprise pricing",
+        memory_context=[
+            {
+                "memory_id": "m1",
+                "text": "Cursor has enterprise pricing risk.",
+                "metadata": {"support_status": "supported"},
+            }
+        ],
+        evidence_pool=[],
+    )
+
+    updated = analyze_evidence(state)
+
+    assert updated.findings == []
+    assert updated.grounded_claims == []
 
 
 def test_planner_sets_technology_domain_profile() -> None:
