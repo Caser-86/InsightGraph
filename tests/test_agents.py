@@ -1754,6 +1754,130 @@ def test_reporter_renders_competitive_matrix() -> None:
     )
 
 
+def test_reporter_excludes_unsupported_findings_from_main_body(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = make_reporter_state()
+    state.findings.append(
+        Finding(
+            title="Unsupported security claim",
+            summary="Copilot enterprise security includes audit logging.",
+            evidence_ids=["copilot-docs"],
+        )
+    )
+    state.citation_support = [
+        {
+            "claim": "Pricing and packaging differ",
+            "support_status": "supported",
+            "evidence_ids": ["cursor-pricing", "copilot-docs"],
+            "unsupported_reason": None,
+            "support_score": 1.0,
+            "matched_terms": ["pricing"],
+        },
+        {
+            "claim": "Unsupported security claim",
+            "support_status": "partial",
+            "evidence_ids": ["copilot-docs"],
+            "unsupported_reason": "partial lexical support",
+            "support_score": 0.5,
+            "matched_terms": ["security"],
+        },
+    ]
+
+    updated = write_report(state)
+
+    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
+    citation_support = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
+    assert "Pricing and packaging differ" in main_body
+    assert "Unsupported security claim" not in main_body
+    assert "Unsupported security claim" in citation_support
+
+
+def test_reporter_renders_supported_grounded_claims_only(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = make_reporter_state()
+    state.findings = []
+    state.grounded_claims = [
+        {
+            "claim": "Cursor publishes pricing tiers.",
+            "section_id": "pricing",
+            "evidence_ids": ["cursor-pricing"],
+            "confidence": "high",
+            "risk": "Pricing may change.",
+            "unknowns": ["Discount availability"],
+        },
+        {
+            "claim": "Copilot security posture is complete.",
+            "section_id": "security",
+            "evidence_ids": ["copilot-docs"],
+            "confidence": "low",
+            "risk": "Partial support only.",
+            "unknowns": [],
+        },
+    ]
+    state.citation_support = [
+        {
+            "claim": "Cursor publishes pricing tiers.",
+            "support_status": "supported",
+            "evidence_ids": ["cursor-pricing"],
+            "unsupported_reason": None,
+            "support_score": 1.0,
+            "matched_terms": ["pricing"],
+        },
+        {
+            "claim": "Copilot security posture is complete.",
+            "support_status": "unsupported",
+            "evidence_ids": ["copilot-docs"],
+            "unsupported_reason": "snippet lacks lexical support",
+            "support_score": 0.2,
+            "matched_terms": [],
+        },
+    ]
+
+    updated = write_report(state)
+
+    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
+    assert "Cursor publishes pricing tiers." in main_body
+    assert "Copilot security posture is complete." not in main_body
+
+
+def test_reporter_renders_standard_long_form_sections(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = make_reporter_state()
+
+    updated = write_report(state)
+
+    report = updated.report_markdown
+    expected_order = [
+        "## Executive Summary",
+        "## Background",
+        "## Analysis",
+        "## Competitive Landscape",
+        "## Risks",
+        "## Outlook",
+        "## Citation Support",
+        "## References",
+    ]
+    for heading in expected_order:
+        assert heading in report
+    positions = [report.index(heading) for heading in expected_order]
+    assert positions == sorted(positions)
+
+
+def test_reporter_marks_sections_insufficient_without_supported_evidence(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = make_reporter_state()
+    state.findings = []
+    state.grounded_claims = []
+    state.competitive_matrix = []
+    state.citation_support = []
+
+    updated = write_report(state)
+
+    assert "Evidence is insufficient for this section." in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
+    assert "## Analysis" in updated.report_markdown
+
+
 def test_reporter_renders_competitive_matrix_v2_fields() -> None:
     state = make_reporter_state()
     state.competitive_matrix = [
@@ -2005,6 +2129,85 @@ def test_llm_reporter_prompt_uses_verified_snippets_as_fact_boundary(monkeypatch
     assert "Evidence snippets are the only allowed factual basis." in prompt
     assert "Verified evidence snippets:" in prompt
     assert "Cursor lists Pro and Business pricing tiers." in prompt
+
+
+def test_llm_reporter_prompt_uses_only_supported_claims(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    state = make_reporter_state()
+    state.findings.append(
+        Finding(
+            title="Unsupported security claim",
+            summary="Copilot enterprise security includes audit logging.",
+            evidence_ids=["copilot-docs"],
+        )
+    )
+    state.citation_support = [
+        {
+            "claim": "Pricing and packaging differ",
+            "support_status": "supported",
+            "evidence_ids": ["cursor-pricing", "copilot-docs"],
+        },
+        {
+            "claim": "Unsupported security claim",
+            "support_status": "unsupported",
+            "evidence_ids": ["copilot-docs"],
+        },
+    ]
+    calls: list[dict] = []
+
+    def fake_get_llm_client(config=None, *, purpose="default", messages=None):
+        calls.append({"config": config, "purpose": purpose, "messages": messages})
+        return RecordingRouterClient(
+            '{"markdown":"# InsightGraph Research Report\n\n## Key Findings\n\n'
+            'Pricing differs [1]."}'
+        )
+
+    monkeypatch.setattr("insight_graph.agents.reporter.get_llm_client", fake_get_llm_client)
+
+    write_report(state)
+
+    prompt = calls[0]["messages"][-1].content
+    assert "Pricing and packaging differ" in prompt
+    assert "Unsupported security claim" not in prompt
+
+
+def test_llm_reporter_falls_back_when_output_mentions_unapproved_claim(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    state = make_reporter_state()
+    state.findings.append(
+        Finding(
+            title="Unsupported security claim",
+            summary="Copilot enterprise security includes audit logging.",
+            evidence_ids=["copilot-docs"],
+        )
+    )
+    state.citation_support = [
+        {
+            "claim": "Pricing and packaging differ",
+            "support_status": "supported",
+            "evidence_ids": ["cursor-pricing", "copilot-docs"],
+        },
+        {
+            "claim": "Unsupported security claim",
+            "support_status": "partial",
+            "evidence_ids": ["copilot-docs"],
+        },
+    ]
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\n\n## Key Findings\n\n'
+            'Unsupported security claim appears here [2]."}'
+        )
+    )
+
+    updated = write_report(state, llm_client=client)
+
+    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
+    assert "Unsupported security claim" not in main_body
+    assert "Pricing and packaging differ" in main_body
 
 
 def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None:
@@ -2459,7 +2662,8 @@ def test_write_report_falls_back_for_invalid_llm_output(monkeypatch, content) ->
     updated = write_report(make_reporter_state(), llm_client=FakeLLMClient(content=content))
 
     assert updated.report_markdown is not None
-    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert "Pricing and packaging differ" in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
     assert (
         "Cursor pricing and Copilot documentation show different packaging signals"
         in updated.report_markdown
@@ -2475,7 +2679,8 @@ def test_write_report_falls_back_without_api_key(monkeypatch) -> None:
     updated = write_report(make_reporter_state())
 
     assert updated.report_markdown is not None
-    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert "Pricing and packaging differ" in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
     assert "## References" in updated.report_markdown
 
 
@@ -2487,7 +2692,8 @@ def test_write_report_falls_back_for_llm_error(monkeypatch) -> None:
     )
 
     assert updated.report_markdown is not None
-    assert "### Pricing and packaging differ" in updated.report_markdown
+    assert "Pricing and packaging differ" in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
     assert "## References" in updated.report_markdown
 
 
@@ -2564,7 +2770,8 @@ def test_reporter_defaults_to_deterministic_when_env_is_clear(monkeypatch) -> No
 
     assert updated.report_markdown is not None
     assert "# InsightGraph Research Report" in updated.report_markdown
-    assert "### Verified finding" in updated.report_markdown
+    assert "Verified finding" in updated.report_markdown
+    assert "## Executive Summary" in updated.report_markdown
     assert "[1] Verified Source. https://example.com/verified" in updated.report_markdown
 
 
