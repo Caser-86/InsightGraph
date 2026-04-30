@@ -416,6 +416,217 @@ def test_document_reader_returns_verified_docs_evidence(tmp_path, monkeypatch) -
     assert evidence[0].section_heading == "Market Report"
 
 
+def test_search_document_plain_path_returns_docs_evidence_like_document_reader(
+    tmp_path, monkeypatch
+) -> None:
+    search_document = importlib.import_module(
+        "insight_graph.tools.search_document"
+    ).search_document
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    document = docs_dir / "Market Report.md"
+    document.write_text(
+        "# Market Report\n\nCursor   launches features.\nGitHub Copilot updates docs.",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    evidence = search_document("docs/Market Report.md", "s1")
+
+    assert len(evidence) == 1
+    assert evidence[0].id == document_id_for("docs/Market Report.md")
+    assert evidence[0].subtask_id == "s1"
+    assert evidence[0].title == "Market Report.md"
+    assert evidence[0].source_url == document.resolve().as_uri()
+    assert evidence[0].snippet == (
+        "# Market Report Cursor launches features. GitHub Copilot updates docs."
+    )
+    assert evidence[0].source_type == "docs"
+    assert evidence[0].verified is True
+    assert evidence[0].chunk_index == 1
+    assert evidence[0].section_heading == "Market Report"
+
+
+def test_search_document_json_query_ranks_matching_chunks(tmp_path, monkeypatch) -> None:
+    search_document = importlib.import_module(
+        "insight_graph.tools.search_document"
+    ).search_document
+    document = tmp_path / "ranked.md"
+    chunks = [
+        "alpha " * 100,
+        "beta " * 100,
+        "enterprise pricing " * 40,
+        "gamma " * 100,
+    ]
+    document.write_text(" ".join(chunks), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = search_document(
+        '{"path":"ranked.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) >= 1
+    assert "enterprise pricing" in evidence[0].snippet
+    assert evidence[0].chunk_index in {3, 4}
+
+
+def test_search_document_limit_caps_returned_evidence(tmp_path, monkeypatch) -> None:
+    search_document = importlib.import_module(
+        "insight_graph.tools.search_document"
+    ).search_document
+    document = tmp_path / "long.md"
+    document.write_text("alpha " * 500, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    evidence = search_document('{"path":"long.md","limit":2}', "s1")
+
+    assert len(evidence) == 2
+    assert [item.chunk_index for item in evidence] == [1, 2]
+
+
+def test_search_document_page_filters_by_document_page(tmp_path, monkeypatch) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    document = tmp_path / "pages.md"
+    document.write_text("page text", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        search_document_module,
+        "_read_document_chunks",
+        lambda _path: [
+            document_reader_module.DocumentChunk("page one details", 0, page=1),
+            document_reader_module.DocumentChunk("page two details", 1, page=2),
+        ],
+    )
+
+    evidence = search_document_module.search_document(
+        '{"path":"pages.md","page":2}',
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].snippet == "page two details"
+    assert evidence[0].document_page == 2
+    assert evidence[0].chunk_index == 2
+
+
+def test_search_document_section_filters_case_insensitively(tmp_path, monkeypatch) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    document = tmp_path / "sections.md"
+    document.write_text("section text", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        search_document_module,
+        "_read_document_chunks",
+        lambda _path: [
+            document_reader_module.DocumentChunk(
+                "overview details", 0, section_heading="Executive Summary"
+            ),
+            document_reader_module.DocumentChunk(
+                "pricing details", 1, section_heading="Pricing Strategy"
+            ),
+        ],
+    )
+
+    evidence = search_document_module.search_document(
+        '{"path":"sections.md","section":"pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].snippet == "pricing details"
+    assert evidence[0].section_heading == "Pricing Strategy"
+
+
+def test_search_document_vector_mode_overrides_env_for_one_call(
+    tmp_path, monkeypatch
+) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document_reader_module = importlib.import_module("insight_graph.tools.document_reader")
+    document_index_module = importlib.import_module(
+        "insight_graph.report_quality.document_index"
+    )
+    document = tmp_path / "ranked.md"
+    document.write_text("ranked text", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_RETRIEVAL", "deterministic")
+    monkeypatch.setattr(
+        search_document_module,
+        "_read_document_chunks",
+        lambda _path: [
+            document_reader_module.DocumentChunk("deterministic first", 0),
+            document_reader_module.DocumentChunk("vector first", 1),
+        ],
+    )
+
+    def fake_rank(chunks, query):
+        assert query == "anything"
+        assert document_index_module.get_document_retrieval_mode() == "vector"
+        return [chunks[1], chunks[0]]
+
+    monkeypatch.setattr(search_document_module, "rank_document_chunks", fake_rank)
+
+    evidence = search_document_module.search_document(
+        '{"path":"ranked.md","query":"anything","mode":"vector"}',
+        "s1",
+    )
+
+    assert evidence[0].snippet == "vector first"
+    assert evidence[0].chunk_index == 2
+    assert document_index_module.get_document_retrieval_mode() == "deterministic"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "missing.md",
+        ".",
+        "unsupported.docx",
+        "../outside.md",
+        '{"query":"pricing"}',
+        '{"path":"","query":"pricing"}',
+        '{"path":123,"query":"pricing"}',
+    ],
+)
+def test_search_document_rejects_invalid_paths(query, tmp_path, monkeypatch) -> None:
+    search_document = importlib.import_module(
+        "insight_graph.tools.search_document"
+    ).search_document
+    (tmp_path / "unsupported.docx").write_text("docx text", encoding="utf-8")
+    (tmp_path.parent / "outside.md").write_text("outside", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert search_document(query, "s1") == []
+
+
+def test_search_document_reuses_persisted_index_when_configured(
+    tmp_path, monkeypatch
+) -> None:
+    search_document_module = importlib.import_module("insight_graph.tools.search_document")
+    document = tmp_path / "indexed.md"
+    document.write_text("alpha beta enterprise pricing details", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    assert search_document_module.search_document("indexed.md", "s1")
+
+    def fail_read(_path):
+        raise OSError("text should come from persisted chunks")
+
+    monkeypatch.setattr(search_document_module, "_read_document_chunks", fail_read)
+
+    evidence = search_document_module.search_document(
+        '{"path":"indexed.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].snippet == "alpha beta enterprise pricing details"
+
+
 def test_document_reader_reads_html_visible_text(tmp_path, monkeypatch) -> None:
     document = tmp_path / "market.html"
     document.write_text(
