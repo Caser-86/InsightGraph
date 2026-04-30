@@ -159,7 +159,7 @@ def _has_document_index_schema(index_path: Path) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
     except json.JSONDecodeError:
-        return True
+        return False
     return (
         isinstance(payload, dict)
         and payload.get("version") == 1

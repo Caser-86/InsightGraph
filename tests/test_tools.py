@@ -713,23 +713,21 @@ def test_document_reader_rebuilds_stale_index_entry(tmp_path, monkeypatch) -> No
     assert chunks[0]["text"] == "new beta details"
 
 
-def test_document_reader_falls_back_and_rewrites_corrupt_index_json(
+def test_document_reader_falls_back_without_rewriting_corrupt_index_json(
     tmp_path, monkeypatch
 ) -> None:
     document = tmp_path / "corrupt.md"
     document.write_text("corrupt index fallback text", encoding="utf-8")
     index_path = tmp_path / "documents.json"
-    index_path.write_text("{not-json", encoding="utf-8")
+    corrupt_text = "{not-json"
+    index_path.write_text(corrupt_text, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
 
     evidence = document_reader("corrupt.md", "s1")
 
-    payload = json.loads(index_path.read_text(encoding="utf-8"))
     assert evidence[0].snippet == "corrupt index fallback text"
-    assert payload["documents"][str(document.resolve())]["chunks"][0]["text"] == (
-        "corrupt index fallback text"
-    )
+    assert index_path.read_text(encoding="utf-8") == corrupt_text
 
 
 def test_document_reader_ignores_document_index_when_unset(
@@ -785,6 +783,23 @@ def test_document_reader_does_not_clobber_existing_non_index_json(
 
     assert evidence[0].snippet == "source document text"
     assert index_path.read_text(encoding="utf-8") == index_text
+
+
+def test_document_reader_does_not_clobber_existing_invalid_non_index_file(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "source.md"
+    document.write_text("source document text", encoding="utf-8")
+    index_path = tmp_path / "not-json.txt"
+    invalid_text = "not json"
+    index_path.write_text(invalid_text, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    evidence = document_reader("source.md", "s1")
+
+    assert evidence[0].snippet == "source document text"
+    assert index_path.read_text(encoding="utf-8") == invalid_text
 
 
 def test_document_reader_normalizes_page_offsets_before_chunk_assignment() -> None:
