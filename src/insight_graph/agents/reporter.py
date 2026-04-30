@@ -39,6 +39,14 @@ SMART_PUNCTUATION_TRANSLATION = str.maketrans(
     }
 )
 REPORTER_VALIDATE_URLS_ENV = "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"
+REQUIRED_REPORT_SECTIONS = (
+    "Executive Summary",
+    "Background",
+    "Analysis",
+    "Competitive Landscape",
+    "Risks",
+    "Outlook",
+)
 
 
 class ReporterFallbackError(ValueError):
@@ -114,11 +122,13 @@ def _build_deterministic_body(
     if state.grounded_claims:
         return _build_grounded_claims_body(state, reference_numbers, supported_claims)
     if state.section_research_plan:
-        return _build_planned_section_body(
-            state,
-            verified_evidence,
-            reference_numbers,
-            supported_claims,
+        return _complete_required_report_sections(
+            _build_planned_section_body(
+                state,
+                verified_evidence,
+                reference_numbers,
+                supported_claims,
+            )
         )
     return _build_key_findings_body(state, reference_numbers, supported_claims)
 
@@ -142,6 +152,10 @@ def _build_standard_report_body(
         "## Background",
         "",
         "Evidence scope is limited to verified references collected for this request.",
+        "",
+        "## Key Findings",
+        "",
+        *analysis,
         "",
         "## Analysis",
         "",
@@ -304,6 +318,84 @@ def _build_planned_section_body(
     return lines
 
 
+def _complete_required_report_sections(
+    lines: list[str],
+    *,
+    require_generic_analysis: bool = False,
+) -> list[str]:
+    body = "\n".join(lines)
+    existing_titles = _report_section_titles(body)
+    title_lines, lines = _pop_report_title(lines)
+    executive_summary, remaining_lines = _pop_section(lines, "Executive Summary")
+    output: list[str] = [*title_lines]
+
+    def append_missing(title: str) -> None:
+        if title in existing_titles:
+            return
+        output.extend([f"## {title}", "", "Evidence is insufficient for this section.", ""])
+
+    if executive_summary:
+        output.extend(executive_summary)
+    else:
+        append_missing("Executive Summary")
+    append_missing("Background")
+    if require_generic_analysis:
+        append_missing("Analysis")
+    competitive_landscape, remaining_lines = _pop_section(
+        remaining_lines,
+        "Competitive Landscape",
+    )
+    risks, remaining_lines = _pop_section(remaining_lines, "Risks")
+    outlook, remaining_lines = _pop_section(remaining_lines, "Outlook")
+    output.extend(remaining_lines)
+    for title, existing_section in (
+        ("Competitive Landscape", competitive_landscape),
+        ("Risks", risks),
+        ("Outlook", outlook),
+    ):
+        if existing_section:
+            output.extend(existing_section)
+            continue
+        append_missing(title)
+    return output
+
+
+def _pop_report_title(lines: list[str]) -> tuple[list[str], list[str]]:
+    if not lines or not lines[0].startswith("# ") or lines[0].startswith("## "):
+        return [], lines
+
+    end = 1
+    while end < len(lines) and not lines[end].startswith("## "):
+        end += 1
+    return lines[:end], lines[end:]
+
+
+def _pop_section(lines: list[str], title: str) -> tuple[list[str], list[str]]:
+    heading = f"## {title}"
+    start = next((index for index, line in enumerate(lines) if line.strip() == heading), None)
+    if start is None:
+        return [], lines
+    end = next(
+        (
+            index
+            for index, line in enumerate(lines[start + 1 :], start=start + 1)
+            if line.startswith("## ") and not line.startswith("### ")
+        ),
+        len(lines),
+    )
+    return lines[start:end], [*lines[:start], *lines[end:]]
+
+
+def _report_section_titles(markdown: str) -> set[str]:
+    titles: set[str] = set()
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("## ") or stripped.startswith("### "):
+            continue
+        titles.add(stripped.removeprefix("## ").strip(" #"))
+    return titles
+
+
 def _assign_findings_to_sections(
     findings: list[Finding],
     evidence_sections: dict[str, str | None],
@@ -426,6 +518,7 @@ def _write_report_with_llm(
             matrix_lines,
             set(reference_numbers.values()),
         )
+        body = _complete_required_report_body(body)
         _validate_llm_report_body(body, set(reference_numbers.values()))
     except ReporterFallbackError as exc:
         state.llm_call_log.append(
@@ -621,6 +714,14 @@ def _validate_llm_report_body(markdown: str, allowed_references: set[int]) -> No
         raise ReporterFallbackError("LLM report must include at least one citation")
     if not set(citations).issubset(allowed_references):
         raise ReporterFallbackError("LLM report cites unknown references")
+
+
+def _complete_required_report_body(markdown: str) -> str:
+    lines = _complete_required_report_sections(
+        markdown.splitlines(),
+        require_generic_analysis=True,
+    )
+    return "\n".join(lines).strip()
 
 
 def _key_findings_section(markdown: str) -> str:

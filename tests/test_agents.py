@@ -2000,6 +2000,32 @@ def test_reporter_uses_section_research_plan_for_deterministic_body(monkeypatch)
     assert "Cursor pricing evidence shows named paid tiers. [1]" in updated.report_markdown
 
 
+def test_reporter_completes_required_sections_when_plan_is_partial(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    state = make_reporter_state()
+    state.section_research_plan = [
+        {"section_id": "executive-summary", "title": "Executive Summary"},
+        {"section_id": "product-analysis", "title": "Product Analysis"},
+    ]
+
+    updated = write_report(state)
+
+    expected_order = [
+        "## Executive Summary",
+        "## Background",
+        "## Product Analysis",
+        "## Competitive Landscape",
+        "## Risks",
+        "## Outlook",
+        "## Citation Support",
+        "## References",
+    ]
+    for heading in expected_order:
+        assert heading in updated.report_markdown
+    positions = [updated.report_markdown.index(heading) for heading in expected_order]
+    assert positions == sorted(positions)
+
+
 def test_reporter_omits_competitive_matrix_without_citable_rows() -> None:
     state = make_reporter_state()
     state.competitive_matrix = [
@@ -2034,6 +2060,34 @@ def test_llm_reporter_inserts_competitive_matrix_when_missing(monkeypatch) -> No
         "| Cursor | Official product positioning signal | "
         "Official/documented source coverage | [1] |"
     ) in updated.report_markdown
+
+
+def test_llm_reporter_completes_required_sections(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "llm")
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph Research Report\\n\\n## Key Findings\\n\\n'
+            'Cursor differs from Copilot [1]."}'
+        )
+    )
+
+    updated = write_report(make_reporter_state(), llm_client=client)
+
+    expected_order = [
+        "## Executive Summary",
+        "## Background",
+        "## Analysis",
+        "## Competitive Landscape",
+        "## Risks",
+        "## Outlook",
+        "## Citation Support",
+        "## References",
+    ]
+    for heading in expected_order:
+        assert heading in updated.report_markdown
+    positions = [updated.report_markdown.index(heading) for heading in expected_order]
+    assert positions == sorted(positions)
 
 
 def test_llm_reporter_creates_client_with_routing_context(monkeypatch) -> None:
