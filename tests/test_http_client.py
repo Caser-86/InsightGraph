@@ -5,12 +5,29 @@ import pytest
 from insight_graph.tools.http_client import FetchError, fetch_text
 
 
+@pytest.fixture(autouse=True)
+def _avoid_live_dns(monkeypatch):
+    monkeypatch.setattr(
+        "insight_graph.tools.http_client._resolve_host_ips",
+        lambda host, port: ["93.184.216.34"],
+        raising=False,
+    )
+
+
 class FakeResponse:
     status = 200
 
-    def __init__(self, body: bytes, content_type: str = "text/html; charset=utf-8") -> None:
+    def __init__(
+        self,
+        body: bytes,
+        content_type: str = "text/html; charset=utf-8",
+        *,
+        chunk_size: int | None = None,
+    ) -> None:
         self._body = body
         self.headers = {"Content-Type": content_type}
+        self._chunk_size = chunk_size
+        self._offset = 0
 
     def __enter__(self):
         return self
@@ -18,8 +35,15 @@ class FakeResponse:
     def __exit__(self, exc_type, exc, tb) -> None:
         return None
 
-    def read(self) -> bytes:
-        return self._body
+    def read(self, size: int | None = None) -> bytes:
+        if self._chunk_size is None and size is None:
+            return self._body
+        chunk_size = self._chunk_size if self._chunk_size is not None else size
+        if chunk_size is None:
+            return self._body
+        chunk = self._body[self._offset : self._offset + chunk_size]
+        self._offset += len(chunk)
+        return chunk
 
 
 def test_fetch_text_rejects_unsupported_scheme() -> None:
@@ -30,6 +54,38 @@ def test_fetch_text_rejects_unsupported_scheme() -> None:
 def test_fetch_text_rejects_missing_host() -> None:
     with pytest.raises(FetchError, match="URL host is required"):
         fetch_text("https:///path")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",
+        "http://localhost/admin",
+        "http://169.254.169.254/latest/meta-data",
+        "http://10.0.0.1/internal",
+        "http://172.16.0.1/internal",
+        "http://192.168.1.1/internal",
+        "http://[::1]/internal",
+    ],
+)
+def test_fetch_text_rejects_private_or_local_hosts(url) -> None:
+    with pytest.raises(FetchError, match="URL host is not allowed"):
+        fetch_text(url)
+
+
+def test_fetch_text_rejects_hostname_that_resolves_to_private_ip(monkeypatch) -> None:
+    def fail_if_called(request, timeout):
+        raise AssertionError("network request should not run")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fail_if_called)
+    monkeypatch.setattr(
+        "insight_graph.tools.http_client._resolve_host_ips",
+        lambda host, port: ["127.0.0.1"],
+        raising=False,
+    )
+
+    with pytest.raises(FetchError, match="URL host is not allowed"):
+        fetch_text("https://example.com/private")
 
 
 def test_fetch_text_decodes_response(monkeypatch) -> None:
@@ -60,7 +116,7 @@ def test_fetch_text_rejects_empty_body(monkeypatch) -> None:
 
 def test_fetch_text_rejects_response_over_max_bytes(monkeypatch) -> None:
     def fake_urlopen(request, timeout):
-        return FakeResponse(b"abcdef")
+        return FakeResponse(b"abcdef", chunk_size=2)
 
     monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
 
@@ -77,7 +133,7 @@ def test_fetch_text_rejects_content_length_over_max_bytes_before_reading(
             self.headers["Content-Length"] = "6"
             self.read_called = False
 
-        def read(self) -> bytes:
+        def read(self, size: int | None = None) -> bytes:
             self.read_called = True
             raise AssertionError("body should not be read")
 
@@ -103,6 +159,30 @@ def test_fetch_text_rejects_non_success_status(monkeypatch) -> None:
 
     with pytest.raises(FetchError, match="Unexpected HTTP status: 500"):
         fetch_text("https://example.com/server-error")
+
+
+def test_fetch_text_rejects_disallowed_content_type(monkeypatch) -> None:
+    def fake_urlopen(request, timeout):
+        return FakeResponse(b"binary", "application/octet-stream")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
+
+    with pytest.raises(FetchError, match="Unsupported content type"):
+        fetch_text("https://example.com/archive.bin")
+
+
+def test_fetch_text_revalidates_redirect_target(monkeypatch) -> None:
+    class RedirectResponse(FakeResponse):
+        def geturl(self) -> str:
+            return "http://127.0.0.1/admin"
+
+    def fake_urlopen(request, timeout):
+        return RedirectResponse(b"secret")
+
+    monkeypatch.setattr("insight_graph.tools.http_client.urlopen", fake_urlopen)
+
+    with pytest.raises(FetchError, match="URL host is not allowed"):
+        fetch_text("https://example.com/redirect")
 
 
 def test_fetch_text_wraps_http_error(monkeypatch) -> None:
