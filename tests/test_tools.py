@@ -409,6 +409,71 @@ def test_sec_filings_accepts_company_name_alias(monkeypatch) -> None:
     assert observed["url"] == "https://data.sec.gov/submissions/CIK0000320193.json"
 
 
+def test_sec_filings_resolves_expanded_company_ticker_without_live_lookup(
+    monkeypatch,
+) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del headers, timeout
+        observed["url"] = url
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["10-K"],
+                    "accessionNumber": ["0001108524-24-000010"],
+                    "filingDate": ["2024-03-06"],
+                    "primaryDocument": ["crm-20240131.htm"],
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = sec_filings("Analyze Salesforce annual filing risks", "s1")
+
+    assert [item.id for item in evidence] == ["sec-crm-10-k-2024-03-06"]
+    assert evidence[0].title == "CRM 10-K filing 2024-03-06"
+    assert observed["url"] == "https://data.sec.gov/submissions/CIK0001108524.json"
+
+
+def test_sec_financials_resolves_expanded_ticker_alias(monkeypatch) -> None:
+    sec_module = importlib.import_module("insight_graph.tools.sec_filings")
+    observed: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del headers, timeout
+        observed["url"] = url
+        return {
+            "facts": {
+                "us-gaap": {
+                    "Revenues": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "fy": 2024,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2024-07-30",
+                                    "val": 52961000000,
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+    monkeypatch.setattr(sec_module, "fetch_sec_json", fake_fetch_json)
+
+    evidence = sec_financials("Oracle ORCL revenue", "s1")
+
+    assert evidence[0].id == "sec-financials-orcl-2024-fy"
+    assert evidence[0].title == "ORCL SEC financial facts 2024 FY"
+    assert observed["url"] == "https://data.sec.gov/api/xbrl/companyfacts/CIK0001341439.json"
+
+
 def test_sec_filings_returns_empty_for_unknown_ticker() -> None:
     assert sec_filings("not-a-known-ticker", "s1") == []
 

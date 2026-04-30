@@ -27,3 +27,12 @@ def test_resolve_entities_extracts_unknown_capitalized_entities() -> None:
     assert [entity.id for entity in entities] == ["newagent", "anothertool"]
     assert all(entity.entity_type == "unknown" for entity in entities)
     assert entities[0].official_domains == ()
+
+
+def test_resolve_entities_detects_public_company_aliases_for_sec_targets() -> None:
+    entities = resolve_entities("Compare Salesforce, Oracle, and Adobe SEC filings")
+
+    assert [entity.id for entity in entities] == ["salesforce", "oracle", "adobe"]
+    assert [entity.entity_type for entity in entities] == ["company", "company", "company"]
+    assert entities[0].aliases == ("Salesforce", "Salesforce Inc", "CRM")
+    assert "CRM" in entities[0].query_terms
