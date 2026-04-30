@@ -267,8 +267,12 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
     observed_embeddings: list[list[float]] = []
 
     class FakeMemoryStore:
-        def search(self, embedding, *, limit=5):
+        def search(self, embedding, *, limit=5, metadata_filter=None):
             assert limit == 3
+            assert metadata_filter == {
+                "embedding_provider": "deterministic",
+                "embedding_dimensions": 64,
+            }
             observed_embeddings.append(embedding)
             return [
                 planner_module.ResearchMemoryRecord(

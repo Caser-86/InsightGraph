@@ -12,7 +12,13 @@ class ResearchMemoryStore(Protocol):
 
     def add_memory(self, record: "ResearchMemoryRecord") -> None: ...
 
-    def search(self, embedding: list[float], *, limit: int = 5) -> list["ResearchMemoryRecord"]: ...
+    def search(
+        self,
+        embedding: list[float],
+        *,
+        limit: int = 5,
+        metadata_filter: dict[str, object] | None = None,
+    ) -> list["ResearchMemoryRecord"]: ...
 
     def delete_memory(self, memory_id: str) -> bool: ...
 
@@ -37,10 +43,17 @@ class InMemoryResearchMemoryStore:
     def add_memory(self, record: ResearchMemoryRecord) -> None:
         self._records[record.memory_id] = record
 
-    def search(self, embedding: list[float], *, limit: int = 5) -> list[ResearchMemoryRecord]:
+    def search(
+        self,
+        embedding: list[float],
+        *,
+        limit: int = 5,
+        metadata_filter: dict[str, object] | None = None,
+    ) -> list[ResearchMemoryRecord]:
         scored = [
             (_cosine_similarity(record.embedding, embedding), record.memory_id, record)
             for record in self._records.values()
+            if _metadata_matches(record.metadata, metadata_filter)
         ]
         scored.sort(reverse=True)
         return [record for score, _, record in scored[:limit] if score > 0]
@@ -102,18 +115,26 @@ class PgVectorResearchMemoryStore:
             )
         connection.commit()
 
-    def search(self, embedding: list[float], *, limit: int = 5) -> list[ResearchMemoryRecord]:
+    def search(
+        self,
+        embedding: list[float],
+        *,
+        limit: int = 5,
+        metadata_filter: dict[str, object] | None = None,
+    ) -> list[ResearchMemoryRecord]:
         connection = self._connection_factory()
+        query = _vector_literal(embedding)
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT memory_id, text, embedding, metadata
                 FROM insight_graph_memories
                 WHERE vector_dims(embedding) = vector_dims(%s::vector)
+                    AND metadata @> %s::jsonb
                 ORDER BY embedding <-> %s::vector
                 LIMIT %s
                 """,
-                (_vector_literal(embedding), _vector_literal(embedding), limit),
+                (query, metadata_filter or {}, query, limit),
             )
             rows = cursor.fetchall()
         return [
@@ -167,6 +188,15 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if left_norm == 0 or right_norm == 0:
         return 0.0
     return dot / (left_norm * right_norm)
+
+
+def _metadata_matches(
+    metadata: dict[str, Any],
+    metadata_filter: dict[str, object] | None,
+) -> bool:
+    if not metadata_filter:
+        return True
+    return all(metadata.get(key) == value for key, value in metadata_filter.items())
 
 
 def _vector_literal(values: list[float]) -> str:

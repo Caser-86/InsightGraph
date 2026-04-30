@@ -41,7 +41,11 @@ def test_build_memory_record_generates_embedding_and_metadata() -> None:
     assert isinstance(record, ResearchMemoryRecord)
     assert record.memory_id == "m1"
     assert record.text == "Grounded finding about pricing."
-    assert record.metadata == {"run_id": "run-1", "embedding_provider": "deterministic"}
+    assert record.metadata == {
+        "run_id": "run-1",
+        "embedding_provider": "deterministic",
+        "embedding_dimensions": 8,
+    }
     assert len(record.embedding) == 8
     assert record.embedding == deterministic_text_embedding(
         "Grounded finding about pricing.",
@@ -69,7 +73,12 @@ def test_build_memory_record_uses_configured_embedding_provider(monkeypatch) -> 
     )
 
     assert record.embedding == [0.1, 0.2, 0.3]
-    assert record.metadata == {"run_id": "run-2", "embedding_provider": "local_http"}
+    assert record.metadata == {
+        "run_id": "run-2",
+        "embedding_provider": "local_http",
+        "embedding_model": "local-model",
+        "embedding_dimensions": 3,
+    }
     assert calls == [
         (
             "Grounded finding about retention.",
