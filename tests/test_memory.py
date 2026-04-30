@@ -119,7 +119,7 @@ def test_pgvector_memory_store_emits_schema_insert_and_search_sql() -> None:
     assert any("vector_dims(embedding) = vector_dims(%s::vector)" in sql for sql in statements)
     assert any("metadata @> %s::jsonb" in sql for sql in statements)
     assert any("embedding <-> %s::vector" in sql for sql in statements)
-    assert connection.cursor_obj.statements[-1][1] == ("[0.1,0.2]", {}, "[0.1,0.2]", 3)
+    assert connection.cursor_obj.statements[-1][1] == ("[0.1,0.2]", "{}", "[0.1,0.2]", 3)
     assert connection.commits == 2
 
 

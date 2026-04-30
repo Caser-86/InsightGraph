@@ -1,3 +1,4 @@
+import json
 import math
 import os
 from collections.abc import Callable
@@ -134,7 +135,7 @@ class PgVectorResearchMemoryStore:
                 ORDER BY embedding <-> %s::vector
                 LIMIT %s
                 """,
-                (query, metadata_filter or {}, query, limit),
+                (query, json.dumps(metadata_filter or {}), query, limit),
             )
             rows = cursor.fetchall()
         return [
