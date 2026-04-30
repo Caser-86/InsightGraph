@@ -169,6 +169,8 @@ def _build_query_strategies(
             entity_aliases,
             official_domains,
         )
+    if collection_tools == ["mock_search"]:
+        return []
     for section in section_plan:
         section_id = str(section.get("section_id", "")).strip()
         source_types = _section_source_types(section)

@@ -62,23 +62,36 @@ def execute_subtasks(state: GraphState) -> GraphState:
     stop_reason = "max_rounds"
 
     for round_index in range(1, max_rounds + 1):
+        round_start_count = len(collected)
         section_focus = _section_focus_for_round(state, round_index)
-        for subtask in state.subtasks:
-            for tool_name in subtask.suggested_tools:
+        work_items_for_round = _collection_work_items(state, round_index)
+        for subtask, strategy in work_items_for_round:
+            if strategy is not None:
+                work_items = [_strategy_tool_query(strategy)]
+            else:
+                work_items = [
+                    {
+                        "tool_name": tool_name,
+                        "query": _collection_query(state, tool_name, section_focus),
+                        "section_id": _focused_section_id(section_focus),
+                        "strategy_id": None,
+                    }
+                    for tool_name in subtask.suggested_tools
+                ]
+            for work_item in work_items:
                 if len(records) >= budgets.max_tool_calls:
                     stop_reason = "tool_budget_exhausted"
                     break
-                query = _collection_query(state, tool_name, section_focus)
-                section_id = _focused_section_id(section_focus)
                 kept_results, new_records = _run_tool(
                     registry,
-                    tool_name,
-                    query,
+                    str(work_item["tool_name"]),
+                    str(work_item["query"]),
                     subtask,
                     filter_enabled,
                     state.llm_call_log,
                     round_index=round_index,
-                    section_id=section_id,
+                    section_id=_optional_string(work_item.get("section_id")),
+                    strategy_id=_optional_string(work_item.get("strategy_id")),
                 )
                 collected.extend(kept_results)
                 records.extend(new_records)
@@ -88,12 +101,13 @@ def execute_subtasks(state: GraphState) -> GraphState:
             state = _finalize_collected_evidence(state, collected, records)
             state = _maybe_compress_conversation(state)
             round_summaries.append(
-                {
-                    "round": round_index,
-                    "new_evidence_count": 0,
-                    "total_evidence_count": len(state.evidence_pool),
-                    "sufficient": _all_sections_sufficient(state.section_collection_status),
-                }
+                _round_summary(
+                    round_index,
+                    new_evidence_count=0,
+                    state=state,
+                    round_evidence=collected[round_start_count:],
+                    query_strategy_count=_query_strategy_count(work_items_for_round),
+                )
             )
             break
 
@@ -104,15 +118,25 @@ def execute_subtasks(state: GraphState) -> GraphState:
         previous_evidence_keys = current_evidence_keys
         sufficient = _all_sections_sufficient(state.section_collection_status)
         round_summaries.append(
-            {
-                "round": round_index,
-                "new_evidence_count": new_evidence_count,
-                "total_evidence_count": len(state.evidence_pool),
-                "sufficient": sufficient,
-            }
+            _round_summary(
+                round_index,
+                new_evidence_count=new_evidence_count,
+                state=state,
+                round_evidence=collected[round_start_count:],
+                query_strategy_count=_query_strategy_count(work_items_for_round),
+            )
         )
         if sufficient:
             stop_reason = "sufficient"
+            break
+        if _all_round_fetches_failed(collected[round_start_count:]):
+            stop_reason = "network_failed"
+            break
+        if _has_query_strategies_for_round(state, round_index) and not _has_later_query_strategies(
+            state,
+            round_index,
+        ):
+            stop_reason = _strategy_exhaustion_stop_reason(state)
             break
         if not state.section_research_plan and max_rounds == 1:
             stop_reason = "no_section_plan"
@@ -130,6 +154,54 @@ def _maybe_compress_conversation(state: GraphState) -> GraphState:
     if _conversation_compression_enabled():
         state.conversation_summary = compress_conversation(state)
     return state
+
+
+def _round_summary(
+    round_index: int,
+    *,
+    new_evidence_count: int,
+    state: GraphState,
+    round_evidence: list[Evidence],
+    query_strategy_count: int,
+) -> dict[str, object]:
+    return {
+        "round": round_index,
+        "new_evidence_count": new_evidence_count,
+        "total_evidence_count": len(state.evidence_pool),
+        "sufficient": _all_sections_sufficient(state.section_collection_status),
+        "query_strategy_count": query_strategy_count,
+        "failed_fetch_count": _fetch_status_count(round_evidence, "failed"),
+        "empty_fetch_count": _fetch_status_count(round_evidence, "empty"),
+        "verified_evidence_count": sum(1 for item in round_evidence if item.verified),
+    }
+
+
+def _query_strategy_count(
+    work_items: list[tuple[Subtask, dict[str, object] | None]],
+) -> int:
+    return sum(1 for _, strategy in work_items if strategy is not None)
+
+
+def _fetch_status_count(evidence: list[Evidence], status: str) -> int:
+    return sum(1 for item in evidence if item.fetch_status == status)
+
+
+def _all_round_fetches_failed(evidence: list[Evidence]) -> bool:
+    return bool(evidence) and all(item.fetch_status == "failed" for item in evidence)
+
+
+def _has_query_strategies_for_round(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) == round_index for strategy in state.query_strategies)
+
+
+def _has_later_query_strategies(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) > round_index for strategy in state.query_strategies)
+
+
+def _strategy_exhaustion_stop_reason(state: GraphState) -> str:
+    if state.evidence_pool and not any(item.verified for item in state.evidence_pool):
+        return "no_verified_evidence"
+    return "query_strategy_exhausted"
 
 
 def _finalize_collected_evidence(
@@ -183,6 +255,39 @@ def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
         return []
     existing = state.global_evidence_pool or state.evidence_pool
     return [Evidence.model_validate(item) for item in existing]
+
+
+def _collection_work_items(
+    state: GraphState,
+    round_index: int,
+) -> list[tuple[Subtask, dict[str, object] | None]]:
+    collect_subtasks = [task for task in state.subtasks if task.id == "collect"]
+    subtask = (
+        collect_subtasks[0]
+        if collect_subtasks
+        else Subtask(id="collect", description="Collect")
+    )
+    strategies = [
+        strategy
+        for strategy in state.query_strategies
+        if int(strategy.get("round", 1)) == round_index
+    ]
+    if strategies:
+        return [(subtask, strategy) for strategy in strategies]
+    return [(task, None) for task in state.subtasks]
+
+
+def _strategy_tool_query(strategy: dict[str, object]) -> dict[str, object]:
+    return {
+        "tool_name": strategy.get("tool_name", ""),
+        "query": strategy.get("query", ""),
+        "section_id": strategy.get("section_id"),
+        "strategy_id": strategy.get("strategy_id"),
+    }
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _collection_query(
@@ -399,6 +504,7 @@ def _run_tool(
     *,
     round_index: int = 1,
     section_id: str | None = None,
+    strategy_id: str | None = None,
 ) -> tuple[list[Evidence], list[ToolCallRecord]]:
     try:
         results = registry.run(tool_name, query, subtask.id)
@@ -411,6 +517,7 @@ def _run_tool(
             error=str(exc),
             round_index=round_index,
             section_id=section_id,
+            strategy_id=strategy_id,
         )
         return [], [failed_record]
 
@@ -423,6 +530,7 @@ def _run_tool(
             error=WEB_SEARCH_EMPTY_ERROR,
             round_index=round_index,
             section_id=section_id,
+            strategy_id=strategy_id,
         )
         return [], [failed_record]
 
@@ -439,6 +547,7 @@ def _run_tool(
             filtered_count=filtered_count + cap_filtered_count,
             round_index=round_index,
             section_id=section_id,
+            strategy_id=strategy_id,
         )
     ]
 
