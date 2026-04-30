@@ -108,17 +108,136 @@ def _build_deterministic_body(
     verified_evidence: list[Evidence],
     reference_numbers: dict[str, int],
 ) -> list[str]:
+    supported_claims = _supported_claim_titles(state.citation_support)
+    if not state.section_research_plan:
+        return _build_standard_report_body(state, reference_numbers, supported_claims)
+    if state.grounded_claims:
+        return _build_grounded_claims_body(state, reference_numbers, supported_claims)
     if state.section_research_plan:
-        return _build_planned_section_body(state, verified_evidence, reference_numbers)
-    return _build_key_findings_body(state, reference_numbers)
+        return _build_planned_section_body(
+            state,
+            verified_evidence,
+            reference_numbers,
+            supported_claims,
+        )
+    return _build_key_findings_body(state, reference_numbers, supported_claims)
+
+
+def _build_standard_report_body(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+    supported_claims: set[str] | None = None,
+) -> list[str]:
+    approved_lines = _approved_claim_lines(state, reference_numbers, supported_claims)
+    summary = approved_lines[:2] or ["Evidence is insufficient for this section."]
+    analysis = approved_lines or ["Evidence is insufficient for this section."]
+    risks = _risk_lines(state.grounded_claims, supported_claims)
+    if not risks:
+        risks = ["Evidence is insufficient for this section."]
+    return [
+        "## Executive Summary",
+        "",
+        *summary,
+        "",
+        "## Background",
+        "",
+        "Evidence scope is limited to verified references collected for this request.",
+        "",
+        "## Analysis",
+        "",
+        *analysis,
+        "",
+        "## Competitive Landscape",
+        "",
+        "See the Competitive Matrix for evidence-backed product positioning.",
+        "",
+        "## Risks",
+        "",
+        *risks,
+        "",
+        "## Outlook",
+        "",
+        "Further research should validate unsupported or partial claims before publication.",
+        "",
+    ]
+
+
+def _approved_claim_lines(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+    supported_claims: set[str] | None,
+) -> list[str]:
+    if state.grounded_claims:
+        return _approved_grounded_claim_lines(state, reference_numbers, supported_claims)
+    lines = []
+    for finding in state.findings:
+        if supported_claims is not None and finding.title not in supported_claims:
+            continue
+        citations = _finding_citations(finding.evidence_ids, reference_numbers)
+        if citations:
+            lines.append(f"- {finding.title}: {finding.summary} {citations}".strip())
+    return lines
+
+
+def _approved_grounded_claim_lines(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+    supported_claims: set[str] | None,
+) -> list[str]:
+    lines = []
+    for claim in state.grounded_claims:
+        claim_text = str(claim.get("claim", "")).strip()
+        if not claim_text:
+            continue
+        if supported_claims is not None and claim_text not in supported_claims:
+            continue
+        evidence_ids = claim.get("evidence_ids", [])
+        if not isinstance(evidence_ids, list):
+            continue
+        citations = _finding_citations(
+            [item for item in evidence_ids if isinstance(item, str)],
+            reference_numbers,
+        )
+        if citations:
+            lines.append(f"- {claim_text} {citations}".strip())
+    return lines
+
+
+def _risk_lines(
+    grounded_claims: list[dict[str, object]],
+    supported_claims: set[str] | None,
+) -> list[str]:
+    lines = []
+    for claim in grounded_claims:
+        claim_text = str(claim.get("claim", "")).strip()
+        risk = str(claim.get("risk", "")).strip()
+        if not risk:
+            continue
+        if supported_claims is not None and claim_text not in supported_claims:
+            continue
+        lines.append(f"- {risk}")
+    return lines
+
+
+def _supported_claim_titles(citation_support: list[dict[str, object]]) -> set[str] | None:
+    if not citation_support:
+        return None
+    return {
+        str(item.get("claim", ""))
+        for item in citation_support
+        if item.get("support_status") == "supported"
+    }
 
 
 def _build_key_findings_body(
     state: GraphState,
     reference_numbers: dict[str, int],
+    supported_claims: set[str] | None = None,
 ) -> list[str]:
     lines = ["## Key Findings", ""]
     for finding in state.findings:
+        if supported_claims is not None and finding.title not in supported_claims:
+            continue
         citations = _finding_citations(finding.evidence_ids, reference_numbers)
         if not citations:
             continue
@@ -126,10 +245,39 @@ def _build_key_findings_body(
     return lines
 
 
+def _build_grounded_claims_body(
+    state: GraphState,
+    reference_numbers: dict[str, int],
+    supported_claims: set[str] | None = None,
+) -> list[str]:
+    lines = ["## Key Findings", ""]
+    for claim in state.grounded_claims:
+        claim_text = str(claim.get("claim", "")).strip()
+        if not claim_text:
+            continue
+        if supported_claims is not None and claim_text not in supported_claims:
+            continue
+        evidence_ids = claim.get("evidence_ids", [])
+        if not isinstance(evidence_ids, list):
+            continue
+        citations = _finding_citations(
+            [evidence_id for evidence_id in evidence_ids if isinstance(evidence_id, str)],
+            reference_numbers,
+        )
+        if not citations:
+            continue
+        lines.extend([f"- {claim_text} {citations}".strip()])
+    if len(lines) == 2:
+        lines.extend(["No supported findings were available for this section."])
+    lines.append("")
+    return lines
+
+
 def _build_planned_section_body(
     state: GraphState,
     verified_evidence: list[Evidence],
     reference_numbers: dict[str, int],
+    supported_claims: set[str] | None = None,
 ) -> list[str]:
     evidence_sections = {item.id: item.section_id for item in verified_evidence}
     assigned_findings = _assign_findings_to_sections(
@@ -149,6 +297,8 @@ def _build_planned_section_body(
             lines.extend(["No verified findings were available for this section.", ""])
             continue
         for finding in section_findings:
+            if supported_claims is not None and finding.title not in supported_claims:
+                continue
             citations = _finding_citations(finding.evidence_ids, reference_numbers)
             lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
     return lines
@@ -350,8 +500,11 @@ def _build_reporter_messages(
     verified_evidence: list[Evidence],
     reference_numbers: dict[str, int],
 ) -> list[ChatMessage]:
+    supported_claims = _supported_claim_titles(state.citation_support)
     finding_lines = []
     for finding in state.findings:
+        if supported_claims is not None and finding.title not in supported_claims:
+            continue
         citations = [
             f"[{reference_numbers[evidence_id]}]"
             for evidence_id in finding.evidence_ids
@@ -635,7 +788,12 @@ def _build_citation_support_section(
     reference_numbers: dict[str, int],
 ) -> list[str]:
     if not state.citation_support:
-        return []
+        return [
+            "## Citation Support",
+            "",
+            "Evidence is insufficient for this section.",
+            "",
+        ]
 
     rows = []
     has_verified_support = False
