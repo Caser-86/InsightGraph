@@ -318,6 +318,9 @@ def _collection_query(
         return " | ".join(parts)
 
     for request in state.replan_requests:
+        if request.get("type") == "unsupported_claim":
+            parts.extend(_unsupported_claim_query_parts(request))
+            break
         if request.get("type") != "missing_section_evidence":
             continue
         section_id = str(request.get("section_id", "")).strip()
@@ -331,6 +334,25 @@ def _collection_query(
             parts.append(f"missing evidence: {missing_evidence}")
         break
     return " | ".join(parts)
+
+
+def _unsupported_claim_query_parts(request: dict[str, object]) -> list[str]:
+    parts: list[str] = []
+    claim = _optional_string(request.get("unsupported_claim_hint")) or _optional_string(
+        request.get("claim")
+    )
+    missing_section = _optional_string(request.get("missing_section"))
+    missing_entity = _optional_string(request.get("missing_entity"))
+    missing_source_type = _optional_string(request.get("missing_source_type"))
+    if claim:
+        parts.append(f"unsupported claim: {claim}")
+    if missing_section:
+        parts.append(f"section: {missing_section}")
+    if missing_entity:
+        parts.append(f"entity: {missing_entity}")
+    if missing_source_type:
+        parts.append(f"missing source type: {missing_source_type}")
+    return parts
 
 
 def _section_aware_query(state: GraphState, tool_name: str) -> str:

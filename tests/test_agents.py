@@ -2910,6 +2910,8 @@ def test_critic_rejects_findings_with_weak_snippet_support() -> None:
         "type": "unsupported_claim",
         "claim": "Security",
         "reason": "snippet lacks lexical support",
+        "missing_source_type": "unknown",
+        "unsupported_claim_hint": "Security",
     }
 
 
@@ -2964,6 +2966,8 @@ def test_critic_rejects_partial_citation_support() -> None:
         "type": "unsupported_claim",
         "claim": "Security",
         "reason": "partial lexical support",
+        "missing_source_type": "unknown",
+        "unsupported_claim_hint": "Security",
     }
 
 
@@ -2990,6 +2994,7 @@ def test_critic_creates_missing_evidence_replan_requests() -> None:
         {
             "type": "missing_section_evidence",
             "section_id": "pricing",
+            "missing_section": "pricing",
             "missing_evidence": 2,
             "missing_source_types": [],
             "strategy_key": "missing_section_evidence:pricing:evidence",
@@ -2998,6 +3003,7 @@ def test_critic_creates_missing_evidence_replan_requests() -> None:
             "type": "unsupported_claim",
             "claim": "Unsupported",
             "reason": "missing verified evidence",
+            "unsupported_claim_hint": "Unsupported",
         },
     ]
 
@@ -3025,9 +3031,48 @@ def test_critic_includes_missing_source_types_in_replan_requests() -> None:
     assert updated.replan_requests[0] == {
         "type": "missing_section_evidence",
         "section_id": "market-signals",
+        "missing_section": "market-signals",
         "missing_evidence": 0,
         "missing_source_types": ["news"],
         "strategy_key": "missing_section_evidence:market-signals:news",
+    }
+
+
+def test_critic_adds_specific_hints_for_unsupported_claims() -> None:
+    state = GraphState(
+        user_request="Compare Cursor and Copilot security",
+        evidence_pool=[
+            Evidence(
+                id="copilot-docs",
+                subtask_id="collect",
+                title="Copilot Docs",
+                source_url="https://docs.github.com/copilot",
+                snippet="Copilot docs describe encryption controls.",
+                source_type="docs",
+                verified=True,
+                section_id="security",
+            )
+        ],
+        findings=[
+            Finding(
+                title="Copilot audit logging",
+                summary="Copilot enterprise security includes audit logging.",
+                evidence_ids=["copilot-docs"],
+            )
+        ],
+        resolved_entities=[{"name": "GitHub Copilot"}],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.replan_requests[-1] == {
+        "type": "unsupported_claim",
+        "claim": "Copilot audit logging",
+        "reason": "snippet lacks lexical support",
+        "missing_section": "security",
+        "missing_entity": "GitHub Copilot",
+        "missing_source_type": "docs",
+        "unsupported_claim_hint": "Copilot audit logging",
     }
 
 
@@ -3052,6 +3097,7 @@ def test_critic_records_tried_strategies_for_replan_requests() -> None:
         {
             "type": "missing_section_evidence",
             "section_id": "market-signals",
+            "missing_section": "market-signals",
             "missing_evidence": 1,
             "missing_source_types": ["news"],
             "strategy_key": "missing_section_evidence:market-signals:news",

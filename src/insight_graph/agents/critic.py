@@ -48,6 +48,7 @@ def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
                 {
                     "type": "missing_section_evidence",
                     "section_id": section_id,
+                    "missing_section": section_id,
                     "missing_evidence": int(status.get("missing_evidence", 0)),
                     "missing_source_types": missing_source_types,
                     "strategy_key": strategy_key,
@@ -55,14 +56,53 @@ def _build_replan_requests(state: GraphState) -> list[dict[str, object]]:
             )
     for item in state.citation_support:
         if item.get("support_status") != "supported":
-            requests.append(
-                {
-                    "type": "unsupported_claim",
-                    "claim": str(item.get("claim", "")),
-                    "reason": str(item.get("unsupported_reason", "")),
-                }
-            )
+            requests.append(_unsupported_claim_request(state, item))
     return requests
+
+
+def _unsupported_claim_request(
+    state: GraphState,
+    item: dict[str, object],
+) -> dict[str, object]:
+    claim = str(item.get("claim", ""))
+    request: dict[str, object] = {
+        "type": "unsupported_claim",
+        "claim": claim,
+        "reason": str(item.get("unsupported_reason", "")),
+    }
+    evidence = _first_supported_evidence(state, item)
+    if evidence is not None:
+        if evidence.section_id:
+            request["missing_section"] = evidence.section_id
+        request["missing_source_type"] = evidence.source_type
+    missing_entity = _first_entity_name(state)
+    if missing_entity:
+        request["missing_entity"] = missing_entity
+    if claim:
+        request["unsupported_claim_hint"] = claim
+    return request
+
+
+def _first_supported_evidence(state: GraphState, item: dict[str, object]):
+    evidence_ids = item.get("evidence_ids", [])
+    if not isinstance(evidence_ids, list):
+        return None
+    evidence_by_id = {evidence.id: evidence for evidence in state.evidence_pool}
+    for evidence_id in evidence_ids:
+        if not isinstance(evidence_id, str):
+            continue
+        evidence = evidence_by_id.get(evidence_id)
+        if evidence is not None:
+            return evidence
+    return None
+
+
+def _first_entity_name(state: GraphState) -> str:
+    for entity in state.resolved_entities:
+        name = entity.get("name")
+        if isinstance(name, str) and name:
+            return name
+    return ""
 
 
 def _missing_section_strategy_key(section_id: str, missing_source_types: list[str]) -> str:
