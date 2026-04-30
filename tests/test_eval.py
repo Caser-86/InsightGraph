@@ -230,6 +230,111 @@ def test_build_memory_comparison_payload_reports_quality_delta(monkeypatch) -> N
     assert payload["memory_enabled"]["cases"][0]["query"] == "Compare Cursor memory enabled"
 
 
+def test_build_memory_comparison_payload_reports_case_quality_deltas(monkeypatch) -> None:
+    monkeypatch.setattr(
+        eval_module.time,
+        "perf_counter",
+        iter([1.0, 1.01, 2.0, 2.01, 3.0, 3.01, 4.0, 4.01]).__next__,
+    )
+
+    def state_for_memory(query: str) -> GraphState:
+        state = make_eval_state(query.replace(" memory enabled", ""))
+        if "pricing" in query:
+            state.findings = []
+        if "memory enabled" in query:
+            state.memory_context = [{"memory_id": "m1", "text": "prior context"}]
+            state.report_markdown += "\nMemory context added validated detail. " * 20
+            if "pricing" in query:
+                state.findings = [
+                    Finding(
+                        title="Memory-guided pricing finding",
+                        summary="Fresh evidence supports pricing comparison.",
+                        evidence_ids=["cursor-pricing"],
+                    )
+                ]
+        return state
+
+    payload = eval_module.build_memory_comparison_payload(
+        [
+            eval_module.EvalCase(query="Compare pricing", min_findings=1, min_references=2),
+            eval_module.EvalCase(query="Compare positioning", min_findings=1, min_references=2),
+        ],
+        run_research_func=state_for_memory,
+    )
+
+    comparison = payload["memory_comparison"]
+    assert comparison["case_count"] == 2
+    assert comparison["improved_case_count"] == 1
+    assert comparison["regressed_case_count"] == 0
+    assert comparison["unchanged_case_count"] == 1
+    assert comparison["average_findings_delta"] == 1
+    assert comparison["average_report_depth_delta"] > 0
+    assert comparison["quality_deltas"]["average_report_depth_score"] > 0
+    assert comparison["quality_deltas"]["average_citation_support_score"] == 0
+    assert comparison["cases"] == [
+        {
+            "query": "Compare pricing",
+            "memory_disabled_score": 88,
+            "memory_enabled_score": 100,
+            "score_delta": 12,
+            "report_depth_delta": comparison["cases"][0]["report_depth_delta"],
+            "finding_count_delta": 1,
+            "citation_support_delta": 0,
+        },
+        {
+            "query": "Compare positioning",
+            "memory_disabled_score": 100,
+            "memory_enabled_score": 100,
+            "score_delta": 0,
+            "report_depth_delta": comparison["cases"][1]["report_depth_delta"],
+            "finding_count_delta": 0,
+            "citation_support_delta": 0,
+        },
+    ]
+
+
+def test_format_memory_comparison_markdown_includes_delta_tables() -> None:
+    payload = {
+        "memory_comparison": {
+            "case_count": 2,
+            "memory_disabled_average_score": 94,
+            "memory_enabled_average_score": 100,
+            "average_score_delta": 6,
+            "memory_disabled_average_report_depth_score": 18,
+            "memory_enabled_average_report_depth_score": 42,
+            "average_report_depth_delta": 24,
+            "average_findings_delta": 1,
+            "improved_case_count": 1,
+            "regressed_case_count": 0,
+            "unchanged_case_count": 1,
+            "quality_deltas": {
+                "average_report_depth_score": 24,
+                "average_citation_support_score": 0,
+            },
+            "cases": [
+                {
+                    "query": "Compare pricing",
+                    "memory_disabled_score": 88,
+                    "memory_enabled_score": 100,
+                    "score_delta": 12,
+                    "report_depth_delta": 25,
+                    "finding_count_delta": 1,
+                    "citation_support_delta": 0,
+                }
+            ],
+        }
+    }
+
+    markdown = eval_module.format_memory_comparison_markdown(payload)
+
+    assert markdown.startswith("# InsightGraph Memory Eval\n")
+    assert "| Cases | Improved | Regressed | Unchanged | Avg score delta |" in markdown
+    assert "| 2 | 1 | 0 | 1 | 6 | 24 | 1 |" in markdown
+    assert "| Compare pricing | 88 | 100 | 12 | 25 | 1 | 0 |" in markdown
+    assert "| average_report_depth_score | 24 |" in markdown
+    assert "| average_citation_support_score | 0 |" in markdown
+
+
 def test_eval_summary_includes_report_quality_aggregates(monkeypatch) -> None:
     monkeypatch.setattr(eval_module.time, "perf_counter", iter([1.0, 1.025]).__next__)
 

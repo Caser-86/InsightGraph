@@ -571,6 +571,7 @@ def _memory_comparison_summary(
 ) -> dict[str, Any]:
     disabled_summary = disabled_payload["summary"]
     enabled_summary = enabled_payload["summary"]
+    case_deltas = _memory_case_deltas(disabled_payload["cases"], enabled_payload["cases"])
     disabled_depth = int(disabled_summary.get("average_report_depth_score", 0))
     enabled_depth = int(enabled_summary.get("average_report_depth_score", 0))
     disabled_score = int(disabled_summary.get("average_score", 0))
@@ -583,7 +584,67 @@ def _memory_comparison_summary(
         "memory_disabled_average_report_depth_score": disabled_depth,
         "memory_enabled_average_report_depth_score": enabled_depth,
         "average_report_depth_delta": enabled_depth - disabled_depth,
+        "average_findings_delta": _average_delta(case_deltas, "finding_count_delta"),
+        "improved_case_count": sum(1 for item in case_deltas if int(item["score_delta"]) > 0),
+        "regressed_case_count": sum(1 for item in case_deltas if int(item["score_delta"]) < 0),
+        "unchanged_case_count": sum(1 for item in case_deltas if int(item["score_delta"]) == 0),
+        "quality_deltas": _memory_quality_deltas(disabled_summary, enabled_summary),
+        "cases": case_deltas,
     }
+
+
+def _memory_case_deltas(
+    disabled_cases: list[dict[str, Any]],
+    enabled_cases: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deltas = []
+    for disabled_case, enabled_case in zip(disabled_cases, enabled_cases, strict=False):
+        disabled_quality = disabled_case.get("quality", {})
+        enabled_quality = enabled_case.get("quality", {})
+        deltas.append(
+            {
+                "query": disabled_case["query"],
+                "memory_disabled_score": int(disabled_case.get("score", 0)),
+                "memory_enabled_score": int(enabled_case.get("score", 0)),
+                "score_delta": int(enabled_case.get("score", 0))
+                - int(disabled_case.get("score", 0)),
+                "report_depth_delta": int(enabled_quality.get("report_depth_score", 0))
+                - int(disabled_quality.get("report_depth_score", 0)),
+                "finding_count_delta": int(enabled_case.get("finding_count", 0))
+                - int(disabled_case.get("finding_count", 0)),
+                "citation_support_delta": int(enabled_quality.get("citation_support_score", 0))
+                - int(disabled_quality.get("citation_support_score", 0)),
+            }
+        )
+    return deltas
+
+
+def _memory_quality_deltas(
+    disabled_summary: dict[str, Any],
+    enabled_summary: dict[str, Any],
+) -> dict[str, int]:
+    quality_keys = [
+        "average_section_coverage_score",
+        "average_report_depth_score",
+        "average_source_diversity_score",
+        "average_evidence_per_section",
+        "average_official_source_coverage_score",
+        "average_citation_support_score",
+        "average_claim_count",
+        "average_evidence_count_per_claim",
+        "average_duplicate_source_rate",
+        "average_collection_round_count",
+    ]
+    return {
+        key: int(enabled_summary.get(key, 0)) - int(disabled_summary.get(key, 0))
+        for key in quality_keys
+    }
+
+
+def _average_delta(case_deltas: list[dict[str, Any]], key: str) -> int:
+    if not case_deltas:
+        return 0
+    return int(sum(int(item.get(key, 0)) for item in case_deltas) / len(case_deltas) + 0.5)
 
 
 def _failed_rule_counts(case_results: list[dict[str, Any]]) -> dict[str, int]:
@@ -729,6 +790,57 @@ def format_markdown(payload: dict[str, Any]) -> str:
     error_lines = _format_error_lines(payload["cases"])
     if error_lines:
         lines.extend(error_lines)
+    return "\n".join(lines) + "\n"
+
+
+def format_memory_comparison_markdown(payload: dict[str, Any]) -> str:
+    comparison = payload["memory_comparison"]
+    lines = [
+        "# InsightGraph Memory Eval",
+        "",
+        "| Cases | Improved | Regressed | Unchanged | Avg score delta | "
+        "Avg depth delta | Avg findings delta |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| "
+        + " | ".join(
+            [
+                str(comparison.get("case_count", 0)),
+                str(comparison.get("improved_case_count", 0)),
+                str(comparison.get("regressed_case_count", 0)),
+                str(comparison.get("unchanged_case_count", 0)),
+                str(comparison.get("average_score_delta", 0)),
+                str(comparison.get("average_report_depth_delta", 0)),
+                str(comparison.get("average_findings_delta", 0)),
+            ]
+        )
+        + " |",
+        "",
+        "## Case Deltas",
+        "",
+        "| Query | Memory off score | Memory on score | Score delta | Depth delta | "
+        "Findings delta | Citation support delta |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for item in comparison.get("cases", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(str(item.get("query", ""))),
+                    str(item.get("memory_disabled_score", 0)),
+                    str(item.get("memory_enabled_score", 0)),
+                    str(item.get("score_delta", 0)),
+                    str(item.get("report_depth_delta", 0)),
+                    str(item.get("finding_count_delta", 0)),
+                    str(item.get("citation_support_delta", 0)),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(["", "## Quality Deltas", "", "| Metric | Delta |", "| --- | ---: |"])
+    for key, value in sorted(comparison.get("quality_deltas", {}).items()):
+        lines.append(f"| {key} | {value} |")
     return "\n".join(lines) + "\n"
 
 
