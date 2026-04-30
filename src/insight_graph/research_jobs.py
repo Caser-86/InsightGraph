@@ -217,6 +217,28 @@ def using_sqlite_research_jobs_backend() -> bool:
     return _using_sqlite_research_jobs_backend()
 
 
+def claim_next_research_job_for_worker(
+    *,
+    started_at: Callable[[], str],
+    worker_id: str | None = None,
+    lease_expires_at: Callable[[str], str] | None = None,
+) -> ResearchJob | None:
+    with _JOBS_LOCK:
+        if not _using_sqlite_research_jobs_backend():
+            return None
+        start_timestamp = started_at()
+        lease_until = (
+            lease_expires_at(start_timestamp)
+            if lease_expires_at is not None
+            else start_timestamp
+        )
+        return _RESEARCH_JOBS_BACKEND.claim_next_for_worker(
+            worker_id=worker_id or _RESEARCH_JOBS_WORKER_ID,
+            now=start_timestamp,
+            lease_expires_at=lease_until,
+        )
+
+
 configure_research_jobs_backend_from_env()
 
 

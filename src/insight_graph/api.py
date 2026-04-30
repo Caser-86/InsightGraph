@@ -40,6 +40,7 @@ from insight_graph.research_jobs import (
     RESEARCH_JOB_LEASE_TTL_SECONDS,
     ResearchJobStatus,
     append_research_job_event,
+    claim_next_research_job_for_worker,
     configure_research_jobs_backend_from_env,
     heartbeat_research_job,
     initialize_research_jobs,
@@ -634,6 +635,29 @@ def _stop_research_job_heartbeat(stop_event: Event, thread: Thread | None) -> No
 def _initialize_research_jobs_from_env() -> None:
     configure_research_jobs_backend_from_env()
     initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
+    _submit_startup_research_jobs()
+
+
+def _startup_worker_enabled() -> bool:
+    return os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _submit_startup_research_jobs() -> None:
+    if not _startup_worker_enabled() or not using_sqlite_research_jobs_backend():
+        return
+    while True:
+        job = claim_next_research_job_for_worker(
+            started_at=_current_utc_timestamp,
+            worker_id=research_jobs_worker_id(),
+            lease_expires_at=_lease_expires_at,
+        )
+        if job is None:
+            return
+        _JOB_EXECUTOR.submit(_run_claimed_research_job, job, research_jobs_worker_id())
 
 
 _initialize_research_jobs_from_env()
@@ -1003,6 +1027,38 @@ def _run_research_job(job_id: str) -> None:
     if job is None:
         return
 
+    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
+    try:
+        try:
+            with _RESEARCH_ENV_LOCK:
+                with _research_preset_environment(job.preset):
+                    state = _run_research_job_workflow(
+                        job.query,
+                        lambda event: _publish_research_job_event(job.id, event),
+                        job_id=job.id,
+                    )
+            result = _build_research_json_payload(state)
+        except Exception:
+            mark_research_job_failed(
+                job,
+                finished_at=_current_utc_timestamp(),
+                error="Research workflow failed.",
+                worker_id=worker_id,
+            )
+            return
+
+        mark_research_job_succeeded(
+            job,
+            finished_at=_current_utc_timestamp(),
+            result=result,
+            worker_id=worker_id,
+        )
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+
+
+def _run_claimed_research_job(job, worker_id: str) -> None:
+    _clear_research_job_events(job.id)
     stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
     try:
         try:
