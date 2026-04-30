@@ -62,8 +62,10 @@ def execute_subtasks(state: GraphState) -> GraphState:
     stop_reason = "max_rounds"
 
     for round_index in range(1, max_rounds + 1):
+        round_start_count = len(collected)
         section_focus = _section_focus_for_round(state, round_index)
-        for subtask, strategy in _collection_work_items(state, round_index):
+        work_items_for_round = _collection_work_items(state, round_index)
+        for subtask, strategy in work_items_for_round:
             if strategy is not None:
                 work_items = [_strategy_tool_query(strategy)]
             else:
@@ -99,12 +101,13 @@ def execute_subtasks(state: GraphState) -> GraphState:
             state = _finalize_collected_evidence(state, collected, records)
             state = _maybe_compress_conversation(state)
             round_summaries.append(
-                {
-                    "round": round_index,
-                    "new_evidence_count": 0,
-                    "total_evidence_count": len(state.evidence_pool),
-                    "sufficient": _all_sections_sufficient(state.section_collection_status),
-                }
+                _round_summary(
+                    round_index,
+                    new_evidence_count=0,
+                    state=state,
+                    round_evidence=collected[round_start_count:],
+                    query_strategy_count=_query_strategy_count(work_items_for_round),
+                )
             )
             break
 
@@ -115,12 +118,13 @@ def execute_subtasks(state: GraphState) -> GraphState:
         previous_evidence_keys = current_evidence_keys
         sufficient = _all_sections_sufficient(state.section_collection_status)
         round_summaries.append(
-            {
-                "round": round_index,
-                "new_evidence_count": new_evidence_count,
-                "total_evidence_count": len(state.evidence_pool),
-                "sufficient": sufficient,
-            }
+            _round_summary(
+                round_index,
+                new_evidence_count=new_evidence_count,
+                state=state,
+                round_evidence=collected[round_start_count:],
+                query_strategy_count=_query_strategy_count(work_items_for_round),
+            )
         )
         if sufficient:
             stop_reason = "sufficient"
@@ -141,6 +145,36 @@ def _maybe_compress_conversation(state: GraphState) -> GraphState:
     if _conversation_compression_enabled():
         state.conversation_summary = compress_conversation(state)
     return state
+
+
+def _round_summary(
+    round_index: int,
+    *,
+    new_evidence_count: int,
+    state: GraphState,
+    round_evidence: list[Evidence],
+    query_strategy_count: int,
+) -> dict[str, object]:
+    return {
+        "round": round_index,
+        "new_evidence_count": new_evidence_count,
+        "total_evidence_count": len(state.evidence_pool),
+        "sufficient": _all_sections_sufficient(state.section_collection_status),
+        "query_strategy_count": query_strategy_count,
+        "failed_fetch_count": _fetch_status_count(round_evidence, "failed"),
+        "empty_fetch_count": _fetch_status_count(round_evidence, "empty"),
+        "verified_evidence_count": sum(1 for item in round_evidence if item.verified),
+    }
+
+
+def _query_strategy_count(
+    work_items: list[tuple[Subtask, dict[str, object] | None]],
+) -> int:
+    return sum(1 for _, strategy in work_items if strategy is not None)
+
+
+def _fetch_status_count(evidence: list[Evidence], status: str) -> int:
+    return sum(1 for item in evidence if item.fetch_status == status)
 
 
 def _finalize_collected_evidence(

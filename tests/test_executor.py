@@ -252,6 +252,67 @@ def test_executor_tool_log_records_strategy_id(monkeypatch) -> None:
     assert updated.tool_call_log[0].strategy_id == "strategy-1"
 
 
+def test_executor_round_summary_counts_fetch_diagnostics(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="verified",
+                    subtask_id=subtask_id,
+                    title="Verified",
+                    source_url="https://example.com/verified",
+                    snippet="Verified evidence has enough words for relevance.",
+                    verified=True,
+                    fetch_status="fetched",
+                ),
+                Evidence(
+                    id="failed",
+                    subtask_id=subtask_id,
+                    title="Failed",
+                    source_url="https://example.com/failed",
+                    snippet="network: failed",
+                    verified=False,
+                    fetch_status="failed",
+                ),
+                Evidence(
+                    id="empty",
+                    subtask_id=subtask_id,
+                    title="Empty",
+                    source_url="https://example.com/empty",
+                    snippet="empty",
+                    verified=False,
+                    fetch_status="empty",
+                ),
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+        query_strategies=[
+            {
+                "strategy_id": "strategy-1",
+                "section_id": "pricing",
+                "tool_name": "fake",
+                "query": "pricing query",
+                "source_type": "official_site",
+                "entity_names": [],
+                "round": 1,
+                "reason": "section_source_requirement",
+            }
+        ],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert updated.collection_rounds[0]["query_strategy_count"] == 1
+    assert updated.collection_rounds[0]["failed_fetch_count"] == 1
+    assert updated.collection_rounds[0]["empty_fetch_count"] == 1
+    assert updated.collection_rounds[0]["verified_evidence_count"] == 1
+
+
 def test_executor_records_conversation_summary_when_compression_enabled(
     monkeypatch,
 ) -> None:
