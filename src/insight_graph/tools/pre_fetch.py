@@ -2,6 +2,7 @@ import json
 import re
 
 from insight_graph.report_quality.budgeting import get_research_budgets
+from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
 from insight_graph.tools.search_providers import SearchResult
@@ -61,6 +62,9 @@ def _attach_search_metadata(
             "canonical_url": canonicalize_url(evidence.source_url),
             "fetch_status": fetch_status,
             "fetch_error": fetch_error,
+            "reachable": True,
+            "source_trusted": _source_url_is_trusted(evidence.source_url),
+            "claim_supported": None,
         }
     )
 
@@ -83,6 +87,9 @@ def _diagnostic_evidence(
         snippet=result.snippet or fetch_error,
         verified=False,
         canonical_url=canonicalize_url(result.url),
+        reachable=error is None,
+        source_trusted=_source_url_is_trusted(result.url),
+        claim_supported=False,
         search_provider=result.source,
         search_rank=rank,
         search_query=query,
@@ -98,3 +105,7 @@ def _url_slug(url: str) -> str:
     parsed = urlparse(url)
     raw = f"{parsed.netloc}{parsed.path}".strip("/") or url
     return re.sub(r"[^a-zA-Z0-9]+", "-", raw).strip("-").lower() or "candidate"
+
+
+def _source_url_is_trusted(url: str) -> bool:
+    return infer_source_type(url) in {"official_site", "docs", "github", "news", "sec", "paper"}

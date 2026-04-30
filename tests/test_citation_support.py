@@ -21,11 +21,13 @@ def test_validate_citation_support_marks_supported_claim() -> None:
 
     result = validate_citation_support([finding], evidence)
 
+    assert evidence[0].claim_supported is None
     assert result == [
         {
             "claim": "Pricing",
             "evidence_ids": ["source-1"],
             "support_status": "supported",
+            "claim_supported": True,
             "unsupported_reason": None,
             "supporting_snippets": [
                 {
@@ -47,6 +49,7 @@ def test_validate_citation_support_marks_missing_evidence() -> None:
     result = validate_citation_support([finding], [])
 
     assert result[0]["support_status"] == "unsupported"
+    assert result[0]["claim_supported"] is False
     assert result[0]["unsupported_reason"] == "missing verified evidence"
 
 

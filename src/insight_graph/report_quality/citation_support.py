@@ -23,6 +23,7 @@ def _support_record(
             "claim": finding.title,
             "evidence_ids": list(finding.evidence_ids),
             "support_status": "unsupported",
+            "claim_supported": False,
             "unsupported_reason": "missing verified evidence",
             "supporting_snippets": [],
             "matched_terms": [],
@@ -36,6 +37,7 @@ def _support_record(
             "claim": finding.title,
             "evidence_ids": supported_evidence,
             "support_status": "unsupported",
+            "claim_supported": False,
             "unsupported_reason": "snippet lacks lexical support",
             **support,
         }
@@ -43,6 +45,7 @@ def _support_record(
         "claim": finding.title,
         "evidence_ids": supported_evidence,
         "support_status": "supported",
+        "claim_supported": True,
         "unsupported_reason": None,
         **support,
     }

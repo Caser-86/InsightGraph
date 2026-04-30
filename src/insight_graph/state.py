@@ -45,6 +45,9 @@ class Evidence(BaseModel):
     search_snippet: str | None = None
     fetch_status: Literal["fetched", "empty", "failed"] | None = None
     fetch_error: str | None = None
+    reachable: bool | None = None
+    source_trusted: bool | None = None
+    claim_supported: bool | None = None
 
     @property
     def source_domain(self) -> str:

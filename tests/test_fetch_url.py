@@ -91,6 +91,30 @@ def test_fetch_url_uses_source_type_classifier(monkeypatch) -> None:
     assert evidence[0].source_type == "sec"
 
 
+def test_fetch_url_marks_successful_evidence_reachable(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text="""
+            <html>
+              <head><title>GitHub Repo</title></head>
+              <body><main><p>GitHub repository evidence text.</p></main></body>
+            </html>
+            """,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url("https://github.com/sst/opencode", "s1")
+
+    assert evidence[0].reachable is True
+    assert evidence[0].source_trusted is True
+    assert evidence[0].claim_supported is None
+
+
 def test_fetch_url_chunks_long_html_with_section_metadata(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         return FetchedPage(

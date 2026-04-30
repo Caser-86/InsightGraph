@@ -83,6 +83,23 @@ def test_evidence_stores_canonical_url() -> None:
     assert evidence.canonical_url == "https://cursor.com/pricing"
 
 
+def test_evidence_stores_verification_state_metadata() -> None:
+    evidence = Evidence(
+        id="e1",
+        subtask_id="s1",
+        title="Cursor pricing",
+        source_url="https://cursor.com/pricing",
+        snippet="Cursor publishes pricing tiers on its pricing page.",
+        reachable=True,
+        source_trusted=True,
+        claim_supported=None,
+    )
+
+    assert evidence.reachable is True
+    assert evidence.source_trusted is True
+    assert evidence.claim_supported is None
+
+
 def test_graph_state_starts_with_empty_collections() -> None:
     state = GraphState(user_request="Analyze AI coding agents")
 
