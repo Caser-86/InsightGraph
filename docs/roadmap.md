@@ -6,136 +6,69 @@ The product path is `live-research`.
 
 Offline remains the deterministic testing/CI fallback. Network, LLM, database, external embeddings, full trace payloads, and live benchmark behavior remain explicit opt-in surfaces.
 
-The next optimization goal is 生成高质量、可验证深度研究报告. All future work should improve report correctness, depth, source quality, citation support, or operator observability before expanding high-risk runtime surfaces.
+The optimization goal remains 生成高质量、可验证深度研究报告. Future work should improve report correctness, depth, source quality, citation support, or operator observability before expanding high-risk runtime surfaces.
 
-## Next Optimization Plan
+## Completed Optimization Batches
 
-### Batch A: Report Quality v3
+A-F complete. The report-quality and operations hardening route below is implemented, tested, and documented.
 
-Goal: make final reports more complete, source-grounded, and comparable to mature deep-research outputs.
+### Batch A: Report Quality v3 - complete
 
-1. Add stronger section-level report contracts.
-- Define required sections per domain: Executive Summary, Background, Market/Company/Product Analysis, Competitive Landscape, Risks, Outlook, References.
-- Add tests that deterministic and LLM Reporter outputs include required sections when section plans exist.
-- Files: `src/insight_graph/agents/reporter.py`, `src/insight_graph/report_quality/domain_profiles.py`, `tests/test_agents.py`.
+- Stronger section-level report contracts for deterministic and LLM Reporter outputs.
+- Claim density, evidence density, unsupported-claim, citation-support, and section metrics in Eval Bench summaries and Markdown output.
+- More specific Critic replan metadata for missing source type, entity, section, and unsupported-claim hints.
+- Deterministic report completeness gates for section coverage, citation support, source diversity, and unsupported claims.
 
-2. Add claim density and evidence density metrics.
-- Track claims per section, evidence per claim, unsupported claims per section, and citation support ratio.
-- Add Eval Bench summary fields and Markdown columns.
-- Files: `src/insight_graph/eval.py`, `tests/test_eval.py`.
+### Batch B: Live Benchmark Case Profiles - complete
 
-3. Improve Critic replan specificity.
-- Emit missing source type, missing entity, missing section, and unsupported claim hints as structured metadata.
-- Ensure retry queries use those hints without repeating tried strategies.
-- Files: `src/insight_graph/agents/critic.py`, `src/insight_graph/agents/executor.py`, `tests/test_agents.py`, `tests/test_executor.py`.
+- Curated manual live benchmark cases for AI coding agents, public company analysis, SEC risk analysis, and technology trend analysis.
+- Expanded live benchmark metrics for URL validation, citation precision proxy, source diversity, report depth, section coverage, runtime, token totals, and LLM/tool call counts.
+- Safe benchmark artifact documentation without committing generated live reports.
 
-4. Add report completeness gates.
-- Gate report output on section coverage, citation support, source diversity, and unsupported claim count.
-- Keep gates offline/deterministic by default.
-- Files: `src/insight_graph/eval.py`, `docs/evals/default.json`, `tests/test_eval.py`.
+### Batch C: Production RAG Hardening - complete
 
-### Batch B: Live Benchmark Case Profiles
+- Document citation spans preserve page, section heading, chunk index, and snippet offsets where available.
+- Cross-document retrieval scoring prefers authoritative documents, exact section hits, recent chunks, and entity matches while keeping deterministic fallback.
+- Optional pgvector-backed document retrieval design remains explicit opt-in; local JSON index stays default.
 
-Goal: measure real report quality with manual, cost-aware benchmark cases.
+### Batch D: Memory Quality Loop - complete
 
-1. Add benchmark case files.
-- Create curated live cases for AI coding agents, public company analysis, SEC filing risk analysis, and technology trend analysis.
-- Each case defines expected sections, required source types, minimum source diversity, and report depth target.
-- Files: `docs/benchmarks/live-research-cases.json`, `tests/test_benchmark_live_research.py`.
+- Memory writeback taxonomy separates report summaries, entities, supported claims, references, source reliability notes, and expiration metadata.
+- Memory retrieval quality controls filter by domain, entity, embedding config, recency, and support status.
+- Memory eval proof compares memory off/on across fake cases and reports quality deltas.
 
-2. Expand live benchmark metrics.
-- Add URL validation rate, citation precision proxy, source diversity by type/domain, report depth, section coverage, token totals, runtime, and LLM/tool call counts.
-- Files: `scripts/benchmark_live_research.py`, `tests/test_benchmark_live_research.py`.
+### Batch E: Dashboard Productization - complete
 
-3. Add benchmark artifact examples.
-- Document safe example output without committing generated live reports.
-- Files: `docs/scripts.md`, `docs/configuration.md`, `README.md`.
+- Report-quality cards expose section coverage, citation support, source diversity, unsupported claims, URL validation, token totals, and runtime.
+- Evidence drilldown shows evidence title, URL, source type, fetch status, citation support status, section ID, and snippets.
+- Job event and stream filtering supports stage, type, and trace ID.
 
-### Batch C: Production RAG Hardening
+### Batch F: API And Operations Hardening - complete
 
-Goal: improve long-document grounding without making heavy services mandatory.
+- Terminal job retention and cleanup policy covers SQLite cleanup and artifact retention boundaries.
+- Restart/resume smoke path covers queued jobs, expired running jobs, checkpoints, and worker claim behavior.
+- Deployment runbook aligns API keys, SQLite, PostgreSQL, pgvector, live providers, trace redaction, and benchmark costs.
 
-1. Add document citation spans.
-- Preserve page, section heading, chunk index, and snippet offsets where available.
-- Use spans in citation support output.
-- Files: `src/insight_graph/state.py`, `src/insight_graph/tools/document_reader.py`, `src/insight_graph/tools/search_document.py`, `tests/test_document_index.py`.
+## Remaining Explicit-Decision Work
 
-2. Add cross-document retrieval scoring.
-- Prefer authoritative documents, exact section hits, recent chunks, and entity matches.
-- Keep deterministic lexical/vector fallback.
-- Files: `src/insight_graph/report_quality/document_index.py`, `tests/test_document_index.py`.
+These items expand API surface, attack surface, or release risk. Do them only with an explicit decision and dedicated safety review.
 
-3. Add optional pgvector-backed document retrieval design.
-- Keep local JSON index as default.
-- Only enable pgvector retrieval with explicit env vars and migration coverage.
-- Files: `src/insight_graph/report_quality/document_index.py`, `src/insight_graph/persistence/migrations.py`, `tests/test_document_index.py`, `tests/test_migrations.py`.
+1. `/tasks` API compatibility aliases.
+- Priority: highest among deferred items because it is mostly an API adapter and has the smallest security footprint.
+- Purpose: provide reference-compatible aliases for `/research/jobs` if a real consumer needs them.
+- Required safety: stable compatibility contract, duplicated API docs/tests, no behavior drift from `/research/jobs`.
 
-### Batch D: Memory Quality Loop
-
-Goal: make long-term memory improve future reports without polluting evidence.
-
-1. Improve memory writeback taxonomy.
-- Separate report summaries, entities, supported claims, references, and source reliability notes.
-- Include expiration/refresh metadata for stale facts.
-- Files: `src/insight_graph/memory/writeback.py`, `tests/test_memory.py`.
-
-2. Add memory retrieval quality controls.
-- Filter memory by domain, entity, embedding config, recency, and support status.
-- Prevent memory-only facts from becoming final report claims without fresh evidence.
-- Files: `src/insight_graph/agents/planner.py`, `src/insight_graph/memory/store.py`, `tests/test_agents.py`, `tests/test_memory.py`.
-
-3. Expand memory eval proof.
-- Compare memory off/on across multiple fake cases and report quality deltas.
-- Files: `src/insight_graph/eval.py`, `tests/test_eval.py`.
-
-### Batch E: Dashboard Productization
-
-Goal: make quality issues visible during and after research jobs.
-
-1. Add report-quality cards.
-- Show section coverage, citation support, source diversity, unsupported claims, URL validation, token totals, runtime.
-- Files: `src/insight_graph/dashboard.py`, `tests/test_api.py`.
-
-2. Add evidence drilldown UX.
-- Show evidence title, URL, source type, fetch status, citation support status, section ID, and snippets.
-- Files: `src/insight_graph/dashboard.py`, `tests/test_api.py`.
-
-3. Add trace/event filtering.
-- Filter job events by stage, type, and trace ID.
-- Files: `src/insight_graph/dashboard.py`, `src/insight_graph/api.py`, `tests/test_api.py`.
-
-### Batch F: API And Operations Hardening
-
-Goal: keep production paths reliable without expanding public surface unnecessarily.
-
-1. Add job retention and cleanup policy docs/tests.
-- Define terminal job retention, SQLite cleanup, and artifact retention behavior.
-- Files: `src/insight_graph/research_jobs.py`, `src/insight_graph/research_jobs_sqlite_backend.py`, `docs/research-jobs-api.md`, tests.
-
-2. Add restart/resume smoke path.
-- Cover queued jobs, expired running jobs, checkpoints, and worker claim behavior.
-- Files: `tests/test_research_jobs_sqlite_backend.py`, `tests/test_api.py`.
-
-3. Add deployment runbook alignment.
-- Clarify env vars for API keys, SQLite, PostgreSQL, pgvector, live providers, trace redaction, and benchmark costs.
-- Files: `docs/deployment.md`, `docs/configuration.md`, `README.md`.
-
-## Deferred Until Other Optimizations Are Complete
-
-These four items expand attack surface, API surface, or release risk. Do them only after the report-quality work above is complete and there is an explicit decision to proceed.
-
-1. MCP runtime invocation behind allowlist.
+2. MCP runtime invocation behind allowlist.
+- Priority: medium; valuable only when external tool invocation has a concrete use case.
 - Purpose: actually invoke external MCP tools, not just store metadata specs.
 - Required safety: allowlist, auth boundaries, request/response redaction, audit logs, timeout/resource limits.
 
-2. Real sandboxed Python/code execution.
+3. release/deploy automation dry-run only.
+- Priority: medium-low; useful after release cadence exists, but should start as non-destructive checks.
+- Purpose: automate release readiness checks and dry-run deploy steps without pushing, tagging, or force-pushing.
+- Required safety: branch protections, manual approval gates, dry runs by default, no force push to protected branches.
+
+4. Real sandboxed Python/code execution.
+- Priority: lowest and highest risk.
 - Purpose: run real analysis code for CSV/Excel/statistics/financial modeling.
 - Required safety: sandbox, network isolation, filesystem isolation, CPU/memory/time limits, dependency policy.
-
-3. `/tasks` API compatibility aliases.
-- Purpose: provide reference-compatible aliases for `/research/jobs` if a real consumer needs them.
-- Required safety: stable compatibility contract and duplicated API docs/tests.
-
-4. release/deploy/force-push automation.
-- Purpose: automate tags/releases/deploys only after the product path is stable.
-- Required safety: branch protections, dry runs, manual approval gates, no force push to protected branches.
