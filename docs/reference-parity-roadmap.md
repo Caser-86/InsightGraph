@@ -15,7 +15,7 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 | Conversation compression | Opt-in Executor integration implemented | Need broader graph/runtime memory integration | Medium |
 | Critic tried strategy blacklist | Implemented | Keep expanding strategy key coverage | Low |
 | Reporter verified-only citations | URL revalidation and snippet support metadata implemented | Improve live LLM judge only if needed | Medium |
-| Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback | Need persisted index and external embeddings | High |
+| Long PDF/RAG retrieval | Chunk/page/heading + lexical/vector fallback + opt-in local JSON persisted index | Need external embeddings and search_document tool | High |
 | PostgreSQL checkpoint resume | Store + event/API resume hooks implemented | Need migration layer and restart E2E tests | Medium |
 | pgvector memory | Store/search/delete + deterministic embeddings + Planner context injection | Need eval proof | High |
 | Full LLM observability | Full JSONL trace writer and runner summary implemented | Extend to relevance judge if needed | Low |
@@ -44,9 +44,9 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 ### Phase B: Provider And Long-Document Parity
 
 11. Multi-provider LLM config presets. **Implemented.**
-12. Named Minimax LLM preset.
-13. Stage-aware model routing policy.
-14. Persisted document vector index.
+12. Named Minimax LLM preset. **Deferred until needed.**
+13. Stage-aware model routing policy. **Implemented.**
+14. Persisted document vector index. **Implemented.**
 15. External embedding provider boundary.
 16. `search_document` tool for TOC/page/vector retrieval.
 17. PDF fetch/retrieval validation script.
@@ -72,4 +72,4 @@ This roadmap uses `wenyi-research-agent` as the reference standard for a product
 
 ## Next Phase
 
-Phase 12 starts with the named Minimax LLM preset if a Minimax-compatible endpoint is needed. The first implementation should add one provider preset on top of the existing OpenAI-compatible client without changing default deterministic behavior.
+Phase 15 starts with the external embedding provider boundary. The first implementation should add an opt-in embedding provider interface while keeping deterministic offline embeddings as the default.

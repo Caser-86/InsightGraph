@@ -99,6 +99,15 @@ Research memory is opt-in. The default backend is in-memory and is useful only f
 
 `PgVectorResearchMemoryStore` stores `memory_id`, text, embedding vector, and JSON metadata in `insight_graph_memories`. It provides persistence/search plus deletion by memory ID or metadata key/value. `build_memory_record` can generate deterministic offline embeddings for process-local tests and reproducible memory records. When memory context is enabled, Planner retrieves the top 3 similar memory records and uses them as collection hints. Real embedding providers and report-quality eval proof remain future work.
 
+## Document Indexing
+
+Local document indexing is opt-in and offline. When `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` is set, `document_reader` stores chunk metadata and deterministic embeddings in a local JSON index. Fresh entries are reused across document queries; changed files rebuild their own entry. Existing invalid/non-index files at that path are not overwritten.
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` | Local JSON file used for persisted document chunks and deterministic embeddings | 未启用 |
+| `INSIGHT_GRAPH_DOCUMENT_RETRIEVAL` | `deterministic` lexical ranking or opt-in deterministic vector ranking | `deterministic` |
+
 当前 Executor 会执行 planned tools、记录 `tool_call_log`、维护 `global_evidence_pool` 并去重 evidence；relevance 判断默认使用 deterministic/offline 流程，OpenAI-compatible LLM relevance 可通过环境变量配置启用。collection loop 受全局 tool/evidence budgets、section collection round 设置和 optional per-subtask tool rounds 约束；无新 evidence 时会停止后续 tool rounds。Conversation compression 默认关闭；启用后会写入 deterministic summary，保留 evidence IDs、source URLs、tool-call counts 和 findings，供后续长跑 agent loop 使用。
 
 ## Relevance Filtering
