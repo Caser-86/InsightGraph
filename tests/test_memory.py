@@ -4,6 +4,8 @@ from insight_graph.memory.store import (
     ResearchMemoryRecord,
     get_research_memory_store,
 )
+from insight_graph.memory.writeback import write_report_memories
+from insight_graph.state import Evidence, Finding, GraphState
 
 
 class FakeCursor:
@@ -172,3 +174,68 @@ def test_get_research_memory_store_defaults_to_memory(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MEMORY_BACKEND", "pgvector")
     monkeypatch.setenv("INSIGHT_GRAPH_POSTGRES_DSN", "postgresql://localhost/db")
     assert isinstance(get_research_memory_store(), PgVectorResearchMemoryStore)
+
+
+def test_write_report_memories_is_disabled_by_default(monkeypatch) -> None:
+    store = InMemoryResearchMemoryStore()
+    state = GraphState(user_request="Compare tools", report_markdown="# Report")
+    monkeypatch.delenv("INSIGHT_GRAPH_MEMORY_WRITEBACK", raising=False)
+
+    assert write_report_memories(state, store=store, run_id="run-1") == 0
+    assert store.search([1.0] * 64, limit=10) == []
+
+
+def test_write_report_memories_stores_summary_claims_references_and_entities(
+    monkeypatch,
+) -> None:
+    store = InMemoryResearchMemoryStore()
+    state = GraphState(
+        user_request="Compare Cursor and Copilot",
+        resolved_entities=[{"id": "cursor", "name": "Cursor"}],
+        report_markdown="# InsightGraph Research Report\n\nCursor differs from Copilot.",
+        findings=[
+            Finding(
+                title="Pricing differs",
+                summary="Cursor and Copilot package pricing differently.",
+                evidence_ids=["ev-1"],
+            )
+        ],
+        grounded_claims=[
+            {
+                "claim": "Cursor has editor-native positioning.",
+                "evidence_ids": ["ev-1"],
+                "support_status": "supported",
+            },
+            {
+                "claim": "Unsupported claim.",
+                "evidence_ids": ["ev-2"],
+                "support_status": "unsupported",
+            },
+        ],
+        evidence_pool=[
+            Evidence(
+                id="ev-1",
+                subtask_id="s1",
+                title="Cursor pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing evidence.",
+                source_type="official_site",
+                verified=True,
+            )
+        ],
+    )
+    monkeypatch.setenv("INSIGHT_GRAPH_MEMORY_WRITEBACK", "1")
+
+    count = write_report_memories(state, store=store, run_id="run-1")
+    records = list(store._records.values())
+
+    assert count == 4
+    assert {record.metadata["memory_type"] for record in records} == {
+        "report_summary",
+        "entity",
+        "supported_claim",
+        "reference",
+    }
+    assert all(record.metadata["run_id"] == "run-1" for record in records)
+    assert any("Cursor has editor-native positioning" in record.text for record in records)
+    assert not any("Unsupported claim" in record.text for record in records)
