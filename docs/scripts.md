@@ -8,6 +8,7 @@
 | `scripts/run_with_llm_log.py` | 当前可用 | 运行 research workflow，stdout 输出 Markdown，并将安全 LLM metadata 写入 `llm_logs/`；不记录 prompt、completion、raw response 或 API key |
 | `scripts/validate_sources.py` | 当前可用 | 离线校验 Markdown 报告 citation 与 References；支持文件路径或 stdin `-`，默认 JSON 输出，`--markdown` 输出表格；不联网校验 URL 可访问性 |
 | `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
+| `scripts/benchmark_live_research.py` | 当前可用 | 手动 opt-in 运行 `live-research` benchmark；需要 `--allow-live` 或 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1`，会使用联网/LLM 配置并可能产生 network/LLM cost |
 | `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown/HTML/PDF `document_reader` 行为、长文档 bounded snippets 和 JSON query ranking，默认 JSON 输出，`--markdown` 输出表格；PDF OCR、页级分页与向量语义检索验证属于后续路线图 |
 | `scripts/validate_pdf_fetch.py` | 当前可用 | 离线验证本地 PDF reader、`search_document` PDF query/page retrieval、fake remote PDF fetch 和 PDF metadata；不访问公网 |
 | `scripts/validate_github_search.py` | 当前可用 | 离线验证默认 deterministic `github_search` 和 fake live GitHub provider 映射，默认 JSON 输出，`--markdown` 输出表格；不读取 token、不请求 GitHub API |
@@ -47,6 +48,15 @@ python scripts/benchmark_research.py --markdown
 ```
 
 该脚本会在进程内清理会改变默认工具/LLM 行为的 opt-in 环境变量，确保 benchmark 使用 offline deterministic workflow。
+
+## benchmark_live_research.py
+
+```bash
+python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
+INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1 python scripts/benchmark_live_research.py --output reports/live-benchmark.json --case "Compare Cursor, OpenCode, and GitHub Copilot"
+```
+
+该脚本是手动/opt-in live benchmark，固定使用 `live-research` preset。未传 `--allow-live` 且未设置 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1` 时会退出，不写 artifact。启用后会访问真实网络/LLM provider，可能产生 network/LLM cost。JSON artifact 包含 URL validity count、citation precision proxy、source diversity、report depth、runtime、LLM call count 和 token totals。
 
 ## validate_sources.py
 
