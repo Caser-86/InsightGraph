@@ -7,6 +7,7 @@ import pytest
 import insight_graph.report_quality.document_index as document_index
 from insight_graph.report_quality.document_index import (
     DocumentIndexChunk,
+    get_document_index_backend,
     get_document_retrieval_mode,
     rank_document_chunks,
 )
@@ -161,6 +162,23 @@ def test_get_document_index_path_uses_configured_environment_path(monkeypatch, t
     monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
 
     assert document_index.get_document_index_path() == index_path
+
+
+def test_document_index_backend_defaults_to_json_without_pgvector_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN", raising=False)
+
+    assert get_document_index_backend() == "json"
+
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND", "pgvector")
+    assert get_document_index_backend() == "json"
+
+
+def test_document_index_backend_uses_pgvector_only_with_explicit_dsn(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND", "pgvector")
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN", "postgresql://example/db")
+
+    assert get_document_index_backend() == "pgvector"
 
 
 def test_document_vector_index_saves_and_loads_document_entry_with_chunks(tmp_path) -> None:
