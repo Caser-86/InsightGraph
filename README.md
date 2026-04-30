@@ -402,6 +402,7 @@ insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-
 
 # Manual live benchmark, may incur network/LLM cost
 python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
+python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json --case-file docs/benchmarks/live-research-cases.json
 ```
 
 ---
@@ -472,11 +473,13 @@ curl http://127.0.0.1:8000/research/jobs/<job_id>/report.html
 | `scripts/run_research.py` | 命令行执行研究任务 |
 | `scripts/run_with_llm_log.py` | 执行任务并写入 LLM trace/token/call summary |
 | `scripts/benchmark_research.py` | 运行 offline benchmark，支持 Markdown 输出 |
-| `scripts/benchmark_live_research.py` | 手动 opt-in 运行 `live-research` benchmark；可能产生 network/LLM cost |
+| `scripts/benchmark_live_research.py` | 手动 opt-in 运行 `live-research` benchmark；支持 `--case-file docs/benchmarks/live-research-cases.json`；可能产生 network/LLM cost |
 | `scripts/summarize_eval_report.py` | 汇总 Eval JSON 报告 |
 | `scripts/append_eval_history.py` | 追加 CI eval history artifact |
 | `scripts/validate_document_reader.py` | 验证本地 document reader 行为 |
 | `scripts/validate_pdf_fetch.py` | 离线验证 PDF fetch、retrieval 和 metadata |
+
+Live benchmark artifact 只保存指标摘要，不提交生成的 live report 正文。Do not commit generated live benchmark reports。关键字段包括 `url_validation_rate`、`citation_precision_proxy`、`source_diversity_by_type`、`source_diversity_by_domain`、`section_coverage`、`runtime_ms`、`tool_call_count`、`llm_call_count` 和 `total_tokens`。
 | `scripts/validate_github_search.py` | 验证 GitHub search provider 行为 |
 | `scripts/validate_sources.py` | 验证 source URL / source data |
 

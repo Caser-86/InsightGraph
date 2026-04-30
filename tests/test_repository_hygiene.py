@@ -59,6 +59,30 @@ def test_live_benchmark_is_documented_as_manual_opt_in() -> None:
     assert "live-research" in docs
 
 
+def test_live_benchmark_artifacts_and_case_profiles_are_documented() -> None:
+    root = Path(__file__).parents[1]
+    docs = "\n".join(
+        [
+            (root / "README.md").read_text(encoding="utf-8"),
+            (root / "docs" / "scripts.md").read_text(encoding="utf-8"),
+            (root / "docs" / "configuration.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "docs/benchmarks/live-research-cases.json" in docs
+    assert "--case-file docs/benchmarks/live-research-cases.json" in docs
+    for field in [
+        "url_validation_rate",
+        "citation_precision_proxy",
+        "source_diversity_by_type",
+        "source_diversity_by_domain",
+        "section_coverage",
+        "total_tokens",
+    ]:
+        assert field in docs
+    assert "Do not commit generated live benchmark reports" in docs
+
+
 def test_final_docs_align_to_live_research_product_path() -> None:
     root = Path(__file__).parents[1]
     docs = {
