@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
@@ -80,6 +82,8 @@ def _live_github_search(query: str, subtask_id: str) -> list[Evidence]:
         parsed = _repository_to_evidence(item, subtask_id)
         if parsed is not None:
             evidence.append(parsed)
+            if _fetch_details_enabled():
+                evidence.extend(_repository_detail_evidence(item, subtask_id, headers))
     return evidence
 
 
@@ -123,6 +127,14 @@ def _parse_github_limit() -> int:
     return min(max(value, 1), 10)
 
 
+def _fetch_details_enabled() -> bool:
+    return os.getenv("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def _repository_to_evidence(
     item: dict[str, Any],
     subtask_id: str,
@@ -135,7 +147,7 @@ def _repository_to_evidence(
         return None
 
     return Evidence(
-        id=f"github-{_slugify(full_name)}",
+        id=f"github-{_slugify(full_name)}-repository",
         subtask_id=subtask_id,
         title=full_name,
         source_url=html_url,
@@ -143,6 +155,117 @@ def _repository_to_evidence(
         source_type="github",
         verified=True,
     )
+
+
+def _repository_detail_evidence(
+    item: dict[str, Any],
+    subtask_id: str,
+    headers: dict[str, str],
+) -> list[Evidence]:
+    full_name = item.get("full_name")
+    if not isinstance(full_name, str) or "/" not in full_name:
+        return []
+    details: list[Evidence] = []
+    readme = _readme_to_evidence(full_name, subtask_id, headers)
+    if readme is not None:
+        details.append(readme)
+    release = _release_to_evidence(full_name, subtask_id, headers)
+    if release is not None:
+        details.append(release)
+    return details
+
+
+def _readme_to_evidence(
+    full_name: str,
+    subtask_id: str,
+    headers: dict[str, str],
+) -> Evidence | None:
+    try:
+        payload = fetch_github_json(
+            f"https://api.github.com/repos/{full_name}/readme",
+            headers,
+            timeout=10.0,
+        )
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    snippet = _decode_readme_snippet(payload)
+    if not snippet:
+        return None
+    source_url = payload.get("html_url")
+    if not isinstance(source_url, str) or not source_url.startswith("https://github.com/"):
+        source_url = f"https://github.com/{full_name}#readme"
+    return Evidence(
+        id=f"github-{_slugify(full_name)}-readme",
+        subtask_id=subtask_id,
+        title=f"{full_name} README",
+        source_url=source_url,
+        snippet=snippet,
+        source_type="github",
+        verified=True,
+    )
+
+
+def _release_to_evidence(
+    full_name: str,
+    subtask_id: str,
+    headers: dict[str, str],
+) -> Evidence | None:
+    try:
+        payload = fetch_github_json(
+            f"https://api.github.com/repos/{full_name}/releases?per_page=1",
+            headers,
+            timeout=10.0,
+        )
+    except Exception:
+        return None
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        return None
+    release = payload[0]
+    tag_name = release.get("tag_name")
+    if not isinstance(tag_name, str) or not tag_name.strip():
+        return None
+    source_url = release.get("html_url")
+    if not isinstance(source_url, str) or not source_url.startswith("https://github.com/"):
+        source_url = f"https://github.com/{full_name}/releases/tag/{tag_name}"
+    body = release.get("body")
+    published_at = release.get("published_at")
+    parts = []
+    if isinstance(body, str) and body.strip():
+        parts.append(_normalize_snippet(body))
+    if isinstance(published_at, str) and published_at.strip():
+        parts.append(f"Published: {published_at}.")
+    snippet = " ".join(parts).strip()
+    if not snippet:
+        return None
+    return Evidence(
+        id=f"github-{_slugify(full_name)}-release-{_slugify(tag_name)}",
+        subtask_id=subtask_id,
+        title=f"{full_name} release {tag_name}",
+        source_url=source_url,
+        snippet=snippet,
+        source_type="github",
+        verified=True,
+    )
+
+
+def _decode_readme_snippet(payload: dict[str, Any]) -> str | None:
+    content = payload.get("content")
+    encoding = payload.get("encoding")
+    if not isinstance(content, str):
+        return None
+    if encoding == "base64":
+        try:
+            decoded = base64.b64decode(content.encode("ascii"), validate=False)
+        except (binascii.Error, UnicodeEncodeError):
+            return None
+        return _normalize_snippet(decoded.decode("utf-8", errors="replace"))
+    return _normalize_snippet(content)
+
+
+def _normalize_snippet(value: str) -> str:
+    return " ".join(value.split())[:500]
 
 
 def _repository_snippet(item: dict[str, Any]) -> str:

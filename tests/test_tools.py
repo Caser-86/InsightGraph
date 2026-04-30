@@ -173,7 +173,7 @@ def test_github_search_live_provider_maps_repository_results(monkeypatch) -> Non
     }
     assert observed["timeout"] == 10.0
     assert len(evidence) == 1
-    assert evidence[0].id == "github-example-insightgraph"
+    assert evidence[0].id == "github-example-insightgraph-repository"
     assert evidence[0].subtask_id == "s1"
     assert evidence[0].title == "example/insightgraph"
     assert evidence[0].source_url == "https://github.com/example/insightgraph"
@@ -183,6 +183,98 @@ def test_github_search_live_provider_maps_repository_results(monkeypatch) -> Non
     )
     assert evidence[0].source_type == "github"
     assert evidence[0].verified is True
+
+
+def test_github_search_live_provider_fetches_readme_and_releases_when_enabled(
+    monkeypatch,
+) -> None:
+    observed_urls: list[str] = []
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del headers, timeout
+        observed_urls.append(url)
+        if url.startswith("https://api.github.com/search/repositories?"):
+            return {
+                "items": [
+                    {
+                        "full_name": "example/insightgraph",
+                        "html_url": "https://github.com/example/insightgraph",
+                        "description": "Research graph.",
+                        "stargazers_count": 42,
+                        "language": "Python",
+                        "updated_at": "2026-04-26T12:00:00Z",
+                    }
+                ]
+            }
+        if url == "https://api.github.com/repos/example/insightgraph/readme":
+            return {
+                "html_url": "https://github.com/example/insightgraph#readme",
+                "content": "SW5zaWdodEdyYXBoIHByb3ZpZGVzIHJlc2VhcmNoIGdyYXBocy4=",
+                "encoding": "base64",
+            }
+        if url == "https://api.github.com/repos/example/insightgraph/releases?per_page=1":
+            return [
+                {
+                    "name": "v1.2.0",
+                    "tag_name": "v1.2.0",
+                    "html_url": "https://github.com/example/insightgraph/releases/tag/v1.2.0",
+                    "body": "Adds citation-aware research reports.",
+                    "published_at": "2026-04-25T00:00:00Z",
+                }
+            ]
+        raise AssertionError(f"unexpected GitHub URL: {url}")
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_LIMIT", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS", "1")
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    evidence = github_search("InsightGraph competitive intelligence", "s1")
+
+    assert [item.id for item in evidence] == [
+        "github-example-insightgraph-repository",
+        "github-example-insightgraph-readme",
+        "github-example-insightgraph-release-v1-2-0",
+    ]
+    assert evidence[1].title == "example/insightgraph README"
+    assert evidence[1].snippet == "InsightGraph provides research graphs."
+    assert evidence[1].source_url == "https://github.com/example/insightgraph#readme"
+    assert evidence[2].title == "example/insightgraph release v1.2.0"
+    assert "Adds citation-aware research reports." in evidence[2].snippet
+    assert evidence[2].source_url.endswith("/releases/tag/v1.2.0")
+    assert len(observed_urls) == 3
+
+
+def test_github_search_live_provider_skips_details_by_default(monkeypatch) -> None:
+    observed_urls: list[str] = []
+
+    def fake_fetch_json(url: str, headers: dict[str, str], timeout: float):
+        del headers, timeout
+        observed_urls.append(url)
+        return {
+            "items": [
+                {
+                    "full_name": "example/insightgraph",
+                    "html_url": "https://github.com/example/insightgraph",
+                    "description": "Research graph.",
+                    "stargazers_count": 42,
+                    "language": "Python",
+                    "updated_at": "2026-04-26T12:00:00Z",
+                }
+            ]
+        }
+
+    github_search_module = importlib.import_module("insight_graph.tools.github_search")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_PROVIDER", "live")
+    monkeypatch.setenv("INSIGHT_GRAPH_GITHUB_LIMIT", "1")
+    monkeypatch.delenv("INSIGHT_GRAPH_GITHUB_FETCH_DETAILS", raising=False)
+    monkeypatch.setattr(github_search_module, "fetch_github_json", fake_fetch_json)
+
+    evidence = github_search("InsightGraph competitive intelligence", "s1")
+
+    assert [item.id for item in evidence] == ["github-example-insightgraph-repository"]
+    assert len(observed_urls) == 1
 
 
 def test_github_search_live_provider_allows_anonymous_requests(monkeypatch) -> None:
