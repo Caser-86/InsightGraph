@@ -529,6 +529,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
               <button class="tab active" data-tab="overview" type="button">Overview</button>
               <button class="tab" data-tab="report" type="button">Report</button>
               <button class="tab" data-tab="findings" type="button">Findings</button>
+              <button class="tab" data-tab="evidence" type="button">Evidence</button>
+              <button class="tab" data-tab="citations" type="button">Citations</button>
+              <button class="tab" data-tab="quality" type="button">Quality</button>
               <button class="tab" data-tab="tools" type="button">Tool Calls</button>
               <button class="tab" data-tab="llm" type="button">LLM Log</button>
               <button class="tab" data-tab="events" type="button">Live Events</button>
@@ -865,6 +868,49 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </div>`;
     }
 
+    function renderEvidencePanel(result) {
+      const evidence = result?.evidence_pool || result?.global_evidence_pool || [];
+      const validation = result?.url_validation || [];
+      if (!evidence.length && !validation.length) return '<div class="empty">No evidence or URL validation yet.</div>';
+      return `
+        <div class="data-list">
+          <h2>Evidence & Sources</h2>
+          ${evidence.map((item) => `<p><strong>${escapeHtml(item.title || item.id)}</strong><br>${escapeHtml(item.source_url || '')}<br><span class="subtitle">${escapeHtml(item.source_type || 'unknown')} - ${escapeHtml(item.fetch_status || 'not fetched')} - ${escapeHtml(item.fetch_error || 'ok')}</span><br>${escapeHtml(item.snippet || '')}</p>`).join('')}
+          <h2>URL Validation</h2>
+          ${validation.length ? validation.map((item) => `<p><strong>${escapeHtml(item.url || item.source_url || 'url')}</strong><br><span class="subtitle">reachable: ${escapeHtml(item.reachable)} trusted: ${escapeHtml(item.source_trusted)}</span></p>`).join('') : '<p class="subtitle">No URL validation records.</p>'}
+        </div>`;
+    }
+
+    function renderCitationPanel(result) {
+      const citations = result?.citation_support || [];
+      if (!citations.length) return '<div class="empty">No citation support records yet.</div>';
+      return `
+        <div class="data-list">
+          <h2>Citation Support</h2>
+          ${citations.map((item) => `<p><strong>${escapeHtml(item.support_status || item.status || 'unknown')}</strong><br>${escapeHtml(item.claim || item.text || '')}<br><span class="subtitle">Evidence: ${escapeHtml((item.evidence_ids || []).join(', '))}</span></p>`).join('')}
+        </div>`;
+    }
+
+    function renderQualityPanel(result) {
+      const llm = result?.llm_call_log || [];
+      const quality = result?.quality || result?.report_quality || {};
+      const inputTokens = llm.reduce((total, item) => total + Number(item.input_tokens || 0), 0);
+      const outputTokens = llm.reduce((total, item) => total + Number(item.output_tokens || 0), 0);
+      const totalTokens = llm.reduce((total, item) => total + Number(item.total_tokens || 0), 0);
+      return `
+        <div class="data-list">
+          <h2>Quality Signals</h2>
+          <p><strong>Source candidates</strong><br>${escapeHtml((result?.evidence_pool || []).length)}</p>
+          <p><strong>Fetch errors</strong><br>${escapeHtml((result?.evidence_pool || []).filter((item) => item.fetch_error).length)}</p>
+          <p><strong>Supported citations</strong><br>${escapeHtml((result?.citation_support || []).filter((item) => item.support_status === 'supported').length)}</p>
+          <h2>Token Totals</h2>
+          <p><strong>Total</strong><br>${escapeHtml(totalTokens)} tokens</p>
+          <p><strong>Input / Output</strong><br>${escapeHtml(inputTokens)} / ${escapeHtml(outputTokens)}</p>
+          <h2>Quality Cards</h2>
+          ${jsonBlock(quality)}
+        </div>`;
+    }
+
     function renderEvalOps() {
       return `
         <div class="data-list">
@@ -896,6 +942,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
           : '<div class="empty">Report will appear after the job succeeds.</div>';
       }
       if (state.activeTab === 'findings') els.reportPanel.innerHTML = renderFindings(result);
+      if (state.activeTab === 'evidence') els.reportPanel.innerHTML = renderEvidencePanel(result);
+      if (state.activeTab === 'citations') els.reportPanel.innerHTML = renderCitationPanel(result);
+      if (state.activeTab === 'quality') els.reportPanel.innerHTML = renderQualityPanel(result);
       if (state.activeTab === 'tools') els.reportPanel.innerHTML = jsonBlock(result.tool_call_log || []);
       if (state.activeTab === 'llm') els.reportPanel.innerHTML = jsonBlock(result.llm_call_log || []);
       if (state.activeTab === 'events') {
