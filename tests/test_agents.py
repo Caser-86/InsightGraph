@@ -401,6 +401,37 @@ def test_planner_builds_query_strategies_for_section_sources(monkeypatch) -> Non
     assert "executive-summary" in strategy["query"]
 
 
+def test_planner_query_strategy_includes_entity_aliases(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Compare OpenCode and GitHub Copilot")
+
+    updated = plan_research(state)
+
+    query = updated.query_strategies[0]["query"]
+    assert "OpenCode AI" in query
+    assert "opencode.ai" in query
+    assert "Copilot" in query
+    assert "docs.github.com" in query
+
+
+def test_planner_query_strategy_uses_required_source_types(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot pricing")
+
+    updated = plan_research(state)
+
+    source_tool_pairs = {
+        (strategy["source_type"], strategy["tool_name"])
+        for strategy in updated.query_strategies
+    }
+    assert ("github", "github_search") in source_tool_pairs
+    assert ("news", "news_search") in source_tool_pairs
+    assert ("official_site", "web_search") in source_tool_pairs
+
+
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
     state = GraphState(user_request="Compare Cursor, OpenCode, and Claude Code")

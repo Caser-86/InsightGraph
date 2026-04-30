@@ -155,6 +155,8 @@ def _build_query_strategies(
 ) -> list[dict[str, object]]:
     strategies: list[dict[str, object]] = []
     entity_names = _entity_names(resolved_entities)
+    entity_aliases = _entity_aliases(resolved_entities)
+    official_domains = _official_domains(resolved_entities)
     for section in section_plan:
         section_id = str(section.get("section_id", "")).strip()
         source_types = _section_source_types(section)
@@ -167,7 +169,14 @@ def _build_query_strategies(
                     "strategy_id": _strategy_id(round_index, section_id, source_type, len(strategies) + 1),
                     "section_id": section_id,
                     "tool_name": tool_name,
-                    "query": _strategy_query(user_request, section, source_type, entity_names),
+                    "query": _strategy_query(
+                        user_request,
+                        section,
+                        source_type,
+                        entity_names,
+                        entity_aliases,
+                        official_domains,
+                    ),
                     "source_type": source_type,
                     "entity_names": entity_names,
                     "round": round_index,
@@ -205,6 +214,8 @@ def _strategy_query(
     section: dict[str, object],
     source_type: str,
     entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
 ) -> str:
     parts = [user_request]
     section_id = str(section.get("section_id", "")).strip()
@@ -217,6 +228,10 @@ def _strategy_query(
         parts.append(f"source type: {source_type}")
     if entity_names:
         parts.append(f"entities: {', '.join(entity_names)}")
+    if entity_aliases:
+        parts.append(f"aliases: {', '.join(entity_aliases)}")
+    if official_domains:
+        parts.append(f"official domains: {', '.join(official_domains)}")
     return " | ".join(parts)
 
 
@@ -227,6 +242,30 @@ def _entity_names(resolved_entities: list[dict[str, object]]) -> list[str]:
         if isinstance(name, str) and name:
             names.append(name)
     return names
+
+
+def _entity_aliases(resolved_entities: list[dict[str, object]]) -> list[str]:
+    aliases: list[str] = []
+    for entity in resolved_entities:
+        for alias in _string_values(entity.get("aliases", [])):
+            if alias not in aliases:
+                aliases.append(alias)
+    return aliases
+
+
+def _official_domains(resolved_entities: list[dict[str, object]]) -> list[str]:
+    domains: list[str] = []
+    for entity in resolved_entities:
+        for domain in _string_values(entity.get("official_domains", [])):
+            if domain not in domains:
+                domains.append(domain)
+    return domains
+
+
+def _string_values(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str) and value]
 
 
 def _strategy_id(
