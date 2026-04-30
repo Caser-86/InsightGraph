@@ -645,6 +645,116 @@ def test_document_reader_ranks_heading_matches(tmp_path, monkeypatch) -> None:
     assert "roadmap details" in evidence[0].snippet
 
 
+def test_document_reader_writes_document_index_when_configured(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "indexed.md"
+    document.write_text("# Indexed\n\nenterprise pricing details", encoding="utf-8")
+    index_path = tmp_path / "cache" / "documents.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    evidence = document_reader(
+        '{"path":"indexed.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    entry = payload["documents"][str(document.resolve())]
+    assert payload["version"] == 1
+    assert entry["chunks"][0]["text"] == "# Indexed enterprise pricing details"
+
+
+def test_document_reader_reuses_persisted_chunks_for_second_query(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "indexed.md"
+    document.write_text("alpha beta enterprise pricing details", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    assert document_reader("indexed.md", "s1")
+
+    document_reader_module = importlib.import_module(
+        "insight_graph.tools.document_reader"
+    )
+
+    def fail_read(_path):
+        raise OSError("text should come from persisted chunks")
+
+    monkeypatch.setattr(document_reader_module, "_read_document_text", fail_read)
+
+    evidence = document_reader(
+        '{"path":"indexed.md","query":"enterprise pricing"}',
+        "s1",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].snippet == "alpha beta enterprise pricing details"
+
+
+def test_document_reader_rebuilds_stale_index_entry(tmp_path, monkeypatch) -> None:
+    document = tmp_path / "stale.md"
+    document.write_text("old alpha details", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    assert document_reader("stale.md", "s1")
+
+    document.write_text("new beta details", encoding="utf-8")
+    evidence = document_reader('{"path":"stale.md","query":"beta"}', "s1")
+
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    chunks = payload["documents"][str(document.resolve())]["chunks"]
+    assert evidence[0].snippet == "new beta details"
+    assert chunks[0]["text"] == "new beta details"
+
+
+def test_document_reader_falls_back_and_rewrites_corrupt_index_json(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "corrupt.md"
+    document.write_text("corrupt index fallback text", encoding="utf-8")
+    index_path = tmp_path / "documents.json"
+    index_path.write_text("{not-json", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", str(index_path))
+
+    evidence = document_reader("corrupt.md", "s1")
+
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    assert evidence[0].snippet == "corrupt index fallback text"
+    assert payload["documents"][str(document.resolve())]["chunks"][0]["text"] == (
+        "corrupt index fallback text"
+    )
+
+
+def test_document_reader_ignores_document_index_when_unset(
+    tmp_path, monkeypatch
+) -> None:
+    document = tmp_path / "plain.md"
+    document.write_text("plain in-memory text", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("INSIGHT_GRAPH_DOCUMENT_INDEX_PATH", raising=False)
+    document_reader_module = importlib.import_module(
+        "insight_graph.tools.document_reader"
+    )
+
+    class FailingIndex:
+        @classmethod
+        def load(cls, _path):
+            raise AssertionError("index should not load when env var is unset")
+
+    monkeypatch.setattr(document_reader_module, "DocumentVectorIndex", FailingIndex)
+
+    evidence = document_reader("plain.md", "s1")
+
+    assert evidence[0].snippet == "plain in-memory text"
+
+
 def test_document_reader_json_query_falls_back_when_no_terms_match(
     tmp_path, monkeypatch
 ) -> None:

@@ -11,6 +11,9 @@ from pypdf.errors import PdfReadError
 
 from insight_graph.report_quality.document_index import (
     DocumentIndexChunk,
+    DocumentVectorIndex,
+    IndexedDocumentChunk,
+    get_document_index_path,
     rank_document_chunks,
 )
 from insight_graph.state import Evidence
@@ -53,6 +56,61 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     if path is None or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
         return []
 
+    index_path = get_document_index_path()
+    if index_path is not None:
+        try:
+            index = DocumentVectorIndex.load(index_path)
+            fresh_chunks = index.get_fresh_chunks(path)
+        except Exception:
+            return _read_evidence(root, path, parsed_query, subtask_id)
+
+        if fresh_chunks:
+            snippets = _select_chunks(
+                _document_chunks_from_index(fresh_chunks),
+                parsed_query.retrieval_query,
+            )
+            return [
+                _build_evidence(root, path, subtask_id, chunk)
+                for chunk in snippets
+            ]
+
+        chunks = _read_document_chunks(path)
+        if not chunks:
+            return []
+        try:
+            index.store_document(path, _document_index_chunks(chunks))
+            index.save()
+        except Exception:
+            pass
+        snippets = _select_chunks(chunks, parsed_query.retrieval_query)
+        return [
+            _build_evidence(root, path, subtask_id, chunk)
+            for chunk in snippets
+        ]
+
+    return _read_evidence(root, path, parsed_query, subtask_id)
+
+
+def _read_evidence(
+    root: Path,
+    path: Path,
+    parsed_query: DocumentReaderQuery,
+    subtask_id: str,
+) -> list[Evidence]:
+    chunks = _read_document_chunks(path)
+    if not chunks:
+        return []
+    snippets = _select_chunks(chunks, parsed_query.retrieval_query)
+    if not snippets:
+        return []
+
+    return [
+        _build_evidence(root, path, subtask_id, chunk)
+        for chunk in snippets
+    ]
+
+
+def _read_document_chunks(path: Path) -> list[DocumentChunk]:
     try:
         document_text = _read_document_text(path)
     except (OSError, UnicodeDecodeError, PdfReadError):
@@ -61,19 +119,11 @@ def document_reader(query: str, subtask_id: str = "collect") -> list[Evidence]:
     normalized_text = _normalize_snippet(
         _extract_text(document_text.text, path.suffix.lower())
     )
-    snippets = _select_snippets(
+    return _chunk_snippets(
         normalized_text,
-        parsed_query.retrieval_query,
-        page_starts=document_text.page_starts,
-        section_headings=_extract_section_headings(document_text.text, normalized_text),
+        document_text.page_starts,
+        _extract_section_headings(document_text.text, normalized_text),
     )
-    if not snippets:
-        return []
-
-    return [
-        _build_evidence(root, path, subtask_id, chunk)
-        for chunk in snippets
-    ]
 
 
 def _parse_document_reader_query(query: str) -> DocumentReaderQuery | None:
@@ -112,10 +162,43 @@ def _select_snippets(
     section_headings: list[tuple[int, str]],
 ) -> list[DocumentChunk]:
     candidates = _chunk_snippets(text, page_starts, section_headings)
+    return _select_chunks(candidates, retrieval_query)
+
+
+def _select_chunks(
+    candidates: list[DocumentChunk],
+    retrieval_query: str | None,
+) -> list[DocumentChunk]:
     if not retrieval_query:
         return candidates[:MAX_DOCUMENT_EVIDENCE]
     ranked = _rank_snippets(candidates, retrieval_query)
     return ranked[:MAX_DOCUMENT_EVIDENCE] if ranked else candidates[:MAX_DOCUMENT_EVIDENCE]
+
+
+def _document_chunks_from_index(
+    chunks: list[IndexedDocumentChunk],
+) -> list[DocumentChunk]:
+    return [
+        DocumentChunk(
+            snippet=chunk.text,
+            index=chunk.index,
+            page=chunk.page,
+            section_heading=chunk.section_heading,
+        )
+        for chunk in chunks
+    ]
+
+
+def _document_index_chunks(chunks: list[DocumentChunk]) -> list[DocumentIndexChunk]:
+    return [
+        DocumentIndexChunk(
+            text=chunk.snippet,
+            index=chunk.index,
+            page=chunk.page,
+            section_heading=chunk.section_heading,
+        )
+        for chunk in chunks
+    ]
 
 
 def _chunk_snippets(
