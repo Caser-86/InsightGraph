@@ -7,7 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 
 import insight_graph.api as api_module
 import insight_graph.research_jobs as jobs_module
-from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS
+from insight_graph.cli import LIVE_LLM_PRESET_DEFAULTS, LIVE_RESEARCH_PRESET_DEFAULTS
 from insight_graph.state import (
     CompetitiveMatrixRow,
     Critique,
@@ -46,6 +46,14 @@ def clear_live_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_LLM_MODEL",
         "INSIGHT_GRAPH_USE_WEB_SEARCH",
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
+        "INSIGHT_GRAPH_SEARCH_LIMIT",
+        "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
+        "INSIGHT_GRAPH_GITHUB_PROVIDER",
+        "INSIGHT_GRAPH_USE_SEC_FILINGS",
+        "INSIGHT_GRAPH_USE_SEC_FINANCIALS",
+        "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION",
+        "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS",
+        "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
         "OPENAI_API_KEY",
@@ -904,6 +912,33 @@ def test_research_live_llm_preset_restores_env(monkeypatch) -> None:
     assert observed_env == LIVE_LLM_PRESET_DEFAULTS
     assert {name: os.getenv(name) for name in LIVE_LLM_PRESET_DEFAULTS} == {
         name: None for name in LIVE_LLM_PRESET_DEFAULTS
+    }
+
+
+def test_research_live_research_preset_applies_network_and_llm_defaults(
+    monkeypatch,
+) -> None:
+    clear_live_env(monkeypatch)
+    observed_env: dict[str, str | None] = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed_env.update(
+            {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS}
+        )
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research",
+        json={"query": "Compare AI coding agents", "preset": "live-research"},
+    )
+
+    assert response.status_code == 200
+    assert observed_env == LIVE_RESEARCH_PRESET_DEFAULTS
+    assert {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS} == {
+        name: None for name in LIVE_RESEARCH_PRESET_DEFAULTS
     }
 
 

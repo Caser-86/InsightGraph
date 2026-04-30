@@ -12,11 +12,7 @@ from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, To
 from insight_graph.tools import ToolRegistry
 
 WEB_SEARCH_TOOL = "web_search"
-MOCK_SEARCH_TOOL = "mock_search"
-WEB_SEARCH_EMPTY_FALLBACK_ERROR = (
-    "web_search returned no evidence; falling back to mock_search"
-)
-WEB_SEARCH_FALLBACK_NOTE = "fallback for web_search"
+WEB_SEARCH_EMPTY_ERROR = "web_search returned no live evidence"
 MAX_EVIDENCE_PER_TOOL = 5
 MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
 MAX_TOOL_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_TOOL_ROUNDS"
@@ -74,7 +70,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                     break
                 query = _collection_query(state, tool_name, section_focus)
                 section_id = _focused_section_id(section_focus)
-                kept_results, new_records = _run_tool_with_fallback(
+                kept_results, new_records = _run_tool(
                     registry,
                     tool_name,
                     query,
@@ -393,7 +389,7 @@ def _covered_source_types(
     ]
 
 
-def _run_tool_with_fallback(
+def _run_tool(
     registry: ToolRegistry,
     tool_name: str,
     query: str,
@@ -416,18 +412,7 @@ def _run_tool_with_fallback(
             round_index=round_index,
             section_id=section_id,
         )
-        if tool_name != WEB_SEARCH_TOOL:
-            return [], [failed_record]
-        fallback_results, fallback_records = _run_mock_search_fallback(
-            registry,
-            query,
-            subtask,
-            filter_enabled,
-            llm_call_log,
-            round_index=round_index,
-            section_id=section_id,
-        )
-        return fallback_results, [failed_record, *fallback_records]
+        return [], [failed_record]
 
     if tool_name == WEB_SEARCH_TOOL and not results:
         failed_record = ToolCallRecord(
@@ -435,20 +420,11 @@ def _run_tool_with_fallback(
             tool_name=tool_name,
             query=query,
             success=False,
-            error=WEB_SEARCH_EMPTY_FALLBACK_ERROR,
+            error=WEB_SEARCH_EMPTY_ERROR,
             round_index=round_index,
             section_id=section_id,
         )
-        fallback_results, fallback_records = _run_mock_search_fallback(
-            registry,
-            query,
-            subtask,
-            filter_enabled,
-            llm_call_log,
-            round_index=round_index,
-            section_id=section_id,
-        )
-        return fallback_results, [failed_record, *fallback_records]
+        return [], [failed_record]
 
     kept_results, filtered_count = _process_tool_results(
         query, subtask, results, filter_enabled, llm_call_log
@@ -483,49 +459,6 @@ def _process_tool_results(
         deduped_results,
         llm_call_log=llm_call_log,
     )
-
-
-def _run_mock_search_fallback(
-    registry: ToolRegistry,
-    query: str,
-    subtask: Subtask,
-    filter_enabled: bool,
-    llm_call_log: list[LLMCallRecord],
-    *,
-    round_index: int = 1,
-    section_id: str | None = None,
-) -> tuple[list[Evidence], list[ToolCallRecord]]:
-    try:
-        results = registry.run(MOCK_SEARCH_TOOL, query, subtask.id)
-    except Exception as exc:
-        return [], [
-            ToolCallRecord(
-                subtask_id=subtask.id,
-                tool_name=MOCK_SEARCH_TOOL,
-                query=query,
-                success=False,
-                error=f"fallback for web_search failed: {exc}",
-                round_index=round_index,
-                section_id=section_id,
-            )
-        ]
-
-    kept_results, filtered_count = _process_tool_results(
-        query, subtask, results, filter_enabled, llm_call_log
-    )
-    kept_results, cap_filtered_count = _cap_tool_results(kept_results)
-    return kept_results, [
-        ToolCallRecord(
-            subtask_id=subtask.id,
-            tool_name=MOCK_SEARCH_TOOL,
-            query=query,
-            evidence_count=len(results),
-            filtered_count=filtered_count + cap_filtered_count,
-            error=WEB_SEARCH_FALLBACK_NOTE,
-            round_index=round_index,
-            section_id=section_id,
-        )
-    ]
 
 
 def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:

@@ -2287,6 +2287,57 @@ def test_critic_rejects_findings_without_verified_evidence() -> None:
     assert updated.citation_support[0]["support_status"] == "unsupported"
 
 
+def test_critic_rejects_findings_with_weak_snippet_support() -> None:
+    state = GraphState(
+        user_request="Compare AI coding agents",
+        evidence_pool=[
+            Evidence(
+                id="verified-source",
+                subtask_id="collect",
+                title="Verified Source",
+                source_url="https://example.com/source",
+                snippet="Cursor pricing includes team plans.",
+                verified=True,
+            ),
+            Evidence(
+                id="verified-source-2",
+                subtask_id="collect",
+                title="Verified Source 2",
+                source_url="https://example.com/source-2",
+                snippet="GitHub Copilot documentation covers code completion.",
+                verified=True,
+            ),
+            Evidence(
+                id="verified-source-3",
+                subtask_id="collect",
+                title="Verified Source 3",
+                source_url="https://example.com/source-3",
+                snippet="OpenCode is an open source coding agent.",
+                verified=True,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Security",
+                summary="Copilot enterprise security includes audit logging.",
+                evidence_ids=["verified-source"],
+            )
+        ],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.critique is not None
+    assert updated.critique.passed is False
+    assert "citation support" in updated.critique.missing_topics
+    assert updated.citation_support[0]["support_status"] == "unsupported"
+    assert updated.replan_requests[-1] == {
+        "type": "unsupported_claim",
+        "claim": "Security",
+        "reason": "snippet lacks lexical support",
+    }
+
+
 def test_critic_creates_missing_evidence_replan_requests() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
@@ -2475,17 +2526,17 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
     state.citation_support = [
         {
             "claim": "Pricing and packaging differ",
-            "status": "supported",
+            "support_status": "supported",
             "evidence_ids": ["cursor-pricing", "unverified-source"],
-            "reason": "verified snippet overlap",
+            "unsupported_reason": None,
             "support_score": 0.67,
             "matched_terms": ["cursor", "pricing"],
         },
         {
             "claim": "Unsupported claim",
-            "status": "unsupported",
+            "support_status": "unsupported",
             "evidence_ids": [],
-            "reason": "missing verified evidence",
+            "unsupported_reason": "missing verified evidence",
             "support_score": 0.0,
             "matched_terms": [],
         },
@@ -2497,7 +2548,7 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
     assert "| Claim | Status | Evidence | Reason |" in updated.report_markdown
     assert (
         "| Pricing and packaging differ | supported | cursor-pricing | "
-        "verified snippet overlap; support_score=0.67; matched_terms=cursor, pricing |"
+        "support_score=0.67; matched_terms=cursor, pricing |"
     ) in updated.report_markdown
     assert (
         "| Unsupported claim | unsupported |  | missing verified evidence; support_score=0.0 |"

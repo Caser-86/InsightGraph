@@ -110,9 +110,9 @@ def test_apply_live_research_preset_sets_network_defaults(monkeypatch) -> None:
     assert os.environ["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "3"
     assert os.environ["INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
-    assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "deterministic"
-    assert "INSIGHT_GRAPH_ANALYST_PROVIDER" not in os.environ
-    assert "INSIGHT_GRAPH_REPORTER_PROVIDER" not in os.environ
+    assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "openai_compatible"
+    assert os.environ["INSIGHT_GRAPH_ANALYST_PROVIDER"] == "llm"
+    assert os.environ["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "llm"
 
 
 def test_apply_live_llm_preset_preserves_explicit_env_values(monkeypatch) -> None:
@@ -588,7 +588,7 @@ def test_cli_json_payload_includes_competitive_matrix(monkeypatch) -> None:
     ]
 
 
-def test_cli_research_output_json_includes_tool_fallback_records(monkeypatch) -> None:
+def test_cli_research_output_json_includes_tool_failure_records(monkeypatch) -> None:
     def fake_run_research(query: str) -> GraphState:
         state = GraphState(user_request=query, report_markdown="# Report\n")
         state.tool_call_log.extend(
@@ -598,15 +598,7 @@ def test_cli_research_output_json_includes_tool_fallback_records(monkeypatch) ->
                     tool_name="web_search",
                     query=query,
                     success=False,
-                    error="web_search returned no evidence; falling back to mock_search",
-                ),
-                ToolCallRecord(
-                    subtask_id="collect",
-                    tool_name="mock_search",
-                    query=query,
-                    evidence_count=3,
-                    success=True,
-                    error="fallback for web_search",
+                    error="web_search returned no live evidence",
                 ),
             ]
         )
@@ -619,12 +611,9 @@ def test_cli_research_output_json_includes_tool_fallback_records(monkeypatch) ->
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert [record["tool_name"] for record in payload["tool_call_log"]] == [
-        "web_search",
-        "mock_search",
-    ]
+    assert [record["tool_name"] for record in payload["tool_call_log"]] == ["web_search"]
     assert payload["tool_call_log"][0]["success"] is False
-    assert payload["tool_call_log"][1]["error"] == "fallback for web_search"
+    assert payload["tool_call_log"][0]["error"] == "web_search returned no live evidence"
 
 
 def test_cli_research_default_output_is_not_json(monkeypatch) -> None:

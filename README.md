@@ -62,7 +62,7 @@ src/insight_graph/
 | **证据溯源链** | Evidence 从搜索、URL、PDF、GitHub、SEC、本地文档进入 pool，Reporter 只重建 verified References |
 | **大文档检索** | `document_reader` / `search_document` 支持本地 TXT、Markdown、HTML、PDF，保留 chunk/page/section metadata |
 | **远程 URL/PDF 抓取** | `fetch_url` 支持 HTML 正文提取、远程 PDF 文本提取和 page metadata；rendered fetch 需 opt-in |
-| **多源联网研究** | `--preset live-research` 启用 DuckDuckGo、GitHub live search、SEC filings、多源采集和 bounded pre-fetch |
+| **多源联网研究** | `--preset live-research` 启用 DuckDuckGo、GitHub live search、SEC filings、多源采集、bounded pre-fetch、LLM Analyst/Reporter 和 URL validation |
 | **Citation 安全** | LLM 输出不得保留未知 evidence ID；References 由系统从 verified evidence 重建 |
 | **质量评审闭环** | Critic 生成 citation support、unsupported claims、missing evidence 和 tried-strategy metadata |
 | **可配置 LLM** | Analyst、Reporter、Relevance Judge 支持 OpenAI-compatible / local/self-hosted provider presets，可接入联网研报生成链路 |
@@ -260,7 +260,7 @@ flowchart TB
 | **API** | FastAPI、WebSocket endpoint |
 | **前端** | zero-build static HTML/CSS/JS Dashboard |
 | **HTML/PDF** | BeautifulSoup、pypdf |
-| **搜索** | DuckDuckGo via `ddgs`；测试 fallback 使用 deterministic mock |
+| **搜索** | DuckDuckGo via `ddgs`；测试/CI 可显式使用 deterministic mock |
 | **GitHub** | GitHub REST Search API；测试 fallback 使用 deterministic mock |
 | **LLM** | OpenAI-compatible/local/self-hosted providers；测试 fallback 使用 deterministic 输出 |
 | **向量/记忆** | deterministic embeddings；opt-in pgvector memory adapter |
@@ -273,8 +273,8 @@ flowchart TB
 
 | 工具 | 用途 | 运行方式 |
 |------|------|----------|
-| `mock_search` | 稳定测试搜索证据 | deterministic/offline fallback |
-| `web_search` | 搜索引擎查询 | DuckDuckGo live provider；mock 用于测试/CI |
+| `mock_search` | 稳定测试搜索证据 | deterministic/offline 工具 |
+| `web_search` | 搜索引擎查询 | DuckDuckGo live provider；mock 只在显式配置时用于测试/CI |
 | `pre_fetch` | 对 search candidate 做 bounded URL 抓取 | 跟随候选 URL |
 | `fetch_url` | 抓取 HTTP/HTTPS HTML/PDF 并生成 Evidence | live URL 工具，需显式 URL 或上游候选 |
 | `search_document` | cwd 内本地文档 query/page/section 检索 | opt-in，本地文件，不读 URL |
@@ -301,25 +301,26 @@ flowchart TB
 
 - **工具执行**：执行 Planner 指定工具，生成 verified evidence。
 - **Pre-fetch**：live research 下可对 web search 候选 URL 做 bounded fetch，并传播 retrieval query。
+- **Live failure policy**：联网搜索没有证据或 provider 异常时记录失败/证据不足，不自动混入 `mock_search` 证据。
 - **多轮采集**：支持 per-subtask tool rounds、follow-up section/tool queries 和全局 evidence budgets。
 - **证据管理**：维护 `evidence_pool` 和 `global_evidence_pool`，执行去重、排序、caps 和 section status 更新。
 
 ### 3. Analyst
 
 - **联网研报模式**：从 live search/fetch/document evidence 生成 grounded findings 和 competitive matrix。
-- **LLM 生成**：设置 LLM provider 后可用 OpenAI-compatible LLM 生成分析；测试路径保留 deterministic fallback。
+- **LLM 生成**：`live-research` preset 默认选择 LLM Analyst；未配置 LLM key 时仍会安全降级到 deterministic fallback。
 - **引用约束**：LLM findings 和 matrix 必须引用当前 verified evidence ID，否则 fallback。
 
 ### 4. Critic
 
-- **质量评审**：检查 evidence 数量、analysis 是否存在、citation support 是否足够。
+- **质量评审**：检查 evidence 数量、analysis 是否存在、claim-level citation support 是否为 supported。
 - **Citation support**：记录 claim-level support metadata，标记 supported / unsupported。
 - **Replan metadata**：生成 missing section evidence 和 unsupported claim 请求，并记录 tried strategies。
 
 ### 5. Reporter
 
 - **研报生成**：生成 Markdown report、Competitive Matrix、Critic Assessment、Citation Support Summary 和 References。
-- **LLM Reporter**：设置 Reporter provider 后可用 LLM 生成正文；测试路径保留 deterministic fallback。
+- **LLM Reporter**：`live-research` preset 默认选择 LLM Reporter；未配置 LLM key 时仍会安全降级到 deterministic fallback。
 - **引用安全**：最终 References 由系统从 verified evidence 重建，不信任模型自造引用。
 
 ### 6. 持久化与记忆
@@ -405,8 +406,8 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 # Markdown report with networked research path
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
 
-# CLI/API aligned JSON
-python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
+# CLI/API aligned live JSON
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research --output-json
 
 # Run script wrapper
 python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
@@ -443,7 +444,7 @@ uvicorn insight_graph.api:app --reload
 ```bash
 curl -X POST http://127.0.0.1:8000/research \
   -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot","preset":"live-research"}'
 ```
 
 异步 research jobs：
@@ -451,7 +452,7 @@ curl -X POST http://127.0.0.1:8000/research \
 ```bash
 curl -X POST http://127.0.0.1:8000/research/jobs \
   -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot","preset":"live-research"}'
 
 curl http://127.0.0.1:8000/research/jobs
 curl http://127.0.0.1:8000/research/jobs/summary
@@ -488,7 +489,8 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 | `INSIGHT_GRAPH_USE_SEARCH_DOCUMENT` | 使用 cwd 内 `search_document` 检索 | 未启用 |
 | `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH` | 本地 JSON document chunk/index cache | - |
 | `INSIGHT_GRAPH_FETCH_RENDERED` | `fetch_url` 尝试 Playwright rendered fetch | 未启用 |
-| `INSIGHT_GRAPH_RELEVANCE_FILTER` | 启用 evidence relevance filtering | 未启用 |
+| `INSIGHT_GRAPH_RELEVANCE_FILTER` | 启用 evidence relevance filtering | `live-research` preset 启用 |
+| `INSIGHT_GRAPH_RELEVANCE_JUDGE` | `deterministic` 或 `openai_compatible` | `live-research` preset 使用 `openai_compatible` |
 | `INSIGHT_GRAPH_ANALYST_PROVIDER` | `deterministic` 或 `llm` | `deterministic` |
 | `INSIGHT_GRAPH_REPORTER_PROVIDER` | `deterministic` 或 `llm` | `deterministic` |
 | `INSIGHT_GRAPH_LLM_PROVIDER` | LLM preset/provider | `openai_compatible` |
@@ -509,16 +511,18 @@ ws://127.0.0.1:8000/research/jobs/<job_id>/stream
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
 ```
 
-该 preset 会启用 DuckDuckGo-backed `web_search`、GitHub live repository search、SEC filings、多源采集、较高搜索候选数量和 deterministic relevance filtering；不会自动启用 LLM Analyst/Reporter。
+该 preset 会启用 DuckDuckGo-backed `web_search`、GitHub live repository search、SEC filings/financials、多源采集、较高搜索候选数量、OpenAI-compatible relevance judge、LLM Analyst、LLM Reporter 和 URL validation。若 live search 无证据或 provider 失败，系统会记录证据不足，不会自动注入 `mock_search` 结果。
 
-启用 live LLM preset：
+配置 LLM provider：
 
 ```bash
 INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
 INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
 INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
-python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
 ```
+
+`live-llm` 仍保留为轻量 preset：只启用 web search、relevance judge、LLM Analyst 和 LLM Reporter，不额外打开 GitHub/SEC/URL validation。
 
 更多配置见 `docs/configuration.md`。
 

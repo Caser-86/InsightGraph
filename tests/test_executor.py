@@ -912,24 +912,15 @@ def test_executor_logs_tool_failure_and_continues(monkeypatch) -> None:
     assert "Unknown tool: broken" in updated.tool_call_log[0].error
 
 
-def test_executor_falls_back_to_mock_search_for_empty_web_search(monkeypatch) -> None:
+def test_executor_records_empty_web_search_without_mock_fallback(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
-
-    fallback = Evidence(
-        id="fallback",
-        subtask_id="collect",
-        title="Fallback Evidence",
-        source_url="https://example.com/fallback",
-        snippet="Fallback evidence.",
-        verified=True,
-    )
 
     class FakeRegistry:
         def run(self, name: str, query: str, subtask_id: str):
             if name == "web_search":
                 return []
             if name == "mock_search":
-                return [fallback]
+                raise AssertionError("mock_search should not run")
             raise AssertionError(f"unexpected tool: {name}")
 
     monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
@@ -940,72 +931,24 @@ def test_executor_falls_back_to_mock_search_for_empty_web_search(monkeypatch) ->
 
     updated = execute_subtasks(state)
 
-    assert [item.id for item in updated.evidence_pool] == ["fallback"]
-    assert updated.global_evidence_pool == updated.evidence_pool
-    assert [record.tool_name for record in updated.tool_call_log] == [
-        "web_search",
-        "mock_search",
-    ]
+    assert updated.evidence_pool == []
+    assert updated.global_evidence_pool == []
+    assert [record.tool_name for record in updated.tool_call_log] == ["web_search"]
     assert updated.tool_call_log[0].success is False
     assert updated.tool_call_log[0].evidence_count == 0
     assert updated.tool_call_log[0].filtered_count == 0
-    assert updated.tool_call_log[0].error == (
-        "web_search returned no evidence; falling back to mock_search"
-    )
-    assert updated.tool_call_log[1].success is True
-    assert updated.tool_call_log[1].evidence_count == 1
-    assert updated.tool_call_log[1].filtered_count == 0
-    assert updated.tool_call_log[1].error == "fallback for web_search"
+    assert updated.tool_call_log[0].error == "web_search returned no live evidence"
 
 
-def test_executor_falls_back_to_mock_search_for_web_search_exception(monkeypatch) -> None:
+def test_executor_records_web_search_exception_without_mock_fallback(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
-
-    fallback = Evidence(
-        id="fallback",
-        subtask_id="collect",
-        title="Fallback Evidence",
-        source_url="https://example.com/fallback",
-        snippet="Fallback evidence.",
-        verified=True,
-    )
 
     class FakeRegistry:
         def run(self, name: str, query: str, subtask_id: str):
             if name == "web_search":
                 raise RuntimeError("live search unavailable")
             if name == "mock_search":
-                return [fallback]
-            raise AssertionError(f"unexpected tool: {name}")
-
-    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
-    state = GraphState(
-        user_request="query",
-        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
-    )
-
-    updated = execute_subtasks(state)
-
-    assert [item.id for item in updated.evidence_pool] == ["fallback"]
-    assert [record.tool_name for record in updated.tool_call_log] == [
-        "web_search",
-        "mock_search",
-    ]
-    assert updated.tool_call_log[0].success is False
-    assert "live search unavailable" in updated.tool_call_log[0].error
-    assert updated.tool_call_log[1].success is True
-    assert updated.tool_call_log[1].error == "fallback for web_search"
-
-
-def test_executor_records_failed_mock_search_fallback(monkeypatch) -> None:
-    executor_module = importlib.import_module("insight_graph.agents.executor")
-
-    class FakeRegistry:
-        def run(self, name: str, query: str, subtask_id: str):
-            if name == "web_search":
-                return []
-            if name == "mock_search":
-                raise RuntimeError("mock unavailable")
+                raise AssertionError("mock_search should not run")
             raise AssertionError(f"unexpected tool: {name}")
 
     monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
@@ -1017,44 +960,21 @@ def test_executor_records_failed_mock_search_fallback(monkeypatch) -> None:
     updated = execute_subtasks(state)
 
     assert updated.evidence_pool == []
-    assert [record.tool_name for record in updated.tool_call_log] == [
-        "web_search",
-        "mock_search",
-    ]
+    assert [record.tool_name for record in updated.tool_call_log] == ["web_search"]
     assert updated.tool_call_log[0].success is False
-    assert updated.tool_call_log[1].success is False
-    assert updated.tool_call_log[1].error == (
-        "fallback for web_search failed: mock unavailable"
-    )
+    assert "live search unavailable" in updated.tool_call_log[0].error
 
 
-def test_executor_applies_relevance_filter_to_mock_search_fallback(monkeypatch) -> None:
+def test_executor_does_not_filter_mock_fallback_for_empty_web_search(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
     monkeypatch.setenv("INSIGHT_GRAPH_RELEVANCE_FILTER", "1")
-
-    kept = Evidence(
-        id="kept",
-        subtask_id="collect",
-        title="Kept",
-        source_url="https://example.com/kept",
-        snippet="Kept evidence.",
-        verified=True,
-    )
-    dropped = Evidence(
-        id="dropped",
-        subtask_id="collect",
-        title="Dropped",
-        source_url="https://example.com/dropped",
-        snippet="Dropped evidence.",
-        verified=False,
-    )
 
     class FakeRegistry:
         def run(self, name: str, query: str, subtask_id: str):
             if name == "web_search":
                 return []
             if name == "mock_search":
-                return [kept, dropped]
+                raise AssertionError("mock_search should not run")
             raise AssertionError(f"unexpected tool: {name}")
 
     monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
@@ -1065,10 +985,8 @@ def test_executor_applies_relevance_filter_to_mock_search_fallback(monkeypatch) 
 
     updated = execute_subtasks(state)
 
-    assert [item.id for item in updated.evidence_pool] == ["kept"]
-    assert updated.tool_call_log[1].tool_name == "mock_search"
-    assert updated.tool_call_log[1].evidence_count == 2
-    assert updated.tool_call_log[1].filtered_count == 1
+    assert updated.evidence_pool == []
+    assert [record.tool_name for record in updated.tool_call_log] == ["web_search"]
 
 
 def test_executor_keeps_successful_empty_results_for_non_web_search(monkeypatch) -> None:

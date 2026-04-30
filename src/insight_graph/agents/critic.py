@@ -11,10 +11,8 @@ def critique_analysis(state: GraphState) -> GraphState:
     )
     verified_count = sum(1 for item in state.evidence_pool if item.verified)
     has_findings = bool(state.findings)
-    verified_ids = {item.id for item in state.evidence_pool if item.verified}
     citations_supported = has_findings and all(
-        any(evidence_id in verified_ids for evidence_id in finding.evidence_ids)
-        for finding in state.findings
+        item.get("support_status") == "supported" for item in state.citation_support
     )
     passed = verified_count >= 3 and has_findings and citations_supported
     missing_topics = []

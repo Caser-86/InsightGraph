@@ -1,8 +1,8 @@
 # InsightGraph Configuration
 
-InsightGraph defaults to deterministic/offline behavior. Live search, live LLM, GitHub API access, and local file/document tools require explicit opt-in environment variables.
+InsightGraph keeps deterministic/offline behavior for tests and local smoke runs. The product-oriented path is `--preset live-research`, which opts into networked search plus LLM analysis/reporting when an LLM endpoint is configured.
 
-Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, and `INSIGHT_GRAPH_RELEVANCE_JUDGE=deterministic` without enabling LLM Analyst or Reporter. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately. Use `--preset live-llm` or explicit LLM environment variables when model-generated analysis/reporting is desired.
+Use `--preset live-research` for a reference-style networked research run. It sets `INSIGHT_GRAPH_USE_WEB_SEARCH=1`, `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`, `INSIGHT_GRAPH_SEARCH_LIMIT=5`, `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`, `INSIGHT_GRAPH_GITHUB_PROVIDER=live`, `INSIGHT_GRAPH_USE_SEC_FILINGS=1`, `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`, `INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION=1`, `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=3`, `INSIGHT_GRAPH_REPORTER_VALIDATE_URLS=1`, `INSIGHT_GRAPH_RELEVANCE_FILTER=1`, `INSIGHT_GRAPH_RELEVANCE_JUDGE=openai_compatible`, `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`, and `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`. Fetched responses are size-bounded and oversized `Content-Length` responses are rejected before body reads; long HTML pages are split into bounded evidence chunks with `chunk_index` and `section_heading` metadata; fetched PDF responses emit docs evidence with `chunk_index` and `document_page` metadata. JavaScript-rendered fetch is optional via `INSIGHT_GRAPH_FETCH_RENDERED=1` and requires Playwright to be installed separately.
 
 ## Search Provider 配置
 
@@ -12,7 +12,7 @@ Use `--preset live-research` for a reference-style networked research run. It se
 INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo INSIGHT_GRAPH_SEARCH_LIMIT=3 python -c "from insight_graph.tools.web_search import web_search; print(web_search('Compare Cursor, OpenCode, and GitHub Copilot'))"
 ```
 
-当前 CLI 的 Planner 默认仍选择 `mock_search`，不会因为设置 DuckDuckGo provider 而自动联网。需要让研究流调用 `web_search` 时，显式设置 `INSIGHT_GRAPH_USE_WEB_SEARCH=1`；此时 `INSIGHT_GRAPH_SEARCH_PROVIDER` 再决定 `web_search` 使用 mock provider 还是 DuckDuckGo provider。
+当前 CLI 的 Planner 默认仍选择 `mock_search`，不会因为设置 DuckDuckGo provider 而自动联网。需要让研究流调用 `web_search` 时，显式设置 `INSIGHT_GRAPH_USE_WEB_SEARCH=1` 或使用 `--preset live-research`；此时 `INSIGHT_GRAPH_SEARCH_PROVIDER` 再决定 `web_search` 使用 mock provider 还是 DuckDuckGo provider。live `web_search` 没有证据或 provider 失败时会记录失败/证据不足，不会自动 fallback 到 `mock_search`。
 
 需要采集 GitHub 风格证据时，可设置 `INSIGHT_GRAPH_USE_GITHUB_SEARCH=1`。`github_search` 默认使用 deterministic/offline provider，返回稳定 verified GitHub evidence，不调用 GitHub API、不需要 token，也不受 rate limit 影响。需要真实 GitHub repository search 时，可额外设置 `INSIGHT_GRAPH_GITHUB_PROVIDER=live`；此时会调用 GitHub REST Search API。`INSIGHT_GRAPH_GITHUB_TOKEN` 或 `GITHUB_TOKEN` 可选，有 token 时用于提高 rate limit，无 token 时使用匿名请求。live provider 出现网络、鉴权、rate limit 或响应解析错误时返回空 evidence，不中断 workflow。
 
@@ -267,7 +267,7 @@ INSIGHT_GRAPH_LLM_MODEL_STRONG=strong-model-alias \
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
 ```
 
-## Live LLM Preset
+## Live Presets
 
 默认 CLI 保持 deterministic/offline：
 
@@ -275,20 +275,22 @@ python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copil
 python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot"
 ```
 
-要用一个显式开关启用 live pipeline，请配置 LLM endpoint 并使用 `--preset live-llm`：
+要用一个显式开关启用完整联网研究链路，请配置 LLM endpoint 并使用 `--preset live-research`：
 
 ```bash
 INSIGHT_GRAPH_LLM_API_KEY=sk-your-relay-key \
 INSIGHT_GRAPH_LLM_BASE_URL=https://relay.example.com/v1 \
 INSIGHT_GRAPH_LLM_MODEL=gpt-4o-mini \
-python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-llm
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research
 ```
 
-`live-llm` applies missing runtime defaults for DuckDuckGo search, relevance filtering, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter. It does not permanently modify your environment and does not accept API keys as command-line arguments.
+`live-research` applies missing runtime defaults for DuckDuckGo search, GitHub live search, SEC filings/financials, multi-source collection, URL validation, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter. It does not permanently modify your environment and does not accept API keys as command-line arguments.
+
+`live-llm` remains available as a lighter preset for web search + relevance + LLM Analyst/Reporter without GitHub/SEC/URL validation.
 
 `live-llm` does not set `INSIGHT_GRAPH_LLM_WIRE_API`; by default LLM calls use Chat Completions. To test a provider's Responses API support, explicitly set `INSIGHT_GRAPH_LLM_WIRE_API=responses`. If the provider does not support `/v1/responses` or the JSON response format, InsightGraph records the sanitized failure in `llm_call_log` and does not automatically fall back to Chat Completions.
 
-If live `web_search` returns no evidence or fails, the executor records the failed `web_search` attempt and falls back to deterministic `mock_search` evidence. This keeps live smoke/demo runs from producing empty reports while making the fallback visible in `tool_call_log` and `--output-json`.
+If live `web_search` returns no evidence or fails, the executor records the failed `web_search` attempt and returns no evidence for that tool. This avoids mixing deterministic `mock_search` evidence into live reports.
 
 ## LLM Observability
 
@@ -307,7 +309,7 @@ The appended table is opt-in and contains only stage, provider, model, router, t
 Use `--output-json` when scripts need a structured summary instead of Markdown:
 
 ```bash
-python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --output-json
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research --output-json
 ```
 
 JSON output includes `user_request`, `report_markdown`, `findings`, `competitive_matrix`, `critique`, `tool_call_log`, `llm_call_log`, and `iterations`. It intentionally omits `evidence_pool` and `global_evidence_pool` to avoid dumping fetched snippets. If `--output-json` and `--show-llm-log` are both provided, JSON output takes precedence.

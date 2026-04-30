@@ -614,7 +614,7 @@ def _build_citation_support_section(
     has_verified_support = False
     for item in state.citation_support:
         claim = str(item.get("claim", ""))
-        status = str(item.get("status", "unknown"))
+        status = str(item.get("support_status", "unknown"))
         reason = _citation_support_reason(item)
         evidence_ids = item.get("evidence_ids", [])
         verified_ids = [
@@ -650,7 +650,8 @@ def _build_citation_support_section(
 
 
 def _citation_support_reason(item: dict[str, object]) -> str:
-    parts = [str(item.get("reason", ""))]
+    unsupported_reason = item.get("unsupported_reason")
+    parts = [unsupported_reason if isinstance(unsupported_reason, str) else ""]
     support_score = item.get("support_score")
     if isinstance(support_score, int | float):
         parts.append(f"support_score={support_score}")

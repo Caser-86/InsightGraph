@@ -66,16 +66,16 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
         Finding(
             title="Official sources establish baseline product positioning",
             summary=(
-                "Official pricing pages, documentation, and repositories provide the safest "
-                "baseline for comparing product positioning and capabilities."
+                "Cursor publishes product tiers and pricing on its official pricing page. "
+                "GitHub Copilot documentation describes IDE integrations and enterprise features."
             ),
             evidence_ids=evidence_ids[:2],
         ),
         Finding(
             title="Open repositories add adoption and roadmap signals",
             summary=(
-                "GitHub evidence helps evaluate public development activity, release cadence, "
-                "and community-facing positioning."
+                "The OpenCode repository provides public project information, README content, "
+                "and release history."
             ),
             evidence_ids=evidence_ids[2:],
         ),

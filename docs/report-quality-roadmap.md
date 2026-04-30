@@ -446,7 +446,7 @@ Acceptance criteria:
 
 Goal: add heavier capabilities only after phases 1-9 are stable.
 
-Initial implementation adds a `live-research` runtime preset for reference-style networked research. The preset explicitly enables DuckDuckGo-backed web search, GitHub live repository search, multi-source collection, a larger live search limit, and deterministic relevance filtering while preserving offline defaults for tests and CI. LLM Analyst/Reporter remain separately opt-in through `live-llm` or explicit environment variables.
+`live-research` is the reference-style networked research preset. It enables DuckDuckGo-backed web search, GitHub live repository search, SEC filings/financials, multi-source collection, a larger live search limit, URL validation, OpenAI-compatible relevance judging, LLM Analyst, and LLM Reporter while preserving offline defaults for tests and CI. `live-llm` remains a lighter web-search + LLM preset.
 
 The document retrieval baseline records optional chunk index, PDF page number, and Markdown section heading metadata on `Evidence`. This gives local document/PDF evidence a TOC/page-aware foundation without adding pgvector, OCR, or remote PDF storage.
 

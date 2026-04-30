@@ -28,6 +28,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
+    LIVE_RESEARCH_PRESET_DEFAULTS,
     ResearchPreset,
     _build_research_json_payload,
 )
@@ -295,9 +296,14 @@ def _research_preset_environment(preset: ResearchPreset) -> Iterator[None]:
         yield
         return
 
-    previous_values = {name: os.environ.get(name) for name in LIVE_LLM_PRESET_DEFAULTS}
+    defaults = (
+        LIVE_RESEARCH_PRESET_DEFAULTS
+        if preset == ResearchPreset.live_research
+        else LIVE_LLM_PRESET_DEFAULTS
+    )
+    previous_values = {name: os.environ.get(name) for name in defaults}
     try:
-        for name, value in LIVE_LLM_PRESET_DEFAULTS.items():
+        for name, value in defaults.items():
             os.environ.setdefault(name, value)
         yield
     finally:
