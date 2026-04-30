@@ -132,6 +132,10 @@ def build_memory_comparison_payload(
 
 
 def load_eval_cases(path: Path | str) -> list[EvalCase]:
+    return load_eval_config(path)["cases"]
+
+
+def load_eval_config(path: Path | str) -> dict[str, Any]:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -139,7 +143,36 @@ def load_eval_cases(path: Path | str) -> list[EvalCase]:
 
     if not isinstance(payload, dict) or not isinstance(payload.get("cases"), list):
         raise EvalConfigError("case file must contain a cases list")
-    return [_eval_case_from_payload(item) for item in payload["cases"]]
+    return {
+        "cases": [_eval_case_from_payload(item) for item in payload["cases"]],
+        "quality_gates": _quality_gates_from_payload(payload.get("quality_gates", {})),
+    }
+
+
+def _quality_gates_from_payload(value: object) -> dict[str, float | int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise EvalConfigError("quality_gates must be an object")
+    allowed = {
+        "min_score",
+        "min_section_coverage",
+        "min_citation_support",
+        "min_official_source_coverage",
+        "min_source_diversity",
+        "min_report_depth",
+        "min_evidence_per_section",
+        "max_unsupported_claims",
+        "max_duplicate_source_rate",
+    }
+    gates: dict[str, float | int] = {}
+    for key, gate_value in value.items():
+        if key not in allowed:
+            raise EvalConfigError(f"unknown quality gate: {key}")
+        if not isinstance(gate_value, int | float) or isinstance(gate_value, bool):
+            raise EvalConfigError(f"{key} must be numeric")
+        gates[key] = gate_value
+    return gates
 
 
 def _eval_case_from_payload(item: object) -> EvalCase:
@@ -792,11 +825,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        cases = load_eval_cases(args.case_file) if args.case_file else None
+        config = load_eval_config(args.case_file) if args.case_file else None
     except EvalConfigError as exc:
         print(f"Eval config error: {exc}", file=sys.stderr)
         return 2
 
+    cases = config["cases"] if config is not None else None
+    file_gates = config["quality_gates"] if config is not None else {}
     payload = build_eval_payload(cases) if cases is not None else build_eval_payload()
     output = (
         format_markdown(payload)
@@ -810,20 +845,56 @@ def main(argv: list[str] | None = None) -> int:
 
     gate_failures = _gate_failures(
         payload,
-        min_score=args.min_score,
-        min_section_coverage=args.min_section_coverage,
-        min_citation_support=args.min_citation_support,
-        min_official_source_coverage=args.min_official_source_coverage,
-        min_source_diversity=args.min_source_diversity,
-        min_report_depth=args.min_report_depth,
-        min_evidence_per_section=args.min_evidence_per_section,
-        max_unsupported_claims=args.max_unsupported_claims,
-        max_duplicate_source_rate=args.max_duplicate_source_rate,
+        min_score=_gate_value(args.min_score, file_gates, "min_score"),
+        min_section_coverage=_gate_value(
+            args.min_section_coverage,
+            file_gates,
+            "min_section_coverage",
+        ),
+        min_citation_support=_gate_value(
+            args.min_citation_support,
+            file_gates,
+            "min_citation_support",
+        ),
+        min_official_source_coverage=_gate_value(
+            args.min_official_source_coverage,
+            file_gates,
+            "min_official_source_coverage",
+        ),
+        min_source_diversity=_gate_value(
+            args.min_source_diversity,
+            file_gates,
+            "min_source_diversity",
+        ),
+        min_report_depth=_gate_value(args.min_report_depth, file_gates, "min_report_depth"),
+        min_evidence_per_section=_gate_value(
+            args.min_evidence_per_section,
+            file_gates,
+            "min_evidence_per_section",
+        ),
+        max_unsupported_claims=_gate_value(
+            args.max_unsupported_claims,
+            file_gates,
+            "max_unsupported_claims",
+        ),
+        max_duplicate_source_rate=_gate_value(
+            args.max_duplicate_source_rate,
+            file_gates,
+            "max_duplicate_source_rate",
+        ),
         fail_on_case_failure=args.fail_on_case_failure,
     )
     for failure in gate_failures:
         print(failure, file=sys.stderr)
     return 1 if gate_failures else 0
+
+
+def _gate_value(
+    cli_value: float | int | None,
+    file_gates: dict[str, float | int],
+    key: str,
+) -> float | int | None:
+    return cli_value if cli_value is not None else file_gates.get(key)
 
 
 def _gate_failures(
