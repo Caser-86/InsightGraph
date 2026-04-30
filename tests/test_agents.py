@@ -264,9 +264,12 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_USE_MEMORY_CONTEXT", "1")
     import insight_graph.agents.planner as planner_module
 
+    observed_embeddings: list[list[float]] = []
+
     class FakeMemoryStore:
         def search(self, embedding, *, limit=5):
             assert limit == 3
+            observed_embeddings.append(embedding)
             return [
                 planner_module.ResearchMemoryRecord(
                     memory_id="m1",
@@ -276,11 +279,13 @@ def test_planner_injects_memory_context_when_enabled(monkeypatch) -> None:
                 )
             ]
 
+    monkeypatch.setattr(planner_module, "embed_text", lambda text: [0.25, 0.75])
     monkeypatch.setattr(planner_module, "get_research_memory_store", lambda: FakeMemoryStore())
     state = GraphState(user_request="Compare Cursor enterprise pricing")
 
     updated = plan_research(state)
 
+    assert observed_embeddings == [[0.25, 0.75]]
     assert updated.memory_context == [
         {
             "memory_id": "m1",
