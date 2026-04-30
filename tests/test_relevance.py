@@ -148,6 +148,22 @@ def test_filter_relevant_evidence_returns_kept_items_and_filtered_count() -> Non
     assert filtered_count == 1
 
 
+def test_relevance_filter_marks_kept_evidence_reason() -> None:
+    subtask = Subtask(id="collect", description="Collect pricing evidence")
+    evidence = [make_evidence(id="kept")]
+
+    kept, filtered_count = filter_relevant_evidence(
+        "Compare AI coding agents",
+        subtask,
+        evidence,
+        judge=DeterministicRelevanceJudge(),
+    )
+
+    assert filtered_count == 0
+    assert kept[0].relevance_status == "kept"
+    assert kept[0].relevance_reason == "Evidence is verified and has required content."
+
+
 class FakeOpenAIMessage:
     def __init__(self, content: str | None) -> None:
         self.content = content

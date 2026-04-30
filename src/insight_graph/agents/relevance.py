@@ -256,7 +256,14 @@ def filter_relevant_evidence(
     for item in evidence:
         decision = active_judge.judge(query, subtask, item)
         if decision.relevant:
-            kept.append(item)
+            kept.append(
+                item.model_copy(
+                    update={
+                        "relevance_status": "kept",
+                        "relevance_reason": decision.reason,
+                    }
+                )
+            )
         else:
             filtered_count += 1
     return kept, filtered_count

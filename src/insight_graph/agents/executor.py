@@ -55,6 +55,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
     collected: list[Evidence] = _existing_retry_evidence(state)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
+    relevance_drop_reasons: list[str] = []
     budgets = get_research_budgets()
     max_rounds = _max_tool_rounds()
     previous_evidence_keys: set[tuple[str, str]] = set()
@@ -89,6 +90,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                     subtask,
                     filter_enabled,
                     state.llm_call_log,
+                    relevance_drop_reasons,
                     round_index=round_index,
                     section_id=_optional_string(work_item.get("section_id")),
                     strategy_id=_optional_string(work_item.get("strategy_id")),
@@ -107,6 +109,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                     state=state,
                     round_evidence=collected[round_start_count:],
                     query_strategy_count=_query_strategy_count(work_items_for_round),
+                    relevance_drop_reasons=relevance_drop_reasons,
                 )
             )
             break
@@ -124,6 +127,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                 state=state,
                 round_evidence=collected[round_start_count:],
                 query_strategy_count=_query_strategy_count(work_items_for_round),
+                relevance_drop_reasons=relevance_drop_reasons,
             )
         )
         if sufficient:
@@ -163,6 +167,7 @@ def _round_summary(
     state: GraphState,
     round_evidence: list[Evidence],
     query_strategy_count: int,
+    relevance_drop_reasons: list[str],
 ) -> dict[str, object]:
     return {
         "round": round_index,
@@ -173,6 +178,8 @@ def _round_summary(
         "failed_fetch_count": _fetch_status_count(round_evidence, "failed"),
         "empty_fetch_count": _fetch_status_count(round_evidence, "empty"),
         "verified_evidence_count": sum(1 for item in round_evidence if item.verified),
+        "relevance_filtered_count": len(relevance_drop_reasons),
+        "relevance_drop_reasons": list(dict.fromkeys(relevance_drop_reasons)),
     }
 
 
@@ -501,6 +508,7 @@ def _run_tool(
     subtask: Subtask,
     filter_enabled: bool,
     llm_call_log: list[LLMCallRecord],
+    relevance_drop_reasons: list[str],
     *,
     round_index: int = 1,
     section_id: str | None = None,
@@ -535,7 +543,12 @@ def _run_tool(
         return [], [failed_record]
 
     kept_results, filtered_count = _process_tool_results(
-        query, subtask, results, filter_enabled, llm_call_log
+        query,
+        subtask,
+        results,
+        filter_enabled,
+        llm_call_log,
+        relevance_drop_reasons,
     )
     kept_results, cap_filtered_count = _cap_tool_results(kept_results)
     return kept_results, [
@@ -558,16 +571,35 @@ def _process_tool_results(
     results: list[Evidence],
     filter_enabled: bool,
     llm_call_log: list[LLMCallRecord],
+    relevance_drop_reasons: list[str],
 ) -> tuple[list[Evidence], int]:
     deduped_results = _deduplicate_evidence(results)
     if not filter_enabled:
         return deduped_results, 0
-    return filter_relevant_evidence(
+    kept, filtered_count = filter_relevant_evidence(
         query,
         subtask,
         deduped_results,
         llm_call_log=llm_call_log,
     )
+    kept_ids = {item.id for item in kept}
+    for item in deduped_results:
+        if item.id not in kept_ids:
+            reason = item.relevance_reason or _relevance_drop_reason(item)
+            relevance_drop_reasons.append(reason)
+    return kept, filtered_count
+
+
+def _relevance_drop_reason(evidence: Evidence) -> str:
+    if not evidence.verified:
+        return "Evidence is not verified."
+    if not evidence.title.strip():
+        return "Evidence title is empty."
+    if not evidence.source_url.strip():
+        return "Evidence source URL is empty."
+    if not evidence.snippet.strip():
+        return "Evidence snippet is empty."
+    return "Evidence was filtered by relevance judge."
 
 
 def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:
