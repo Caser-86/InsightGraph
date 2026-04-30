@@ -34,6 +34,43 @@ def test_rank_document_chunks_boosts_heading_matches() -> None:
     assert ranked[0].score > 100
 
 
+def test_rank_document_chunks_prioritizes_cross_document_quality_signals() -> None:
+    chunks = [
+        DocumentIndexChunk(
+            text="Copilot pricing evidence for GitHub Copilot enterprise buyers.",
+            index=0,
+            document_index=0,
+            section_heading="Overview",
+            source_type="blog",
+            entity_names=("GitHub Copilot",),
+            document_updated_at="2024-01-01",
+        ),
+        DocumentIndexChunk(
+            text="Copilot pricing evidence for GitHub Copilot enterprise buyers.",
+            index=1,
+            document_index=1,
+            section_heading="Pricing",
+            source_type="official_site",
+            entity_names=("GitHub Copilot",),
+            document_updated_at="2026-01-01",
+        ),
+        DocumentIndexChunk(
+            text="Copilot pricing evidence for generic enterprise buyers.",
+            index=2,
+            document_index=2,
+            section_heading="Pricing",
+            source_type="official_site",
+            entity_names=("Other Product",),
+            document_updated_at="2024-01-01",
+        ),
+    ]
+
+    ranked = rank_document_chunks(chunks, "GitHub Copilot pricing")
+
+    assert [(chunk.document_index, chunk.index) for chunk in ranked] == [(1, 1), (2, 2), (0, 0)]
+    assert ranked[0].score > ranked[1].score > ranked[2].score
+
+
 def test_rank_document_chunks_uses_vector_ranker_only_when_opted_in(monkeypatch) -> None:
     chunks = [
         DocumentIndexChunk(text="alpha evidence", index=0),
