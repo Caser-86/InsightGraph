@@ -16,6 +16,11 @@ from pypdf.errors import PdfReadError
 from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
+from insight_graph.tools.fetch_cache import (
+    FetchCacheEntry,
+    load_cached_fetch,
+    store_cached_fetch,
+)
 from insight_graph.tools.http_client import FetchedPage, FetchError, fetch_text
 from insight_graph.tools.rendered_fetch import render_page
 
@@ -72,12 +77,31 @@ def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
 
 
 def _fetch_page(url: str) -> FetchedPage:
+    cached = load_cached_fetch(url)
+    if cached is not None:
+        return FetchedPage(
+            url=cached.url,
+            status_code=cached.status_code,
+            content_type=cached.content_type,
+            text=cached.body.decode("utf-8", errors="replace"),
+            body=cached.body,
+        )
     if _is_truthy_env("INSIGHT_GRAPH_FETCH_RENDERED"):
         try:
             return render_page(url)
         except FetchError:
             pass
-    return fetch_text(url)
+    page = fetch_text(url)
+    if page.body is not None:
+        store_cached_fetch(
+            FetchCacheEntry(
+                url=page.url,
+                status_code=page.status_code,
+                content_type=page.content_type,
+                body=page.body,
+            )
+        )
+    return page
 
 
 def _is_truthy_env(name: str) -> bool:

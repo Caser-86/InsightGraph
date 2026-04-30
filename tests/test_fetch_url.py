@@ -238,6 +238,58 @@ def test_fetch_url_reads_remote_pdf_with_page_metadata(monkeypatch) -> None:
     assert item.document_page == 1
 
 
+def test_fetch_url_uses_configured_cache_for_pdf_bytes(tmp_path, monkeypatch) -> None:
+    pdf_bytes = write_minimal_pdf_bytes("Cached remote PDF evidence text.")
+    calls = 0
+
+    def fake_fetch_text(url: str):
+        nonlocal calls
+        calls += 1
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="application/pdf",
+            text=pdf_bytes.decode("latin-1"),
+            body=pdf_bytes,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setenv("INSIGHT_GRAPH_FETCH_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    first = fetch_url("https://example.com/report.pdf?utm_source=newsletter", "s1")
+    second = fetch_url("https://example.com/report.pdf", "s1")
+
+    assert calls == 1
+    assert first[0].snippet == "Cached remote PDF evidence text."
+    assert second[0].snippet == "Cached remote PDF evidence text."
+
+
+def test_fetch_url_does_not_cache_when_cache_dir_is_unset(monkeypatch) -> None:
+    pdf_bytes = write_minimal_pdf_bytes("Uncached remote PDF evidence text.")
+    calls = 0
+
+    def fake_fetch_text(url: str):
+        nonlocal calls
+        calls += 1
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="application/pdf",
+            text=pdf_bytes.decode("latin-1"),
+            body=pdf_bytes,
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.delenv("INSIGHT_GRAPH_FETCH_CACHE_DIR", raising=False)
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    fetch_url("https://example.com/report.pdf", "s1")
+    fetch_url("https://example.com/report.pdf", "s1")
+
+    assert calls == 2
+
+
 def test_fetch_url_suppresses_pypdf_logger_during_remote_pdf_parse(monkeypatch) -> None:
     class FakePdfPage:
         def extract_text(self) -> str:
