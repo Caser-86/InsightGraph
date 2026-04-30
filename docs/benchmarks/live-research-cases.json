@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "id": "ai-coding-agents",
+      "query": "Compare Cursor, OpenCode, Claude Code, and GitHub Copilot for engineering teams",
+      "expected_sections": [
+        "Executive Summary",
+        "Product Analysis",
+        "Competitive Landscape",
+        "Pricing and Packaging",
+        "Risks",
+        "Outlook",
+        "References"
+      ],
+      "required_source_types": ["official_site", "docs", "github", "news"],
+      "minimum_source_diversity": 3,
+      "report_depth_target_words": 900
+    },
+    {
+      "id": "public-company-analysis",
+      "query": "Analyze Microsoft AI strategy, revenue signals, product portfolio, and competitive risks",
+      "expected_sections": [
+        "Executive Summary",
+        "Company Background",
+        "Product Analysis",
+        "Market Analysis",
+        "Competitive Landscape",
+        "Risks",
+        "Outlook",
+        "References"
+      ],
+      "required_source_types": ["official_site", "docs", "news"],
+      "minimum_source_diversity": 3,
+      "report_depth_target_words": 1000
+    },
+    {
+      "id": "sec-filing-risk-analysis",
+      "query": "Analyze Apple recent SEC filing risk factors and business outlook",
+      "expected_sections": [
+        "Executive Summary",
+        "Company Background",
+        "Financial Filing Analysis",
+        "Risk Analysis",
+        "Competitive Landscape",
+        "Outlook",
+        "References"
+      ],
+      "required_source_types": ["official_site", "docs", "news"],
+      "minimum_source_diversity": 2,
+      "report_depth_target_words": 1000
+    },
+    {
+      "id": "technology-trend-analysis",
+      "query": "Analyze the trend toward agentic software engineering workflows in 2026",
+      "expected_sections": [
+        "Executive Summary",
+        "Technology Background",
+        "Market Analysis",
+        "Product Analysis",
+        "Competitive Landscape",
+        "Risks",
+        "Outlook",
+        "References"
+      ],
+      "required_source_types": ["official_site", "docs", "github", "news"],
+      "minimum_source_diversity": 3,
+      "report_depth_target_words": 900
+    }
+  ]
+}
