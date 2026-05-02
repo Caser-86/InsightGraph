@@ -44,6 +44,7 @@ INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 INSIGHT_GRAPH_GITHUB_PROVIDER=live INSIGHT_GRA
 | `INSIGHT_GRAPH_USE_LIST_DIRECTORY` | `1` / `true` / `yes` 时 Planner collect subtask 使用本地只读 `list_directory`；搜索工具、`document_reader` 和 `read_file` 优先 | 未启用 |
 | `INSIGHT_GRAPH_USE_WRITE_FILE` | `1` / `true` / `yes` 时 Planner collect subtask 使用 create-only `write_file`；搜索工具、`document_reader`、`read_file` 和 `list_directory` 优先 | 未启用 |
 | `INSIGHT_GRAPH_SEARCH_PROVIDER` | `mock` 或 `duckduckgo` | `mock` |
+| `INSIGHT_GRAPH_SEARCH_PROXY` | DuckDuckGo HTTP/SOCKS5 代理地址，例如 `http://127.0.0.1:7890`，也支持 `DDGS_PROXY` | - |
 | `INSIGHT_GRAPH_SEARCH_LIMIT` | `web_search` 候选 URL pre-fetch 数量 | `3` |
 | `INSIGHT_GRAPH_FETCH_RENDERED` | `1` / `true` / `yes` 时 `fetch_url` 优先尝试 optional Playwright rendered fetch，失败时回退到 bounded HTTP fetch | 未启用 |
 | `INSIGHT_GRAPH_GITHUB_PROVIDER` | `github_search` provider，支持默认离线 `mock` 或 opt-in GitHub API `live` | `mock` |
