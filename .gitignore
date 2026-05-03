@@ -9,3 +9,7 @@ reports/eval-summary.md
 reports/eval-history.json
 reports/eval-history.md
 reports/ai-coding-agents-technical-review.md
+
+.env
+debug.log
+memory/CLAUDE.md.original.md
