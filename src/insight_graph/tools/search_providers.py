@@ -49,6 +49,19 @@ class GoogleSearchProvider:
             return []
 
 
+class SerpAPISearchProvider:
+    def __init__(self) -> None:
+        self._api_key = os.getenv("INSIGHT_GRAPH_SERPAPI_KEY")
+
+    def search(self, query: str, limit: int) -> list[SearchResult]:
+        if not self._api_key:
+            return []
+        try:
+            return _call_serpapi_search(query, limit, self._api_key)
+        except Exception:
+            return []
+
+
 def get_search_provider(name: str | None = None) -> SearchProvider:
     provider_name = (name or os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock")).lower()
     if provider_name == "mock":
@@ -57,6 +70,8 @@ def get_search_provider(name: str | None = None) -> SearchProvider:
         return DuckDuckGoSearchProvider()
     if provider_name == "google":
         return GoogleSearchProvider()
+    if provider_name == "serpapi":
+        return SerpAPISearchProvider()
     raise ValueError(f"Unknown search provider: {provider_name}")
 
 
@@ -156,6 +171,40 @@ def _call_google_search(
                 url=link,
                 snippet=item.get("snippet", ""),
                 source="google",
+            )
+        )
+    return results
+
+
+def _call_serpapi_search(query: str, limit: int, api_key: str) -> list[SearchResult]:
+    import json
+    import urllib.parse
+    import urllib.request
+
+    params = {
+        "api_key": api_key,
+        "q": query,
+        "engine": "google",
+        "num": min(limit, 10),
+    }
+    url = f"https://serpapi.com/search?{urllib.parse.urlencode(params)}"
+
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=30) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    organic_results = data.get("organic_results", [])
+    results: list[SearchResult] = []
+    for item in organic_results:
+        link = item.get("link")
+        if not link:
+            continue
+        results.append(
+            SearchResult(
+                title=item.get("title", link),
+                url=link,
+                snippet=item.get("snippet", ""),
+                source="serpapi",
             )
         )
     return results
