@@ -1,4 +1,5 @@
 from insight_graph.state import Evidence
+from insight_graph.tools import search_providers
 from insight_graph.tools import web_search as web_search_module
 from insight_graph.tools.web_search import SearchResult
 
@@ -106,3 +107,35 @@ def test_web_search_uses_configured_provider_and_limit(monkeypatch) -> None:
         "query": "agentic coding tools",
     }
     assert [item.id for item in evidence] == ["provider-prefetched"]
+
+
+def test_serpapi_provider_accepts_common_api_key_env_aliases(monkeypatch) -> None:
+    captured = {}
+
+    def fake_call(query: str, limit: int, api_key: str):
+        captured["query"] = query
+        captured["limit"] = limit
+        captured["api_key"] = api_key
+        return [
+            SearchResult(
+                title="SerpAPI result",
+                url="https://example.com/serpapi",
+                snippet="Search result from SerpAPI.",
+                source="serpapi",
+            )
+        ]
+
+    monkeypatch.delenv("INSIGHT_GRAPH_SERPAPI_KEY", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_SERPAPI_API_KEY", raising=False)
+    monkeypatch.setenv("SERPAPI_API_KEY", "alias-key")
+    monkeypatch.setattr(search_providers, "_call_serpapi_search", fake_call)
+
+    provider = search_providers.get_search_provider("serpapi")
+    results = provider.search("OpenAI strategy", limit=7)
+
+    assert captured == {
+        "query": "OpenAI strategy",
+        "limit": 7,
+        "api_key": "alias-key",
+    }
+    assert results[0].source == "serpapi"

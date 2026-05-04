@@ -208,7 +208,8 @@ def test_main_preserves_markdown_trailing_spaces():
     assert stdout.getvalue() == "line  \n"
 
 
-def test_main_outputs_cli_aligned_json_payload():
+def test_main_outputs_cli_aligned_json_payload(monkeypatch):
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
     stdout = io.StringIO()
     stderr = io.StringIO()
 
@@ -230,6 +231,10 @@ def test_main_outputs_cli_aligned_json_payload():
     assert payload["tool_call_log"][0]["tool_name"] == "mock_search"
     assert payload["llm_call_log"][0]["wire_api"] == "responses"
     assert payload["iterations"] == 1
+    assert payload["runtime_diagnostics"]["tool_call_count"] == 1
+    assert payload["runtime_diagnostics"]["llm_call_count"] == 1
+    assert payload["runtime_diagnostics"]["successful_llm_call_count"] == 1
+    assert payload["runtime_diagnostics"]["llm_configured"] is True
 
 
 def test_main_offline_preset_does_not_apply_live_defaults(monkeypatch):
@@ -301,6 +306,16 @@ def test_main_live_research_preset_applies_defaults(monkeypatch):
 
     assert exit_code == 0
     assert observed_env == run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS
+
+
+def test_live_research_preset_uses_production_quality_budgets() -> None:
+    defaults = run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS
+
+    assert defaults["INSIGHT_GRAPH_SEARCH_LIMIT"] == "12"
+    assert defaults["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "5"
+    assert defaults["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "40"
+    assert defaults["INSIGHT_GRAPH_MAX_FETCHES"] == "20"
+    assert defaults["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "40"
 
 
 def test_main_returns_one_for_workflow_exception_without_raw_error():

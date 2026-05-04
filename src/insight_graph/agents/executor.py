@@ -258,7 +258,7 @@ def _all_sections_sufficient(statuses: list[dict[str, object]]) -> bool:
 
 
 def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
-    if state.iterations <= 0 or not state.replan_requests:
+    if state.iterations <= 0:
         return []
     existing = state.global_evidence_pool or state.evidence_pool
     return [Evidence.model_validate(item) for item in existing]

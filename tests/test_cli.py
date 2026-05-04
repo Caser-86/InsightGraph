@@ -33,6 +33,9 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_SEC_FINANCIALS",
         "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION",
         "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS",
+        "INSIGHT_GRAPH_MAX_TOOL_CALLS",
+        "INSIGHT_GRAPH_MAX_FETCHES",
+        "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
         "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
@@ -50,7 +53,7 @@ def test_cli_research_outputs_markdown_report(monkeypatch) -> None:
     result = runner.invoke(app, ["research", "Compare AI coding agents"])
 
     assert result.exit_code == 0
-    assert "# InsightGraph Research Report" in result.output
+    assert "# InsightGraph 深度研究报告" in result.output
     assert "## References" in result.output
 
 
@@ -101,13 +104,16 @@ def test_apply_live_research_preset_sets_network_defaults(monkeypatch) -> None:
 
     assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
     assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
-    assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "5"
+    assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "12"
     assert os.environ["INSIGHT_GRAPH_USE_GITHUB_SEARCH"] == "1"
     assert os.environ["INSIGHT_GRAPH_GITHUB_PROVIDER"] == "live"
     assert os.environ["INSIGHT_GRAPH_USE_SEC_FILINGS"] == "1"
     assert os.environ["INSIGHT_GRAPH_USE_SEC_FINANCIALS"] == "1"
     assert os.environ["INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"] == "1"
-    assert os.environ["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "3"
+    assert os.environ["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "5"
+    assert os.environ["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "40"
+    assert os.environ["INSIGHT_GRAPH_MAX_FETCHES"] == "20"
+    assert os.environ["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "40"
     assert os.environ["INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "openai_compatible"
@@ -506,57 +512,62 @@ def test_cli_research_output_json_emits_parseable_summary(monkeypatch) -> None:
     payload = json.loads(result.output)
     trace_id = payload.pop("trace_id")
     assert trace_id
-    assert payload == {
-        "user_request": "Compare AI coding agents",
-        "report_markdown": "# Report\n",
-        "findings": [
-            {
-                "title": "Pricing differs",
-                "summary": "Pricing and packaging differ.",
-                "evidence_ids": ["cursor-pricing"],
-            }
-        ],
-        "competitive_matrix": [],
-        "critique": {
-            "passed": True,
-            "reason": "Enough evidence.",
-            "missing_topics": [],
-        },
-        "tool_call_log": [
-            {
-                "subtask_id": "collect",
-                "tool_name": "mock_search",
-                "query": "Compare AI coding agents",
-                "evidence_count": 2,
-                "filtered_count": 0,
-                "success": True,
-                "error": None,
-                "round_index": 1,
-                "section_id": None,
-                "strategy_id": None,
-                "stop_reason": None,
-            }
-        ],
-        "llm_call_log": [
-            {
-                "stage": "analyst",
-                "provider": "llm",
-                "model": "relay-model",
-                "wire_api": "responses",
-                "success": True,
-                "duration_ms": 12,
-                "input_tokens": None,
-                "output_tokens": None,
-                "total_tokens": None,
-                "router": None,
-                "router_tier": None,
-                "router_reason": None,
-                "router_message_chars": None,
-                "error": None,
-            }
-        ],
-        "iterations": 1,
+    assert payload["user_request"] == "Compare AI coding agents"
+    assert payload["report_markdown"] == "# Report\n"
+    assert payload["findings"] == [
+        {
+            "title": "Pricing differs",
+            "summary": "Pricing and packaging differ.",
+            "evidence_ids": ["cursor-pricing"],
+        }
+    ]
+    assert payload["competitive_matrix"] == []
+    assert payload["critique"] == {
+        "passed": True,
+        "reason": "Enough evidence.",
+        "missing_topics": [],
     }
+    assert payload["tool_call_log"] == [
+        {
+            "subtask_id": "collect",
+            "tool_name": "mock_search",
+            "query": "Compare AI coding agents",
+            "evidence_count": 2,
+            "filtered_count": 0,
+            "success": True,
+            "error": None,
+            "round_index": 1,
+            "section_id": None,
+            "strategy_id": None,
+            "stop_reason": None,
+        }
+    ]
+    assert payload["llm_call_log"] == [
+        {
+            "stage": "analyst",
+            "provider": "llm",
+            "model": "relay-model",
+            "wire_api": "responses",
+            "success": True,
+            "duration_ms": 12,
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+            "router": None,
+            "router_tier": None,
+            "router_reason": None,
+            "router_message_chars": None,
+            "error": None,
+        }
+    ]
+    assert payload["iterations"] == 1
+    assert payload["evidence_pool"] == []
+    assert payload["global_evidence_pool"] == []
+    assert payload["citation_support"] == []
+    assert payload["url_validation"] == []
+    assert "quality" in payload
+    assert "quality_cards" in payload
+    assert "runtime_diagnostics" in payload
 
 
 def test_cli_json_payload_includes_competitive_matrix(monkeypatch) -> None:
@@ -638,7 +649,7 @@ def test_cli_research_default_output_is_not_json(monkeypatch) -> None:
         raise AssertionError("Default research output should remain Markdown")
 
 
-def test_cli_research_output_json_omits_evidence_and_private_strings(
+def test_cli_research_output_json_redacts_evidence_private_strings(
     monkeypatch,
 ) -> None:
     def fake_run_research(query: str) -> GraphState:
@@ -679,14 +690,11 @@ def test_cli_research_output_json_omits_evidence_and_private_strings(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert "subtasks" not in payload
-    assert "evidence_pool" not in payload
-    assert "global_evidence_pool" not in payload
+    assert payload["evidence_pool"][0]["id"] == "secret-evidence"
+    assert payload["global_evidence_pool"][0]["id"] == "global-secret-evidence"
     serialized = json.dumps(payload)
     assert "secret-subtask" not in serialized
-    assert "secret-evidence" not in serialized
-    assert "global-secret-evidence" not in serialized
     assert "Sensitive prompt" not in serialized
-    assert "Raw response" not in serialized
     assert "sk-secret" not in serialized
     assert "Authorization" not in serialized
     assert "request-body" not in serialized

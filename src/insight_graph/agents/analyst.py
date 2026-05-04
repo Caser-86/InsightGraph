@@ -346,6 +346,9 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
                 '"integrations": ["..."], "target_users": ["..."], '
                 '"risks": ["..."], '
                 '"evidence_ids": ["verified-evidence-id"]}]} '
+                "默认用中文输出 findings、grounded_claims、competitive_matrix。"
+                "每条 summary 要充分展开：说明证据说了什么、为什么重要、"
+                "对用户问题意味着什么，避免空泛短句。"
                 "competitive_matrix is optional, but each matrix row must include "
                 "product, positioning, strengths, and evidence_ids that cite "
                 "verified evidence IDs from the list. Every finding must cite "
@@ -359,8 +362,9 @@ def _build_analyst_messages(state: GraphState) -> list[ChatMessage]:
         ChatMessage(
             role="system",
             content=(
-                "You are an analyst producing concise, evidence-grounded competitive "
-                "research findings. Return JSON only."
+                "You are an analyst producing evidence-grounded research findings. "
+                "Use Chinese by default, write specific and well-developed analysis, "
+                "and return JSON only."
             ),
         ),
         ChatMessage(role="user", content=prompt),

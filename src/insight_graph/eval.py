@@ -1129,6 +1129,7 @@ def _add_maximum_gate_failure(
 
 
 def _format_number(value: float) -> str:
+    value = float(value)
     return str(int(value)) if value.is_integer() else str(value)
 
 

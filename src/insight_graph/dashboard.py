@@ -1,11 +1,11 @@
 # ruff: noqa: E501
 
 _DASHBOARD_HTML = r"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>InsightGraph Dashboard</title>
+  <title>InsightGraph 仪表盘</title>
   <style>
     :root {
       color-scheme: dark;
@@ -102,6 +102,29 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .subtitle { color: var(--muted); font-size: 0.92rem; }
 
     .status-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+    .language-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 5px 8px 5px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(9, 23, 35, 0.76);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .language-switch select {
+      width: auto;
+      min-height: 26px;
+      padding: 4px 28px 4px 8px;
+      border-radius: 999px;
+      background: rgba(2, 10, 16, 0.72);
+      font-size: 0.78rem;
+    }
 
     .pill {
       display: inline-flex;
@@ -462,14 +485,20 @@ _DASHBOARD_HTML = r"""<!doctype html>
       <div class="brand">
         <div class="logo">IG</div>
         <div>
-          <div class="eyebrow">Research Command Center</div>
-          <h1>InsightGraph Dashboard</h1>
-          <p class="subtitle">Create jobs, watch execution, and inspect reports.</p>
+          <div class="eyebrow" data-i18n="brandEyebrow">研究指挥中心</div>
+          <h1 data-i18n="brandTitle">InsightGraph 仪表盘</h1>
+          <p class="subtitle" data-i18n="brandSubtitle">创建任务、观察执行过程并检查报告。</p>
         </div>
       </div>
       <div class="status-row">
-        <span class="pill"><span class="dot"></span><span id="connection-state">booting</span></span>
-        <button id="auto-refresh" class="pill" type="button">auto refresh on</button>
+        <label class="language-switch"><span data-i18n="languageLabel">语言</span>
+          <select id="language-input" aria-label="Language">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <span class="pill"><span class="dot"></span><span id="connection-state">启动中</span></span>
+        <button id="auto-refresh" class="pill" type="button">自动刷新开</button>
       </div>
     </header>
 
@@ -477,57 +506,57 @@ _DASHBOARD_HTML = r"""<!doctype html>
       <section class="panel">
         <div class="panel-head">
           <div>
-            <div class="eyebrow">Launch</div>
-            <h2 class="panel-title">Research job</h2>
+            <div class="eyebrow" data-i18n="launchEyebrow">启动</div>
+            <h2 class="panel-title" data-i18n="researchJobTitle">研究任务</h2>
           </div>
         </div>
         <div class="panel-body form-stack">
-          <label>API key
-            <input id="api-key" autocomplete="off" placeholder="Optional bearer key">
+          <label><span data-i18n="apiKeyLabel">API 密钥</span>
+            <input id="api-key" autocomplete="off" placeholder="可选 Bearer 密钥" data-i18n-placeholder="apiKeyPlaceholder">
           </label>
-          <label>Preset
+          <label><span data-i18n="presetLabel">预设</span>
             <select id="preset-input">
               <option value="offline">offline</option>
               <option value="live-llm">live-llm</option>
               <option value="live-research" selected>live-research</option>
             </select>
           </label>
-          <label>Query
+          <label><span data-i18n="queryLabel">查询</span>
             <textarea id="query-input" spellcheck="true"></textarea>
           </label>
-          <label>Event type filter
-            <input id="event-type-filter" autocomplete="off" placeholder="stage_started, tool_call, report_ready">
+          <label><span data-i18n="eventTypeLabel">事件类型过滤</span>
+            <input id="event-type-filter" autocomplete="off" placeholder="stage_started, tool_call, report_ready" data-i18n-placeholder="eventTypePlaceholder">
           </label>
-          <label>Event stage filter
-            <input id="event-stage-filter" autocomplete="off" placeholder="planner, collector, analyst">
+          <label><span data-i18n="eventStageLabel">事件阶段过滤</span>
+            <input id="event-stage-filter" autocomplete="off" placeholder="planner, collector, analyst" data-i18n-placeholder="eventStagePlaceholder">
           </label>
-          <label>Trace ID filter
-            <input id="trace-id-filter" autocomplete="off" placeholder="trace id">
+          <label><span data-i18n="traceIdLabel">Trace ID 过滤</span>
+            <input id="trace-id-filter" autocomplete="off" placeholder="trace id" data-i18n-placeholder="traceIdPlaceholder">
           </label>
           <div class="actions">
-            <button id="submit-job" class="btn primary" type="button">Submit job</button>
-            <button id="refresh-now" class="btn ghost" type="button">Refresh</button>
+            <button id="submit-job" class="btn primary" type="button" data-i18n="submitJob">提交任务</button>
+            <button id="refresh-now" class="btn ghost" type="button" data-i18n="refresh">刷新</button>
           </div>
           <p id="message" class="message"></p>
         </div>
       </section>
 
       <main>
-        <section class="metric-grid" aria-label="Job metrics">
-          <div class="metric"><span>Total</span><strong id="metric-total">0</strong></div>
-          <div class="metric"><span>Queued</span><strong id="metric-queued">0</strong></div>
-          <div class="metric"><span>Running</span><strong id="metric-running">0</strong></div>
-          <div class="metric"><span>Succeeded</span><strong id="metric-succeeded">0</strong></div>
-          <div class="metric"><span>Failed</span><strong id="metric-failed">0</strong></div>
-          <div class="metric"><span>Active</span><strong id="metric-active">0/0</strong></div>
+        <section class="metric-grid" aria-label="任务指标" data-i18n-aria-label="jobMetricsLabel">
+          <div class="metric"><span data-i18n="metricTotal">总数</span><strong id="metric-total">0</strong></div>
+          <div class="metric"><span data-i18n="metricQueued">排队中</span><strong id="metric-queued">0</strong></div>
+          <div class="metric"><span data-i18n="metricRunning">运行中</span><strong id="metric-running">0</strong></div>
+          <div class="metric"><span data-i18n="metricSucceeded">已成功</span><strong id="metric-succeeded">0</strong></div>
+          <div class="metric"><span data-i18n="metricFailed">失败</span><strong id="metric-failed">0</strong></div>
+          <div class="metric"><span data-i18n="metricActive">活跃</span><strong id="metric-active">0/0</strong></div>
         </section>
 
         <div class="workspace">
           <section class="panel">
             <div class="panel-head">
               <div>
-                <div class="eyebrow">Progress</div>
-                <h2 class="panel-title">Recent jobs</h2>
+                <div class="eyebrow" data-i18n="progressEyebrow">进度</div>
+                <h2 class="panel-title" data-i18n="recentJobs">最近任务</h2>
               </div>
             </div>
             <div class="panel-body">
@@ -536,18 +565,18 @@ _DASHBOARD_HTML = r"""<!doctype html>
           </section>
 
           <section class="panel">
-            <nav class="tabs" aria-label="Job detail tabs">
-              <button class="tab active" data-tab="overview" type="button">Overview</button>
-              <button class="tab" data-tab="report" type="button">Report</button>
-              <button class="tab" data-tab="findings" type="button">Findings</button>
-              <button class="tab" data-tab="evidence" type="button">Evidence</button>
-              <button class="tab" data-tab="citations" type="button">Citations</button>
-              <button class="tab" data-tab="quality" type="button">Quality</button>
-              <button class="tab" data-tab="tools" type="button">Tool Calls</button>
-              <button class="tab" data-tab="llm" type="button">LLM Log</button>
-              <button class="tab" data-tab="events" type="button">Live Events</button>
-              <button class="tab" data-tab="eval" type="button">Eval</button>
-              <button class="tab" data-tab="raw" type="button">Raw JSON</button>
+            <nav class="tabs" aria-label="任务详情标签" data-i18n-aria-label="jobTabsLabel">
+              <button class="tab active" data-tab="overview" type="button" data-i18n="tabOverview">概览</button>
+              <button class="tab" data-tab="report" type="button" data-i18n="tabReport">报告</button>
+              <button class="tab" data-tab="findings" type="button" data-i18n="tabFindings">发现</button>
+              <button class="tab" data-tab="evidence" type="button" data-i18n="tabEvidence">证据</button>
+              <button class="tab" data-tab="citations" type="button" data-i18n="tabCitations">引用</button>
+              <button class="tab" data-tab="quality" type="button" data-i18n="tabQuality">质量</button>
+              <button class="tab" data-tab="tools" type="button" data-i18n="tabTools">工具调用</button>
+              <button class="tab" data-tab="llm" type="button" data-i18n="tabLlm">LLM 日志</button>
+              <button class="tab" data-tab="events" type="button" data-i18n="tabEvents">实时事件</button>
+              <button class="tab" data-tab="eval" type="button" data-i18n="tabEval">评测</button>
+              <button class="tab" data-tab="raw" type="button" data-i18n="tabRaw">原始 JSON</button>
             </nav>
             <div id="report-panel" class="panel-body tab-panel"></div>
           </section>
@@ -557,10 +586,396 @@ _DASHBOARD_HTML = r"""<!doctype html>
   </div>
 
   <script>
+    const LANGUAGE_STORAGE_KEY = 'insightgraph.dashboard.language';
+    const I18N = {
+      zh: {
+        pageTitle: 'InsightGraph 仪表盘',
+        brandEyebrow: '研究指挥中心',
+        brandTitle: 'InsightGraph 仪表盘',
+        brandSubtitle: '创建任务、观察执行过程并检查报告。',
+        languageLabel: '语言',
+        launchEyebrow: '启动',
+        researchJobTitle: '研究任务',
+        apiKeyLabel: 'API 密钥',
+        apiKeyPlaceholder: '可选 Bearer 密钥',
+        presetLabel: '预设',
+        queryLabel: '查询',
+        eventTypeLabel: '事件类型过滤',
+        eventTypePlaceholder: 'stage_started, tool_call, report_ready',
+        eventStageLabel: '事件阶段过滤',
+        eventStagePlaceholder: 'planner, collector, analyst',
+        traceIdLabel: 'Trace ID 过滤',
+        traceIdPlaceholder: 'trace id',
+        submitJob: '提交任务',
+        refresh: '刷新',
+        jobMetricsLabel: '任务指标',
+        metricTotal: '总数',
+        metricQueued: '排队中',
+        metricRunning: '运行中',
+        metricSucceeded: '已成功',
+        metricFailed: '失败',
+        metricActive: '活跃',
+        progressEyebrow: '进度',
+        recentJobs: '最近任务',
+        jobTabsLabel: '任务详情标签',
+        tabOverview: '概览',
+        tabReport: '报告',
+        tabFindings: '发现',
+        tabEvidence: '证据',
+        tabCitations: '引用',
+        tabQuality: '质量',
+        tabTools: '工具调用',
+        tabLlm: 'LLM 日志',
+        tabEvents: '实时事件',
+        tabEval: '评测',
+        tabRaw: '原始 JSON',
+        autoRefreshOn: '自动刷新开',
+        autoRefreshOff: '自动刷新关',
+        statusBooting: '启动中',
+        statusConnected: '已连接',
+        statusStreaming: '实时流',
+        statusLocked: '已锁定',
+        statusOffline: '离线',
+        noJobs: '暂无任务。提交一个查询开始。',
+        queuePosition: '队列 #{position}',
+        delete: '删除',
+        received: '已接收',
+        streamFailed: '事件流失败。',
+        streamFallback: '事件流不可用，正在使用轮询回退。',
+        selectJob: '选择一个任务查看详情。',
+        cancelQueuedJob: '取消排队任务',
+        retryJob: '重试失败/已取消任务',
+        progressLabel: '任务进度',
+        statusLabel: '状态',
+        stageLabel: '阶段',
+        jobIdLabel: '任务 ID',
+        createdLabel: '创建时间',
+        startedLabel: '开始时间',
+        finishedLabel: '结束时间',
+        runtimeLabel: '运行时长',
+        toolsLabel: '工具',
+        llmCallsLabel: 'LLM 调用',
+        iterationsLabel: '迭代',
+        criticLabel: '评审',
+        evalGateLabel: '评测门禁',
+        errorLabel: '错误',
+        notStarted: '未开始',
+        notFinished: '未完成',
+        seconds: '{value} 秒',
+        needsReview: '需要复核',
+        passedUnknown: '通过/未知',
+        none: '无',
+        unknown: '未知',
+        statusQueued: '排队中',
+        statusRunning: '运行中',
+        statusSucceeded: '已成功',
+        statusFailed: '失败',
+        statusCancelled: '已取消',
+        stageCompleted: '已完成',
+        stageFailed: '失败',
+        stageCancelled: '已取消',
+        stepPending: '待处理',
+        stepActive: '进行中',
+        stepCompleted: '已完成',
+        stepFailed: '失败',
+        stepSkipped: '已跳过',
+        planner: '规划',
+        collector: '采集',
+        analyst: '分析',
+        critic: '评审',
+        reporter: '报告',
+        downloadMarkdown: '下载 Markdown',
+        downloadHtml: '下载 HTML',
+        reportPending: '任务成功后会在这里显示报告。',
+        liveEventsPending: '任务运行时，实时执行事件会显示在这里。',
+        findingsTitle: '发现',
+        competitiveMatrix: '竞争矩阵',
+        noFindings: '暂无发现。',
+        evidenceSources: '证据与来源',
+        sourceType: '来源类型',
+        fetchStatus: '抓取状态',
+        sectionId: '章节 ID',
+        citationSupport: '引用支撑',
+        urlValidation: 'URL 验证',
+        noEvidence: '暂无证据或 URL 验证记录。',
+        urlValidationTitle: 'URL 验证',
+        noUrlValidation: '暂无 URL 验证记录。',
+        reachable: '可访问',
+        trusted: '可信',
+        notFetched: '未抓取',
+        citationsTitle: '引用支撑',
+        noCitations: '暂无引用支撑记录。',
+        evidenceLabel: '证据',
+        qualitySignals: '质量信号',
+        sectionCoverage: '章节覆盖',
+        sourceDiversity: '来源多样性',
+        unsupportedClaims: '未支撑声明',
+        tokenTotals: 'Token 总计',
+        sourceCandidates: '候选来源',
+        fetchErrors: '抓取错误',
+        supportedCitations: '已支撑引用',
+        total: '总计',
+        inputOutput: '输入 / 输出',
+        qualityCards: '质量卡片',
+        tokens: 'tokens',
+        runtimeDiagnostics: '运行诊断',
+        runtimeDiagnosticsEnglish: 'Runtime Diagnostics',
+        searchProvider: '搜索提供方',
+        searchLimit: '搜索数量',
+        webSearchCalls: '网页搜索调用',
+        successfulWebSearchCalls: '成功网页搜索',
+        llmConfigured: 'LLM 已配置',
+        successfulLlmCalls: '成功 LLM 调用',
+        verifiedEvidence: '已验证证据',
+        collectionStopReason: '采集停止原因',
+        yes: '是',
+        no: '否',
+        evalOps: '评测运维',
+        defaultCaseFile: '默认用例文件',
+        ciGate: 'CI 门禁',
+        githubActionsArtifact: 'GitHub Actions 产物',
+        fullReports: '完整报告',
+        summaryReports: '摘要报告',
+        historyReports: '历史报告',
+        localSummaryCommand: '本地摘要命令',
+        localHistoryCommand: '本地历史命令',
+        evalOpsNote: 'Dashboard 不会自动拉取 GitHub Actions 产物。请从 CI run 下载 eval-reports 产物查看生成文件。',
+        ready: '就绪。',
+        refreshing: '正在刷新...',
+        submittingJob: '正在提交任务...',
+        queryRequired: '查询不能为空。',
+        requestFailed: '请求失败',
+        apiKeyInvalid: 'API 密钥缺失或无效。',
+        queuedJob: '已排队 {jobId}。',
+        cancelledJob: '任务已取消。',
+        retryQueued: '已排队重试任务 {jobId}。',
+        deleteConfirm: '删除这个任务？',
+        deletedJob: '已删除任务 {jobId}',
+        deleteFailed: '删除失败',
+        defaultQuery: '比较 Cursor、OpenCode 和 GitHub Copilot',
+      },
+      en: {
+        pageTitle: 'InsightGraph Dashboard',
+        brandEyebrow: 'Research Command Center',
+        brandTitle: 'InsightGraph Dashboard',
+        brandSubtitle: 'Create jobs, watch execution, and inspect reports.',
+        languageLabel: 'Language',
+        launchEyebrow: 'Launch',
+        researchJobTitle: 'Research job',
+        apiKeyLabel: 'API key',
+        apiKeyPlaceholder: 'Optional bearer key',
+        presetLabel: 'Preset',
+        queryLabel: 'Query',
+        eventTypeLabel: 'Event type filter',
+        eventTypePlaceholder: 'stage_started, tool_call, report_ready',
+        eventStageLabel: 'Event stage filter',
+        eventStagePlaceholder: 'planner, collector, analyst',
+        traceIdLabel: 'Trace ID filter',
+        traceIdPlaceholder: 'trace id',
+        submitJob: 'Submit job',
+        refresh: 'Refresh',
+        jobMetricsLabel: 'Job metrics',
+        metricTotal: 'Total',
+        metricQueued: 'Queued',
+        metricRunning: 'Running',
+        metricSucceeded: 'Succeeded',
+        metricFailed: 'Failed',
+        metricActive: 'Active',
+        progressEyebrow: 'Progress',
+        recentJobs: 'Recent jobs',
+        jobTabsLabel: 'Job detail tabs',
+        tabOverview: 'Overview',
+        tabReport: 'Report',
+        tabFindings: 'Findings',
+        tabEvidence: 'Evidence',
+        tabCitations: 'Citations',
+        tabQuality: 'Quality',
+        tabTools: 'Tool Calls',
+        tabLlm: 'LLM Log',
+        tabEvents: 'Live Events',
+        tabEval: 'Eval',
+        tabRaw: 'Raw JSON',
+        autoRefreshOn: 'auto refresh on',
+        autoRefreshOff: 'auto refresh off',
+        statusBooting: 'booting',
+        statusConnected: 'connected',
+        statusStreaming: 'streaming',
+        statusLocked: 'locked',
+        statusOffline: 'offline',
+        noJobs: 'No jobs yet. Submit a query to start.',
+        queuePosition: 'Queue #{position}',
+        delete: 'Delete',
+        received: 'received',
+        streamFailed: 'Stream failed.',
+        streamFallback: 'Stream unavailable; using polling fallback.',
+        selectJob: 'Select a job to inspect.',
+        cancelQueuedJob: 'Cancel queued job',
+        retryJob: 'Retry failed/cancelled',
+        progressLabel: 'Job progress',
+        statusLabel: 'Status',
+        stageLabel: 'Stage',
+        jobIdLabel: 'Job ID',
+        createdLabel: 'Created',
+        startedLabel: 'Started',
+        finishedLabel: 'Finished',
+        runtimeLabel: 'Runtime',
+        toolsLabel: 'Tools',
+        llmCallsLabel: 'LLM Calls',
+        iterationsLabel: 'Iterations',
+        criticLabel: 'Critic',
+        evalGateLabel: 'Eval Gate',
+        errorLabel: 'Error',
+        notStarted: 'not started',
+        notFinished: 'not finished',
+        seconds: '{value}s',
+        needsReview: 'needs review',
+        passedUnknown: 'passed/unknown',
+        none: 'none',
+        unknown: 'unknown',
+        statusQueued: 'queued',
+        statusRunning: 'running',
+        statusSucceeded: 'succeeded',
+        statusFailed: 'failed',
+        statusCancelled: 'cancelled',
+        stageCompleted: 'completed',
+        stageFailed: 'failed',
+        stageCancelled: 'cancelled',
+        stepPending: 'pending',
+        stepActive: 'active',
+        stepCompleted: 'completed',
+        stepFailed: 'failed',
+        stepSkipped: 'skipped',
+        planner: 'Planner',
+        collector: 'Collector',
+        analyst: 'Analyst',
+        critic: 'Critic',
+        reporter: 'Reporter',
+        downloadMarkdown: 'Download Markdown',
+        downloadHtml: 'Download HTML',
+        reportPending: 'Report will appear after the job succeeds.',
+        liveEventsPending: 'Live execution events will appear here while a job runs.',
+        findingsTitle: 'Findings',
+        competitiveMatrix: 'Competitive Matrix',
+        noFindings: 'No findings yet.',
+        evidenceSources: 'Evidence & Sources',
+        sourceType: 'Source type',
+        fetchStatus: 'Fetch status',
+        sectionId: 'Section ID',
+        citationSupport: 'Citation support',
+        urlValidation: 'URL validation',
+        noEvidence: 'No evidence or URL validation yet.',
+        urlValidationTitle: 'URL Validation',
+        noUrlValidation: 'No URL validation records.',
+        reachable: 'reachable',
+        trusted: 'trusted',
+        notFetched: 'not fetched',
+        citationsTitle: 'Citation Support',
+        noCitations: 'No citation support records yet.',
+        evidenceLabel: 'Evidence',
+        qualitySignals: 'Quality Signals',
+        sectionCoverage: 'Section coverage',
+        sourceDiversity: 'Source diversity',
+        unsupportedClaims: 'Unsupported claims',
+        tokenTotals: 'Token Totals',
+        tokenTotalsLegacy: 'Token totals',
+        sourceCandidates: 'Source candidates',
+        fetchErrors: 'Fetch errors',
+        supportedCitations: 'Supported citations',
+        total: 'Total',
+        inputOutput: 'Input / Output',
+        qualityCards: 'Quality Cards',
+        tokens: 'tokens',
+        runtimeDiagnostics: 'Runtime Diagnostics',
+        runtimeDiagnosticsEnglish: 'Runtime Diagnostics',
+        searchProvider: 'Search provider',
+        searchLimit: 'Search limit',
+        webSearchCalls: 'Web search calls',
+        successfulWebSearchCalls: 'Successful web searches',
+        llmConfigured: 'LLM configured',
+        successfulLlmCalls: 'Successful LLM calls',
+        verifiedEvidence: 'Verified evidence',
+        collectionStopReason: 'Collection stop reason',
+        yes: 'yes',
+        no: 'no',
+        evalOps: 'Eval Ops',
+        defaultCaseFile: 'Default case file',
+        ciGate: 'CI gate',
+        githubActionsArtifact: 'GitHub Actions artifact',
+        fullReports: 'Full reports',
+        summaryReports: 'Summary reports',
+        historyReports: 'History reports',
+        localSummaryCommand: 'Local summary command',
+        localHistoryCommand: 'Local history command',
+        evalOpsNote: 'Dashboard does not fetch GitHub Actions artifacts automatically. Download the eval-reports artifact from the CI run to inspect generated files.',
+        ready: 'Ready.',
+        refreshing: 'Refreshing...',
+        submittingJob: 'Submitting job...',
+        queryRequired: 'Query is required.',
+        requestFailed: 'Request failed',
+        apiKeyInvalid: 'API key required or invalid.',
+        queuedJob: 'Queued {jobId}.',
+        cancelledJob: 'Job cancelled.',
+        retryQueued: 'Retry queued {jobId}.',
+        deleteConfirm: 'Delete this job?',
+        deletedJob: 'Deleted job {jobId}',
+        deleteFailed: 'Delete failed',
+        defaultQuery: 'Compare Cursor, OpenCode, and GitHub Copilot',
+      },
+    };
+
+    function normalizeLanguage(value) {
+      return value === 'en' ? 'en' : 'zh';
+    }
+
+    function t(key, values = {}) {
+      const dictionary = I18N[state.language] || I18N.zh;
+      let text = dictionary[key] || I18N.en[key] || key;
+      for (const [name, value] of Object.entries(values)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+      return text;
+    }
+
+    function statusText(status) {
+      return {
+        queued: t('statusQueued'),
+        running: t('statusRunning'),
+        succeeded: t('statusSucceeded'),
+        failed: t('statusFailed'),
+        cancelled: t('statusCancelled'),
+      }[status] || status || t('unknown');
+    }
+
+    function stepStatusText(status) {
+      return {
+        pending: t('stepPending'),
+        active: t('stepActive'),
+        completed: t('stepCompleted'),
+        failed: t('stepFailed'),
+        skipped: t('stepSkipped'),
+      }[status] || status || t('unknown');
+    }
+
+    function stageText(stage) {
+      return {
+        planner: t('planner'),
+        collector: t('collector'),
+        analyst: t('analyst'),
+        critic: t('critic'),
+        reporter: t('reporter'),
+        completed: t('stageCompleted'),
+        failed: t('stageFailed'),
+        cancelled: t('stageCancelled'),
+        queued: t('statusQueued'),
+      }[stage] || stage || t('unknown');
+    }
+
     const state = {
       jobs: [],
       detail: null,
       selectedJobId: localStorage.getItem('insightgraph.dashboard.jobId') || '',
+      language: normalizeLanguage(localStorage.getItem(LANGUAGE_STORAGE_KEY)),
+      connectionStateKey: 'statusBooting',
       activeTab: 'overview',
       autoRefresh: true,
       timer: null,
@@ -572,6 +987,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     };
 
     const els = {
+      language: document.getElementById('language-input'),
       apiKey: document.getElementById('api-key'),
       preset: document.getElementById('preset-input'),
       query: document.getElementById('query-input'),
@@ -595,10 +1011,35 @@ _DASHBOARD_HTML = r"""<!doctype html>
       },
     };
 
-    const defaultQuery = 'Compare Cursor, OpenCode, and GitHub Copilot';
+    els.language.value = state.language;
+    const savedQuery = localStorage.getItem('insightgraph.dashboard.query');
     els.apiKey.value = localStorage.getItem('insightgraph.dashboard.apiKey') || '';
-    els.query.value = localStorage.getItem('insightgraph.dashboard.query') || defaultQuery;
+    els.query.value = savedQuery || t('defaultQuery');
     els.preset.value = localStorage.getItem('insightgraph.dashboard.preset') || 'offline';
+
+    function applyLanguage() {
+      document.documentElement.lang = state.language === 'zh' ? 'zh-CN' : 'en';
+      document.title = t('pageTitle');
+      document.querySelectorAll('[data-i18n]').forEach((item) => {
+        item.textContent = t(item.dataset.i18n);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach((item) => {
+        item.setAttribute('placeholder', t(item.dataset.i18nPlaceholder));
+      });
+      document.querySelectorAll('[data-i18n-aria-label]').forEach((item) => {
+        item.setAttribute('aria-label', t(item.dataset.i18nAriaLabel));
+      });
+      els.autoRefresh.textContent = state.autoRefresh ? t('autoRefreshOn') : t('autoRefreshOff');
+      els.connection.textContent = t(state.connectionStateKey);
+      if (!els.message.textContent) setMessage(t('ready'), 'ok');
+      renderJobList();
+      renderDetail();
+    }
+
+    function setConnection(key) {
+      state.connectionStateKey = key;
+      els.connection.textContent = t(key);
+    }
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -623,7 +1064,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       try { payload = await response.json(); } catch (_) { payload = null; }
       if (!response.ok) {
         const detail = payload && payload.detail ? payload.detail : response.statusText;
-        const error = new Error(detail || 'Request failed');
+        const error = new Error(detail || t('requestFailed'));
         error.status = response.status;
         throw error;
       }
@@ -653,24 +1094,24 @@ _DASHBOARD_HTML = r"""<!doctype html>
       const key = els.apiKey.value.trim();
       const url = '/research/jobs/' + encodeURIComponent(jobId);
       return fetch(url, { method: 'DELETE', headers: headers() }).then((response) => {
-        if (!response.ok) return response.json().then((data) => { throw new Error(data.detail || 'Delete failed'); });
+        if (!response.ok) return response.json().then((data) => { throw new Error(data.detail || t('deleteFailed')); });
         return response.json();
       });
     }
 
     function renderJobList() {
       if (!state.jobs.length) {
-        els.jobList.innerHTML = '<div class="empty">No jobs yet. Submit a query to start.</div>';
+        els.jobList.innerHTML = `<div class="empty">${escapeHtml(t('noJobs'))}</div>`;
         return;
       }
       els.jobList.innerHTML = state.jobs.map((job) => {
         const active = job.job_id === state.selectedJobId ? ' active' : '';
-        const queue = job.queue_position ? `Queue #${job.queue_position}` : job.preset;
+        const queue = job.queue_position ? t('queuePosition', { position: job.queue_position }) : job.preset;
         const isTerminal = jobIsTerminal(job.status);
-        const deleteBtn = isTerminal ? `<button class="btn danger small" data-delete-job-id="${escapeHtml(job.job_id)}" type="button">Delete</button>` : '';
+        const deleteBtn = isTerminal ? `<button class="btn danger small" data-delete-job-id="${escapeHtml(job.job_id)}" type="button">${escapeHtml(t('delete'))}</button>` : '';
         return `
           <div class="job-card${active}" data-job-id="${escapeHtml(job.job_id)}">
-            <span class="${statusClass(job.status)}">${escapeHtml(job.status)}</span>
+            <span class="${statusClass(job.status)}">${escapeHtml(statusText(job.status))}</span>
             <h3>${escapeHtml(job.query || job.job_id)}</h3>
             <div class="job-meta">
               <span>${escapeHtml(queue)}</span>
@@ -684,7 +1125,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     function renderLiveEvent(event) {
       const stage = event.stage ? ` - ${event.stage}` : '';
       const record = event.record || {};
-      const summary = record.tool_name || record.model || record.stage || event.detail || 'received';
+      const summary = record.tool_name || record.model || record.stage || event.detail || t('received');
       return `
         <div class="live-event">
           <span>${escapeHtml(event.type)}${escapeHtml(stage)}</span>
@@ -764,18 +1205,18 @@ _DASHBOARD_HTML = r"""<!doctype html>
           state.streamTerminal = jobIsTerminal(payload.job.status);
           mergeSnapshotJob(payload.job);
           renderDetail();
-          els.connection.textContent = 'streaming';
+          setConnection('statusStreaming');
         }
         if (payload.type === 'error') {
           state.streamTerminal = true;
-          setMessage(payload.detail || 'Stream failed.', 'error');
+          setMessage(payload.detail || t('streamFailed'), 'error');
         }
         if (!['job_snapshot', 'error'].includes(payload.type)) {
           appendLiveEvent(payload);
         }
       };
       socket.onerror = () => {
-        if (!state.streamTerminal) setMessage('Stream unavailable; using polling fallback.', 'error');
+        if (!state.streamTerminal) setMessage(t('streamFallback'), 'error');
       };
       socket.onclose = () => {
         const wasCurrent = state.streamSocket === socket;
@@ -829,11 +1270,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
         <div id="progress-timeline" class="progress-timeline">
           ${steps.map((step) => `
             <div class="progress-step ${escapeHtml(step.status)}">
-              <span>${escapeHtml(step.status)}</span>
-              <strong>${escapeHtml(step.label)}</strong>
+              <span>${escapeHtml(stepStatusText(step.status))}</span>
+              <strong>${escapeHtml(stageText(step.id) || step.label)}</strong>
             </div>`).join('')}
         </div>
-        <div class="progress-bar" aria-label="Job progress">
+        <div class="progress-bar" aria-label="${escapeHtml(t('progressLabel'))}">
           <div class="progress-bar-fill" style="width: ${Math.max(0, Math.min(100, percent))}%"></div>
         </div>`;
     }
@@ -865,41 +1306,41 @@ _DASHBOARD_HTML = r"""<!doctype html>
     }
 
     function renderOverview(detail) {
-      if (!detail) return '<div class="empty">Select a job to inspect.</div>';
+      if (!detail) return `<div class="empty">${escapeHtml(t('selectJob'))}</div>`;
       const result = detail.result || {};
       const critique = result.critique || {};
       return `
         <div class="detail-actions">
-          <button id="cancel-job" class="btn danger" type="button">Cancel queued job</button>
-          <button id="retry-job" class="btn ghost" type="button">Retry failed/cancelled</button>
+          <button id="cancel-job" class="btn danger" type="button">${escapeHtml(t('cancelQueuedJob'))}</button>
+          <button id="retry-job" class="btn ghost" type="button">${escapeHtml(t('retryJob'))}</button>
         </div>
         ${renderProgressTimeline(detail)}
         <div class="overview-grid">
-          <div class="info-card"><span>Status</span><strong>${escapeHtml(detail.status)}</strong></div>
-          <div class="info-card"><span>Stage</span><strong>${escapeHtml(detail.progress_stage || 'unknown')}</strong></div>
-          <div class="info-card"><span>Job ID</span><strong>${escapeHtml(detail.job_id)}</strong></div>
-          <div class="info-card"><span>Created</span><strong>${escapeHtml(detail.created_at)}</strong></div>
-          <div class="info-card"><span>Started</span><strong>${escapeHtml(detail.started_at || 'not started')}</strong></div>
-          <div class="info-card"><span>Finished</span><strong>${escapeHtml(detail.finished_at || 'not finished')}</strong></div>
-          <div class="info-card"><span>Runtime</span><strong>${escapeHtml(detail.runtime_seconds || 0)}s</strong></div>
-          <div class="info-card"><span>Tools</span><strong>${escapeHtml(detail.tool_call_count || 0)}</strong></div>
-          <div class="info-card"><span>LLM Calls</span><strong>${escapeHtml(detail.llm_call_count || 0)}</strong></div>
-          <div class="info-card"><span>Iterations</span><strong>${escapeHtml(result.iterations || 0)}</strong></div>
-          <div class="info-card"><span>Critic</span><strong>${escapeHtml(critique.passed === false ? 'needs review' : 'passed/unknown')}</strong></div>
-          <div class="info-card"><span>Eval Gate</span><strong>docs/evals/default.json<br>--min-score 85 --fail-on-case-failure<br>CI artifact: eval-reports<br>Reports: reports/eval.json, reports/eval.md</strong></div>
-          <div class="info-card"><span>Error</span><strong>${escapeHtml(detail.error || 'none')}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('statusLabel'))}</span><strong>${escapeHtml(statusText(detail.status))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('stageLabel'))}</span><strong>${escapeHtml(stageText(detail.progress_stage))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('jobIdLabel'))}</span><strong>${escapeHtml(detail.job_id)}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('createdLabel'))}</span><strong>${escapeHtml(detail.created_at)}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('startedLabel'))}</span><strong>${escapeHtml(detail.started_at || t('notStarted'))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('finishedLabel'))}</span><strong>${escapeHtml(detail.finished_at || t('notFinished'))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('runtimeLabel'))}</span><strong>${escapeHtml(t('seconds', { value: detail.runtime_seconds || 0 }))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('toolsLabel'))}</span><strong>${escapeHtml(detail.tool_call_count || 0)}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('llmCallsLabel'))}</span><strong>${escapeHtml(detail.llm_call_count || 0)}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('iterationsLabel'))}</span><strong>${escapeHtml(result.iterations || 0)}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('criticLabel'))}</span><strong>${escapeHtml(critique.passed === false ? t('needsReview') : t('passedUnknown'))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('evalGateLabel'))}</span><strong>docs/evals/default.json<br>--min-score 85 --fail-on-case-failure<br>CI artifact: eval-reports<br>Reports: reports/eval.json, reports/eval.md</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('errorLabel'))}</span><strong>${escapeHtml(detail.error || t('none'))}</strong></div>
         </div>`;
     }
 
     function renderFindings(result) {
       const findings = result?.findings || [];
       const matrix = result?.competitive_matrix || [];
-      if (!findings.length && !matrix.length) return '<div class="empty">No findings yet.</div>';
+      if (!findings.length && !matrix.length) return `<div class="empty">${escapeHtml(t('noFindings'))}</div>`;
       return `
         <div class="data-list">
-          <h2>Findings</h2>
+          <h2>${escapeHtml(t('findingsTitle'))}</h2>
           ${findings.map((item) => `<p><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.summary)}<br><span class="subtitle">${escapeHtml((item.evidence_ids || []).join(', '))}</span></p>`).join('')}
-          <h2>Competitive Matrix</h2>
+          <h2>${escapeHtml(t('competitiveMatrix'))}</h2>
           ${matrix.map((row) => `<p><strong>${escapeHtml(row.product)}</strong><br>${escapeHtml(row.positioning)}<br><span class="subtitle">${escapeHtml((row.strengths || []).join(', '))}</span></p>`).join('')}
         </div>`;
     }
@@ -911,29 +1352,29 @@ _DASHBOARD_HTML = r"""<!doctype html>
     function renderEvidencePanel(result) {
       const evidence = result?.evidence_pool || result?.global_evidence_pool || [];
       const validation = result?.url_validation || [];
-      if (!evidence.length && !validation.length) return '<div class="empty">No evidence or URL validation yet.</div>';
+      if (!evidence.length && !validation.length) return `<div class="empty">${escapeHtml(t('noEvidence'))}</div>`;
       return `
         <div class="data-list">
-          <h2>Evidence & Sources</h2>
+          <h2>${escapeHtml(t('evidenceSources'))}</h2>
           ${evidence.map((item) => `<article class="evidence-card"><h3>${escapeHtml(item.title || item.id)}</h3><p>${escapeHtml(item.source_url || '')}</p><div class="job-meta">${[
-            renderEvidenceMeta('Source type', item.source_type),
-            renderEvidenceMeta('Fetch status', item.fetch_status || 'not fetched'),
-            renderEvidenceMeta('Section ID', item.section_id),
-            renderEvidenceMeta('Citation support', item.citation_support_status),
-            renderEvidenceMeta('URL validation', item.url_validation_status),
+            renderEvidenceMeta(t('sourceType'), item.source_type),
+            renderEvidenceMeta(t('fetchStatus'), item.fetch_status || t('notFetched')),
+            renderEvidenceMeta(t('sectionId'), item.section_id),
+            renderEvidenceMeta(t('citationSupport'), item.citation_support_status),
+            renderEvidenceMeta(t('urlValidation'), item.url_validation_status),
           ].join('')}</div><p>${escapeHtml(item.snippet || '')}</p></article>`).join('')}
-          <h2>URL Validation</h2>
-          ${validation.length ? validation.map((item) => `<p><strong>${escapeHtml(item.url || item.source_url || 'url')}</strong><br><span class="subtitle">reachable: ${escapeHtml(item.reachable)} trusted: ${escapeHtml(item.source_trusted)}</span></p>`).join('') : '<p class="subtitle">No URL validation records.</p>'}
+          <h2>${escapeHtml(t('urlValidationTitle'))}</h2>
+          ${validation.length ? validation.map((item) => `<p><strong>${escapeHtml(item.url || item.source_url || 'url')}</strong><br><span class="subtitle">${escapeHtml(t('reachable'))}: ${escapeHtml(item.reachable)} ${escapeHtml(t('trusted'))}: ${escapeHtml(item.source_trusted)}</span></p>`).join('') : `<p class="subtitle">${escapeHtml(t('noUrlValidation'))}</p>`}
         </div>`;
     }
 
     function renderCitationPanel(result) {
       const citations = result?.citation_support || [];
-      if (!citations.length) return '<div class="empty">No citation support records yet.</div>';
+      if (!citations.length) return `<div class="empty">${escapeHtml(t('noCitations'))}</div>`;
       return `
         <div class="data-list">
-          <h2>Citation Support</h2>
-          ${citations.map((item) => `<p><strong>${escapeHtml(item.support_status || item.status || 'unknown')}</strong><br>${escapeHtml(item.claim || item.text || '')}<br><span class="subtitle">Evidence: ${escapeHtml((item.evidence_ids || []).join(', '))}</span></p>`).join('')}
+          <h2>${escapeHtml(t('citationsTitle'))}</h2>
+          ${citations.map((item) => `<p><strong>${escapeHtml(item.support_status || item.status || t('unknown'))}</strong><br>${escapeHtml(item.claim || item.text || '')}<br><span class="subtitle">${escapeHtml(t('evidenceLabel'))}: ${escapeHtml((item.evidence_ids || []).join(', '))}</span></p>`).join('')}
         </div>`;
     }
 
@@ -941,13 +1382,29 @@ _DASHBOARD_HTML = r"""<!doctype html>
       const cards = result?.quality_cards || {};
       const runtime = cards.runtime_seconds ?? detail?.runtime_seconds ?? 0;
       const items = [
-        ['Section coverage', `${cards.section_coverage_score ?? 0}%`],
-        ['Citation support', `${cards.citation_support_score ?? 0}%`],
-        ['Source diversity', `${cards.source_diversity_score ?? 0}%`],
-        ['Unsupported claims', cards.unsupported_claim_count ?? 0],
-        ['URL validation', `${cards.url_validation_rate ?? 0}%`],
-        ['Token totals', cards.total_tokens ?? 0],
-        ['Runtime', `${runtime}s`],
+        [t('sectionCoverage'), `${cards.section_coverage_score ?? 0}%`],
+        [t('citationSupport'), `${cards.citation_support_score ?? 0}%`],
+        [t('sourceDiversity'), `${cards.source_diversity_score ?? 0}%`],
+        [t('unsupportedClaims'), cards.unsupported_claim_count ?? 0],
+        [t('urlValidation'), `${cards.url_validation_rate ?? 0}%`],
+        [t('tokenTotals'), cards.total_tokens ?? 0],
+        [t('runtimeLabel'), t('seconds', { value: runtime })],
+      ];
+      return `<div class="overview-grid">${items.map(([label, value]) => `<div class="info-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>`;
+    }
+
+    function renderRuntimeDiagnostics(result) {
+      const diagnostics = result?.runtime_diagnostics || {};
+      const items = [
+        [t('searchProvider'), diagnostics.search_provider || t('unknown')],
+        [t('searchLimit'), diagnostics.search_limit ?? t('unknown')],
+        [t('webSearchCalls'), diagnostics.web_search_call_count ?? 0],
+        [t('successfulWebSearchCalls'), diagnostics.successful_web_search_call_count ?? 0],
+        [t('llmConfigured'), diagnostics.llm_configured ? t('yes') : t('no')],
+        [t('llmCallsLabel'), diagnostics.llm_call_count ?? 0],
+        [t('successfulLlmCalls'), diagnostics.successful_llm_call_count ?? 0],
+        [t('verifiedEvidence'), `${diagnostics.verified_evidence_count ?? 0} / ${diagnostics.evidence_count ?? 0}`],
+        [t('collectionStopReason'), diagnostics.collection_stop_reason || t('unknown')],
       ];
       return `<div class="overview-grid">${items.map(([label, value]) => `<div class="info-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>`;
     }
@@ -961,15 +1418,18 @@ _DASHBOARD_HTML = r"""<!doctype html>
       const totalTokens = llm.reduce((total, item) => total + Number(item.total_tokens || 0), 0);
       return `
         <div class="data-list">
-          <h2>Quality Signals</h2>
+          <h2>${escapeHtml(t('qualitySignals'))}</h2>
           ${renderQualityCards(result, detail)}
-          <p><strong>Source candidates</strong><br>${escapeHtml((result?.evidence_pool || []).length)}</p>
-          <p><strong>Fetch errors</strong><br>${escapeHtml((result?.evidence_pool || []).filter((item) => item.fetch_error).length)}</p>
-          <p><strong>Supported citations</strong><br>${escapeHtml((result?.citation_support || []).filter((item) => item.support_status === 'supported').length)}</p>
-          <h2>Token Totals</h2>
-          <p><strong>Total</strong><br>${escapeHtml(totalTokens)} tokens</p>
-          <p><strong>Input / Output</strong><br>${escapeHtml(inputTokens)} / ${escapeHtml(outputTokens)}</p>
-          <h2>Quality Cards</h2>
+          <p><strong>${escapeHtml(t('sourceCandidates'))}</strong><br>${escapeHtml((result?.evidence_pool || []).length)}</p>
+          <p><strong>${escapeHtml(t('fetchErrors'))}</strong><br>${escapeHtml((result?.evidence_pool || []).filter((item) => item.fetch_error).length)}</p>
+          <p><strong>${escapeHtml(t('supportedCitations'))}</strong><br>${escapeHtml((result?.citation_support || []).filter((item) => item.support_status === 'supported').length)}</p>
+          <h2>${escapeHtml(t('tokenTotals'))}</h2>
+          <p><strong>${escapeHtml(t('total'))}</strong><br>${escapeHtml(totalTokens)} ${escapeHtml(t('tokens'))}</p>
+          <p><strong>${escapeHtml(t('inputOutput'))}</strong><br>${escapeHtml(inputTokens)} / ${escapeHtml(outputTokens)}</p>
+          <h2>${escapeHtml(t('runtimeDiagnostics'))}</h2>
+          <span class="subtitle">${escapeHtml(t('runtimeDiagnosticsEnglish'))}</span>
+          ${renderRuntimeDiagnostics(result)}
+          <h2>${escapeHtml(t('qualityCards'))}</h2>
           ${jsonBlock(quality)}
         </div>`;
     }
@@ -977,16 +1437,16 @@ _DASHBOARD_HTML = r"""<!doctype html>
     function renderEvalOps() {
       return `
         <div class="data-list">
-          <h2>Eval Ops</h2>
-          <p><strong>Default case file</strong><br>docs/evals/default.json</p>
-          <p><strong>CI gate</strong><br>insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure</p>
-          <p><strong>GitHub Actions artifact</strong><br>eval-reports</p>
-          <p><strong>Full reports</strong><br>reports/eval.json<br>reports/eval.md</p>
-          <p><strong>Summary reports</strong><br>reports/eval-summary.json<br>reports/eval-summary.md</p>
-          <p><strong>History reports</strong><br>reports/eval-history.json<br>reports/eval-history.md</p>
-          <p><strong>Local summary command</strong><br>python scripts/summarize_eval_report.py reports/eval.json --markdown</p>
-          <p><strong>Local history command</strong><br>python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z</p>
-          <p class="subtitle">Dashboard does not fetch GitHub Actions artifacts automatically. Download the eval-reports artifact from the CI run to inspect generated files.</p>
+          <h2>${escapeHtml(t('evalOps'))}</h2>
+          <p><strong>${escapeHtml(t('defaultCaseFile'))}</strong><br>docs/evals/default.json</p>
+          <p><strong>${escapeHtml(t('ciGate'))}</strong><br>insight-graph-eval --case-file docs/evals/default.json --min-score 85 --fail-on-case-failure</p>
+          <p><strong>${escapeHtml(t('githubActionsArtifact'))}</strong><br>eval-reports</p>
+          <p><strong>${escapeHtml(t('fullReports'))}</strong><br>reports/eval.json<br>reports/eval.md</p>
+          <p><strong>${escapeHtml(t('summaryReports'))}</strong><br>reports/eval-summary.json<br>reports/eval-summary.md</p>
+          <p><strong>${escapeHtml(t('historyReports'))}</strong><br>reports/eval-history.json<br>reports/eval-history.md</p>
+          <p><strong>${escapeHtml(t('localSummaryCommand'))}</strong><br>python scripts/summarize_eval_report.py reports/eval.json --markdown</p>
+          <p><strong>${escapeHtml(t('localHistoryCommand'))}</strong><br>python scripts/append_eval_history.py --summary reports/eval-summary.json --history reports/eval-history.json --markdown reports/eval-history.md --run-id local --head-sha local --created-at 2026-04-29T00:00:00Z</p>
+          <p class="subtitle">${escapeHtml(t('evalOpsNote'))}</p>
         </div>`;
     }
 
@@ -998,11 +1458,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
         const canDownload = result.report_markdown ? '' : 'disabled';
         els.reportPanel.innerHTML = result.report_markdown
           ? `<div class="detail-actions">
-              <button id="download-md" class="btn ghost" type="button" ${canDownload}>Download Markdown</button>
-              <button id="download-html" class="btn ghost" type="button" ${canDownload}>Download HTML</button>
+              <button id="download-md" class="btn ghost" type="button" ${canDownload}>${escapeHtml(t('downloadMarkdown'))}</button>
+              <button id="download-html" class="btn ghost" type="button" ${canDownload}>${escapeHtml(t('downloadHtml'))}</button>
             </div>
             <article class="markdown">${renderMarkdown(result.report_markdown)}</article>`
-          : '<div class="empty">Report will appear after the job succeeds.</div>';
+          : `<div class="empty">${escapeHtml(t('reportPending'))}</div>`;
       }
       if (state.activeTab === 'findings') els.reportPanel.innerHTML = renderFindings(result);
       if (state.activeTab === 'evidence') els.reportPanel.innerHTML = renderEvidencePanel(result);
@@ -1013,7 +1473,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (state.activeTab === 'events') {
         els.reportPanel.innerHTML = state.liveEvents.length
           ? `<div id="live-events" class="live-events">${state.liveEvents.map(renderLiveEvent).join('')}</div>`
-          : '<div id="live-events" class="empty">Live execution events will appear here while a job runs.</div>';
+          : `<div id="live-events" class="empty">${escapeHtml(t('liveEventsPending'))}</div>`;
       }
       if (state.activeTab === 'eval') els.reportPanel.innerHTML = renderEvalOps();
       if (state.activeTab === 'raw') els.reportPanel.innerHTML = jsonBlock(detail || {});
@@ -1036,11 +1496,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
           connectJobStream(state.selectedJobId);
         }
         renderDetail();
-        els.connection.textContent = 'connected';
-        if (!els.message.textContent) setMessage('Ready.', 'ok');
+        setConnection('statusConnected');
+        if (!els.message.textContent) setMessage(t('ready'), 'ok');
       } catch (error) {
-        els.connection.textContent = error.status === 401 ? 'locked' : 'offline';
-        setMessage(error.status === 401 ? 'API key required or invalid.' : error.message, 'error');
+        setConnection(error.status === 401 ? 'statusLocked' : 'statusOffline');
+        setMessage(error.status === 401 ? t('apiKeyInvalid') : error.message, 'error');
       } finally {
         scheduleRefresh();
       }
@@ -1055,9 +1515,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     async function submitJob() {
       const query = els.query.value.trim();
-      if (!query) { setMessage('Query is required.', 'error'); return; }
+      if (!query) { setMessage(t('queryRequired'), 'error'); return; }
       els.submit.disabled = true;
-      setMessage('Submitting job...');
+      setMessage(t('submittingJob'));
       try {
         const payload = await apiFetch('/research/jobs', {
           method: 'POST',
@@ -1067,10 +1527,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         state.selectedJobId = payload.job_id;
         closeJobStream();
         state.liveEvents = [];
-        setMessage(`Queued ${payload.job_id}.`, 'ok');
+        setMessage(t('queuedJob', { jobId: payload.job_id }), 'ok');
         await refresh();
       } catch (error) {
-        setMessage(error.status === 401 ? 'API key required or invalid.' : error.message, 'error');
+        setMessage(error.status === 401 ? t('apiKeyInvalid') : error.message, 'error');
       } finally {
         els.submit.disabled = false;
       }
@@ -1082,7 +1542,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         method: 'POST',
         headers: headers(),
       });
-      setMessage('Job cancelled.', 'ok');
+      setMessage(t('cancelledJob'), 'ok');
       await refresh();
     }
 
@@ -1095,32 +1555,37 @@ _DASHBOARD_HTML = r"""<!doctype html>
       state.selectedJobId = payload.job_id;
       closeJobStream();
       state.liveEvents = [];
-      setMessage(`Retry queued ${payload.job_id}.`, 'ok');
+      setMessage(t('retryQueued', { jobId: payload.job_id }), 'ok');
       await refresh();
     }
 
     els.submit.addEventListener('click', submitJob);
-    els.refresh.addEventListener('click', () => { setMessage('Refreshing...'); refresh(); });
+    els.refresh.addEventListener('click', () => { setMessage(t('refreshing')); refresh(); });
     els.autoRefresh.addEventListener('click', () => {
       state.autoRefresh = !state.autoRefresh;
-      els.autoRefresh.textContent = state.autoRefresh ? 'auto refresh on' : 'auto refresh off';
+      els.autoRefresh.textContent = state.autoRefresh ? t('autoRefreshOn') : t('autoRefreshOff');
       if (!state.autoRefresh) closeJobStream();
       if (state.autoRefresh && state.selectedJobId) connectJobStream(state.selectedJobId);
       scheduleRefresh();
+    });
+    els.language.addEventListener('change', () => {
+      state.language = normalizeLanguage(els.language.value);
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language);
+      applyLanguage();
     });
     els.jobList.addEventListener('click', async (event) => {
       const deleteBtn = event.target.closest('[data-delete-job-id]');
       if (deleteBtn) {
         event.stopPropagation();
         const jobId = deleteBtn.dataset.deleteJobId;
-        if (confirm('Delete this job?')) {
+        if (confirm(t('deleteConfirm'))) {
           try {
             await deleteJob(jobId);
             if (state.selectedJobId === jobId) {
               state.selectedJobId = null;
               state.detail = null;
             }
-            setMessage(`Deleted job ${jobId}`, 'ok');
+            setMessage(t('deletedJob', { jobId }), 'ok');
             await refresh();
           } catch (error) {
             setMessage(error.message, 'error');
@@ -1153,6 +1618,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (event.target.id === 'download-html') downloadReport('html').catch((error) => setMessage(error.message, 'error'));
     });
 
+    applyLanguage();
     refresh();
   </script>
 </body>

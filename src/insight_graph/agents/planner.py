@@ -1,4 +1,5 @@
 import os
+import re
 
 from insight_graph.memory.embeddings import (
     embed_text,
@@ -14,12 +15,13 @@ from insight_graph.tools.sec_filings import has_sec_filing_target
 
 
 def plan_research(state: GraphState) -> GraphState:
-    state.domain_profile = detect_domain_profile(state.user_request).id
+    research_focus = _research_focus_query(state.user_request)
+    state.domain_profile = detect_domain_profile(research_focus).id
     state.resolved_entities = [
-        entity.to_payload() for entity in resolve_entities(state.user_request)
+        entity.to_payload() for entity in resolve_entities(research_focus)
     ]
     state.memory_context = state.memory_context or _memory_context_for_request(
-        state.user_request,
+        research_focus,
         state.domain_profile,
         state.resolved_entities,
     )
@@ -32,7 +34,7 @@ def plan_research(state: GraphState) -> GraphState:
     ]
     collection_tools = _collection_tool_names(state.user_request)
     state.query_strategies = _build_query_strategies(
-        state.user_request,
+        research_focus,
         state.section_research_plan,
         state.resolved_entities,
         collection_tools,
@@ -66,6 +68,52 @@ def plan_research(state: GraphState) -> GraphState:
         ),
     ]
     return state
+
+
+def _research_focus_query(user_request: str) -> str:
+    topic_match = re.search(
+        r"(?:主题|topic|subject)\s*[:：]\s*(?P<topic>[^\r\n。.;；]+)",
+        user_request,
+        flags=re.IGNORECASE,
+    )
+    if topic_match is not None:
+        topic = _clean_query_text(topic_match.group("topic"))
+        if topic:
+            return topic
+
+    useful_lines = []
+    for raw_line in user_request.splitlines():
+        line = _clean_query_text(raw_line)
+        if not line or _is_instruction_line(line):
+            continue
+        useful_lines.append(line)
+    if useful_lines:
+        return " ".join(useful_lines)
+    return _clean_query_text(user_request) or user_request.strip()
+
+
+def _clean_query_text(value: str) -> str:
+    return " ".join(value.strip().strip("。.;；").split())
+
+
+def _is_instruction_line(line: str) -> bool:
+    lowered = line.lower()
+    if re.match(r"^\d+[.)、．]\s*", line):
+        return True
+    instruction_markers = (
+        "要求",
+        "输出 markdown",
+        "输出markdown",
+        "生成一篇",
+        "文章包含",
+        "所有关键判断",
+        "不要空泛",
+        "先搜索",
+        "output markdown",
+        "write in markdown",
+        "requirements",
+    )
+    return any(marker in lowered for marker in instruction_markers)
 
 
 def _memory_context_for_request(

@@ -1,13 +1,17 @@
 .worktrees/
 __pycache__/
 .pytest_cache/
+.pytest-tmp*/
 .ruff_cache/
+server*.log
+start_server.ps1
 reports/eval.json
 reports/eval.md
 reports/eval-summary.json
 reports/eval-summary.md
 reports/eval-history.json
 reports/eval-history.md
+reports/*.md
 reports/ai-coding-agents-technical-review.md
 
 .env

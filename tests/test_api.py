@@ -57,6 +57,9 @@ def clear_live_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_SEC_FINANCIALS",
         "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION",
         "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS",
+        "INSIGHT_GRAPH_MAX_TOOL_CALLS",
+        "INSIGHT_GRAPH_MAX_FETCHES",
+        "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
         "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
@@ -495,9 +498,11 @@ def test_dashboard_returns_html() -> None:
     assert "Evidence & Sources" in response.text
     assert "Citation Support" in response.text
     assert "Quality Signals" in response.text
+    assert "Runtime Diagnostics" in response.text
     assert "renderEvidencePanel" in response.text
     assert "renderCitationPanel" in response.text
     assert "renderQualityPanel" in response.text
+    assert "runtime_diagnostics" in response.text
     assert "URL Validation" in response.text
     assert "Token Totals" in response.text
     assert "reports/eval-summary.md" in response.text

@@ -21,9 +21,9 @@ REFERENCE_HEADING_PATTERN = re.compile(
 RESIDUAL_REFERENCE_HEADING_PATTERN = re.compile(
     r"^ {0,3}#+\s*(references|sources)\b", re.IGNORECASE | re.MULTILINE
 )
-KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+Key Findings\s*$")
+KEY_FINDINGS_HEADING_PATTERN = re.compile(r"(?im)^##\s+(?:核心发现|Key Findings)\s*$")
 COMPETITIVE_MATRIX_HEADING_PATTERN = re.compile(
-    r"(?im)^ {0,3}#{1,6}\s+Competitive Matrix\s*#*\s*$"
+    r"(?im)^ {0,3}#{1,6}\s+(?:竞争矩阵|Competitive Matrix)\s*#*\s*$"
 )
 NEXT_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}#{1,6}\s+")
 NEXT_MAJOR_SECTION_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}#{1,2}\s+")
@@ -40,13 +40,18 @@ SMART_PUNCTUATION_TRANSLATION = str.maketrans(
 )
 REPORTER_VALIDATE_URLS_ENV = "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"
 REQUIRED_REPORT_SECTIONS = (
-    "Executive Summary",
-    "Background",
-    "Analysis",
-    "Competitive Landscape",
-    "Risks",
-    "Outlook",
+    "摘要",
+    "背景",
+    "核心发现",
+    "证据分析",
+    "竞争格局",
+    "趋势判断",
+    "风险",
+    "结论",
 )
+REPORT_TITLE = "# InsightGraph 深度研究报告"
+LEGACY_REPORT_TITLE = "# InsightGraph Research Report"
+KEY_FINDINGS_HEADINGS = ("核心发现", "Key Findings")
 
 
 class ReporterFallbackError(ValueError):
@@ -82,9 +87,9 @@ def _write_report_deterministic(state: GraphState) -> GraphState:
     _maybe_validate_reference_urls(state, verified_evidence)
     reference_numbers = _build_reference_numbers(verified_evidence)
     lines = [
-        "# InsightGraph Research Report",
+        REPORT_TITLE,
         "",
-        f"**Research Request:** {state.user_request}",
+        f"**研究问题：** {state.user_request}",
         "",
     ]
     lines.extend(_build_deterministic_body(state, verified_evidence, reference_numbers))
@@ -139,39 +144,43 @@ def _build_standard_report_body(
     supported_claims: set[str] | None = None,
 ) -> list[str]:
     approved_lines = _approved_claim_lines(state, reference_numbers, supported_claims)
-    summary = approved_lines[:2] or ["Evidence is insufficient for this section."]
-    analysis = approved_lines or ["Evidence is insufficient for this section."]
+    summary = approved_lines[:2] or ["本节证据仍不足，需要继续补充来源。"]
+    analysis = approved_lines or ["本节证据仍不足，需要继续补充来源。"]
     risks = _risk_lines(state.grounded_claims, supported_claims)
     if not risks:
-        risks = ["Evidence is insufficient for this section."]
+        risks = ["本节证据仍不足，需要继续补充来源。"]
     return [
-        "## Executive Summary",
+        "## 摘要",
         "",
         *summary,
         "",
-        "## Background",
+        "## 背景",
         "",
-        "Evidence scope is limited to verified references collected for this request.",
+        "本报告仅基于本次任务收集并验证过的证据展开。",
         "",
-        "## Key Findings",
-        "",
-        *analysis,
-        "",
-        "## Analysis",
+        "## 核心发现",
         "",
         *analysis,
         "",
-        "## Competitive Landscape",
+        "## 证据分析",
         "",
-        "See the Competitive Matrix for evidence-backed product positioning.",
+        *analysis,
         "",
-        "## Risks",
+        "## 竞争格局",
+        "",
+        "竞争判断以已验证证据和竞争矩阵为依据。",
+        "",
+        "## 趋势判断",
+        "",
+        "现有证据显示该主题仍需要持续跟踪最新公开资料和产品动态。",
+        "",
+        "## 风险",
         "",
         *risks,
         "",
-        "## Outlook",
+        "## 结论",
         "",
-        "Further research should validate unsupported or partial claims before publication.",
+        "正式发布前应继续核验未充分支持或仅部分支持的判断。",
         "",
     ]
 
@@ -248,7 +257,7 @@ def _build_key_findings_body(
     reference_numbers: dict[str, int],
     supported_claims: set[str] | None = None,
 ) -> list[str]:
-    lines = ["## Key Findings", ""]
+    lines = ["## 核心发现", ""]
     for finding in state.findings:
         if supported_claims is not None and finding.title not in supported_claims:
             continue
@@ -264,7 +273,7 @@ def _build_grounded_claims_body(
     reference_numbers: dict[str, int],
     supported_claims: set[str] | None = None,
 ) -> list[str]:
-    lines = ["## Key Findings", ""]
+    lines = ["## 核心发现", ""]
     for claim in state.grounded_claims:
         claim_text = str(claim.get("claim", "")).strip()
         if not claim_text:
@@ -282,7 +291,7 @@ def _build_grounded_claims_body(
             continue
         lines.extend([f"- {claim_text} {citations}".strip()])
     if len(lines) == 2:
-        lines.extend(["No supported findings were available for this section."])
+        lines.extend(["本节暂无可引用的支持性发现。"])
     lines.append("")
     return lines
 
@@ -303,12 +312,12 @@ def _build_planned_section_body(
     for section in state.section_research_plan:
         section_id = str(section.get("section_id", "")).strip()
         title = str(section.get("title", "")).strip()
-        if not title or title.lower() == "references":
+        if not title or title.lower() in {"references", "sources", "参考资料", "来源"}:
             continue
-        lines.extend([f"## {title}", ""])
+        lines.extend([f"## {_localized_section_title(title)}", ""])
         section_findings = assigned_findings.get(section_id, [])
         if not section_findings:
-            lines.extend(["No verified findings were available for this section.", ""])
+            lines.extend(["本节暂无已验证发现。", ""])
             continue
         for finding in section_findings:
             if supported_claims is not None and finding.title not in supported_claims:
@@ -316,6 +325,18 @@ def _build_planned_section_body(
             citations = _finding_citations(finding.evidence_ids, reference_numbers)
             lines.extend([f"### {finding.title}", "", f"{finding.summary} {citations}".strip(), ""])
     return lines
+
+
+def _localized_section_title(title: str) -> str:
+    return {
+        "Executive Summary": "摘要",
+        "Background": "背景",
+        "Key Findings": "核心发现",
+        "Analysis": "证据分析",
+        "Competitive Landscape": "竞争格局",
+        "Risks": "风险",
+        "Outlook": "结论",
+    }.get(title, title)
 
 
 def _complete_required_report_sections(
@@ -326,32 +347,39 @@ def _complete_required_report_sections(
     body = "\n".join(lines)
     existing_titles = _report_section_titles(body)
     title_lines, lines = _pop_report_title(lines)
-    executive_summary, remaining_lines = _pop_section(lines, "Executive Summary")
+    executive_summary, remaining_lines = _pop_section(lines, "摘要")
+    key_findings, remaining_lines = _pop_section(remaining_lines, "核心发现")
     output: list[str] = [*title_lines]
 
     def append_missing(title: str) -> None:
         if title in existing_titles:
             return
-        output.extend([f"## {title}", "", "Evidence is insufficient for this section.", ""])
+        output.extend([f"## {title}", "", "本节证据仍不足，需要继续补充来源。", ""])
 
     if executive_summary:
         output.extend(executive_summary)
     else:
-        append_missing("Executive Summary")
-    append_missing("Background")
+        append_missing("摘要")
+    append_missing("背景")
+    if key_findings:
+        output.extend(key_findings)
+    else:
+        append_missing("核心发现")
     if require_generic_analysis:
-        append_missing("Analysis")
+        append_missing("证据分析")
     competitive_landscape, remaining_lines = _pop_section(
         remaining_lines,
-        "Competitive Landscape",
+        "竞争格局",
     )
-    risks, remaining_lines = _pop_section(remaining_lines, "Risks")
-    outlook, remaining_lines = _pop_section(remaining_lines, "Outlook")
+    trend, remaining_lines = _pop_section(remaining_lines, "趋势判断")
+    risks, remaining_lines = _pop_section(remaining_lines, "风险")
+    outlook, remaining_lines = _pop_section(remaining_lines, "结论")
     output.extend(remaining_lines)
     for title, existing_section in (
-        ("Competitive Landscape", competitive_landscape),
-        ("Risks", risks),
-        ("Outlook", outlook),
+        ("竞争格局", competitive_landscape),
+        ("趋势判断", trend),
+        ("风险", risks),
+        ("结论", outlook),
     ):
         if existing_section:
             output.extend(existing_section)
@@ -509,6 +537,7 @@ def _write_report_with_llm(
         body = _parse_llm_report_body(result.content)
         body = _strip_references_section(body)
         body = _normalize_smart_punctuation(body)
+        body = _normalize_report_language_headings(body)
         matrix_lines = _build_competitive_matrix_section(
             state.competitive_matrix,
             reference_numbers,
@@ -567,7 +596,9 @@ def _write_report_with_llm(
     )
 
     lines = [body.rstrip(), ""]
-    if state.critique is not None and "## Critic Assessment" not in body:
+    if state.critique is not None and not (
+        "## 质量评审" in body or "## Critic Assessment" in body
+    ):
         lines.extend(_build_critic_assessment_section(state))
     lines.extend(_build_citation_support_section(state, reference_numbers))
     lines.extend(
@@ -643,9 +674,17 @@ def _build_reporter_messages(
             f"Critique reason: {critique_reason}",
             "Evidence snippets are the only allowed factual basis.",
             (
+                "默认输出中文深度研究报告，除非用户明确要求其他语言。"
+                "报告必须文理通顺、段落完整，至少覆盖摘要、背景、证据分析、趋势判断、风险、结论，"
+                "并包含核心发现、"
+                "证据分析、竞争格局或相关对比、趋势判断、风险、结论。"
+                "每个核心判断都要解释证据含义和业务/研究影响，避免只罗列短句。"
+                "必须使用 Markdown 标题：# InsightGraph 深度研究报告、## 摘要、"
+                "## 背景、## 核心发现、## 证据分析、## 竞争格局、## 风险、## 结论。"
+                "每段事实性判断必须使用允许的引用。"
                 "Return strict JSON only with this shape: "
-                '{"markdown": "# InsightGraph Research Report\\n..."}. '
-                "The markdown must include # InsightGraph Research Report and ## Key Findings. "
+                '{"markdown": "# InsightGraph 深度研究报告\\n..."}. '
+                "The markdown must include # InsightGraph 深度研究报告 and ## 核心发现. "
                 "Use ASCII-only punctuation and quotes. "
                 "Use only facts and numbers present in the verified evidence snippets. "
                 "Use only the allowed bracket citations, cite at least one source, and do not "
@@ -659,8 +698,8 @@ def _build_reporter_messages(
         ChatMessage(
             role="system",
             content=(
-                "You are a research reporter writing concise Markdown from verified evidence. "
-                "Return JSON only."
+                "You are a senior Chinese research reporter writing fluent, substantial "
+                "Markdown from verified evidence. Return JSON only."
             ),
         ),
         ChatMessage(role="user", content=prompt),
@@ -696,10 +735,45 @@ def _normalize_smart_punctuation(markdown: str) -> str:
     return markdown.translate(SMART_PUNCTUATION_TRANSLATION)
 
 
+def _normalize_report_language_headings(markdown: str) -> str:
+    lines = markdown.splitlines()
+    if lines and lines[0].strip() == LEGACY_REPORT_TITLE:
+        lines[0] = REPORT_TITLE
+    heading_map = {
+        "## Executive Summary": "## 摘要",
+        "## Background": "## 背景",
+        "## Key Findings": "## 核心发现",
+        "## Analysis": "## 证据分析",
+        "## Competitive Landscape": "## 竞争格局",
+        "## Competitive Matrix": "## 竞争矩阵",
+        "## Risks": "## 风险",
+        "## Outlook": "## 结论",
+        "## Citation Support": "## 引用支持",
+        "## Critic Assessment": "## 质量评审",
+    }
+    normalized = []
+    for line in lines:
+        stripped = line.strip()
+        if COMPETITIVE_MATRIX_HEADING_PATTERN.match(stripped):
+            normalized.append("## 竞争矩阵")
+            continue
+        if re.match(r"(?i)^#{1,6}\s+key findings\s*#*\s*$", stripped):
+            normalized.append("## 核心发现")
+            continue
+        if re.match(r"(?i)^#{1,6}\s+critic assessment\s*#*\s*$", stripped):
+            normalized.append("## 质量评审")
+            continue
+        normalized.append(heading_map.get(stripped, line))
+    return "\n".join(normalized)
+
+
 def _validate_llm_report_body(markdown: str, allowed_references: set[int]) -> None:
-    if not markdown.startswith("# InsightGraph Research Report"):
+    if not (
+        markdown.startswith(REPORT_TITLE)
+        or markdown.startswith(LEGACY_REPORT_TITLE)
+    ):
         raise ReporterFallbackError("LLM report title is required")
-    if "## Key Findings" not in markdown:
+    if not any(f"## {heading}" in markdown for heading in KEY_FINDINGS_HEADINGS):
         raise ReporterFallbackError("LLM report Key Findings section is required")
     if RESIDUAL_REFERENCE_HEADING_PATTERN.search(markdown):
         raise ReporterFallbackError("LLM report must not include references or sources sections")
@@ -782,7 +856,7 @@ def _build_competitive_matrix_section(
             "Target Users | Risks | Evidence |"
         )
         separator = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
-    return ["## Competitive Matrix", "", header, separator, *rows, ""]
+    return ["## 竞争矩阵", "", header, separator, *rows, ""]
 
 
 def _matrix_row_has_v2_fields(row: CompetitiveMatrixRow) -> bool:
@@ -881,7 +955,7 @@ def _markdown_table_cell(value: str) -> str:
 def _build_critic_assessment_section(state: GraphState) -> list[str]:
     if state.critique is None:
         return []
-    return ["## Critic Assessment", "", state.critique.reason, ""]
+    return ["## 质量评审", "", state.critique.reason, ""]
 
 
 def _build_citation_support_section(
@@ -890,9 +964,9 @@ def _build_citation_support_section(
 ) -> list[str]:
     if not state.citation_support:
         return [
-            "## Citation Support",
+            "## 引用支持",
             "",
-            "Evidence is insufficient for this section.",
+            "本节证据仍不足，需要继续补充来源。",
             "",
         ]
 
@@ -926,7 +1000,7 @@ def _build_citation_support_section(
         return []
 
     return [
-        "## Citation Support",
+        "## 引用支持",
         "",
         "| Claim | Status | Evidence | Reason |",
         "| --- | --- | --- | --- |",

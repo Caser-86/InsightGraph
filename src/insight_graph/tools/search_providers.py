@@ -29,6 +29,12 @@ class DuckDuckGoSearchProvider:
     def search(self, query: str, limit: int) -> list[SearchResult]:
         try:
             client = self._client_factory(proxy=self._proxy)
+        except TypeError:
+            try:
+                client = self._client_factory()
+            except Exception:
+                return []
+        try:
             raw_results = _run_text_search(client, query, limit)
             return _map_duckduckgo_results(raw_results)
         except Exception:
@@ -51,7 +57,11 @@ class GoogleSearchProvider:
 
 class SerpAPISearchProvider:
     def __init__(self) -> None:
-        self._api_key = os.getenv("INSIGHT_GRAPH_SERPAPI_KEY")
+        self._api_key = (
+            os.getenv("INSIGHT_GRAPH_SERPAPI_KEY")
+            or os.getenv("INSIGHT_GRAPH_SERPAPI_API_KEY")
+            or os.getenv("SERPAPI_API_KEY")
+        )
 
     def search(self, query: str, limit: int) -> list[SearchResult]:
         if not self._api_key:
@@ -184,7 +194,7 @@ def _call_serpapi_search(query: str, limit: int, api_key: str) -> list[SearchRes
     params = {
         "api_key": api_key,
         "q": query,
-        "engine": "google",
+        "engine": os.getenv("INSIGHT_GRAPH_SERPAPI_ENGINE", "google"),
         "num": min(limit, 10),
     }
     url = f"https://serpapi.com/search?{urllib.parse.urlencode(params)}"

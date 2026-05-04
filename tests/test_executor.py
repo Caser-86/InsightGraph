@@ -443,6 +443,37 @@ def test_executor_uses_query_strategy_exhausted_stop_reason(monkeypatch) -> None
     assert updated.collection_stop_reason == "query_strategy_exhausted"
 
 
+def test_executor_preserves_retry_evidence_when_no_replan_requests(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    previous = Evidence(
+        id="previous",
+        subtask_id="collect",
+        title="Previous Evidence",
+        source_url="https://example.com/previous",
+        snippet="Previous verified evidence has enough words for analysis.",
+        source_type="official_site",
+        verified=True,
+    )
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return []
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="query",
+        iterations=1,
+        evidence_pool=[previous],
+        global_evidence_pool=[previous],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert [item.id for item in updated.evidence_pool] == ["previous"]
+    assert [item.id for item in updated.global_evidence_pool] == ["previous"]
+
+
 def test_executor_uses_no_verified_evidence_stop_reason(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
 

@@ -459,6 +459,27 @@ def test_planner_query_strategy_includes_entity_aliases(monkeypatch) -> None:
     assert "docs.github.com" in query
 
 
+def test_planner_query_strategy_strips_article_instructions(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(
+        user_request=(
+            "请联网搜索并生成一篇高质量中文深度研究文章，主题：OpenAI。\n\n"
+            "要求：\n"
+            "1. 先搜索官方资料、产品文档、新闻、GitHub 或权威来源。\n"
+            "2. 文章包含：摘要、背景、核心观点、数据证据、竞品对比、趋势判断、风险、结论。\n"
+            "3. 输出 Markdown。"
+        )
+    )
+
+    updated = plan_research(state)
+
+    query = updated.query_strategies[0]["query"]
+    assert query.startswith("OpenAI")
+    assert "输出 Markdown" not in query
+    assert "文章包含" not in query
+    assert "请联网搜索并生成" not in query
+
+
 def test_planner_query_strategy_uses_required_source_types(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
@@ -1012,6 +1033,8 @@ def test_analyze_evidence_uses_llm_provider_when_enabled(monkeypatch) -> None:
     assert "Compare Cursor and GitHub Copilot" in prompt
     assert "cursor-pricing" in prompt
     assert "copilot-docs" in prompt
+    assert "中文" in prompt
+    assert "充分展开" in prompt
 
 
 def test_analyze_evidence_records_successful_llm_call(monkeypatch) -> None:
@@ -1759,7 +1782,7 @@ def test_analysis_critic_and_reporter_create_cited_report(monkeypatch) -> None:
     assert state.critique is not None
     assert state.critique.passed is True
     assert state.report_markdown is not None
-    assert "# InsightGraph Research Report" in state.report_markdown
+    assert "# InsightGraph 深度研究报告" in state.report_markdown
     assert "## References" in state.report_markdown
     assert "[1]" in state.report_markdown
 
@@ -1782,7 +1805,7 @@ def test_reporter_renders_competitive_matrix() -> None:
 
     updated = write_report(state)
 
-    assert "## Competitive Matrix" in updated.report_markdown
+    assert "## 竞争矩阵" in updated.report_markdown
     assert "| Product | Positioning | Strengths | Evidence |" in updated.report_markdown
     assert (
         "| Cursor | Official product positioning signal | "
@@ -1792,11 +1815,11 @@ def test_reporter_renders_competitive_matrix() -> None:
         "| GitHub Copilot | Documented product or local research source | "
         "Official/documented source coverage | [2] |"
     ) in updated.report_markdown
-    assert updated.report_markdown.index("## Key Findings") < updated.report_markdown.index(
-        "## Competitive Matrix"
+    assert updated.report_markdown.index("## 核心发现") < updated.report_markdown.index(
+        "## 竞争矩阵"
     )
-    assert updated.report_markdown.index("## Competitive Matrix") < updated.report_markdown.index(
-        "## Critic Assessment"
+    assert updated.report_markdown.index("## 竞争矩阵") < updated.report_markdown.index(
+        "## 质量评审"
     )
 
 
@@ -1831,8 +1854,8 @@ def test_reporter_excludes_unsupported_findings_from_main_body(monkeypatch) -> N
 
     updated = write_report(state)
 
-    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
-    citation_support = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
+    main_body = updated.report_markdown.split("## 引用支持", maxsplit=1)[0]
+    citation_support = updated.report_markdown.split("## 引用支持", maxsplit=1)[1]
     assert "Pricing and packaging differ" in main_body
     assert "Unsupported security claim" not in main_body
     assert "Unsupported security claim" in citation_support
@@ -1881,7 +1904,7 @@ def test_reporter_renders_supported_grounded_claims_only(monkeypatch) -> None:
 
     updated = write_report(state)
 
-    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
+    main_body = updated.report_markdown.split("## 引用支持", maxsplit=1)[0]
     assert "Cursor publishes pricing tiers." in main_body
     assert "Copilot security posture is complete." not in main_body
 
@@ -1894,13 +1917,15 @@ def test_reporter_renders_standard_long_form_sections(monkeypatch) -> None:
 
     report = updated.report_markdown
     expected_order = [
-        "## Executive Summary",
-        "## Background",
-        "## Analysis",
-        "## Competitive Landscape",
-        "## Risks",
-        "## Outlook",
-        "## Citation Support",
+        "## 摘要",
+        "## 背景",
+        "## 核心发现",
+        "## 证据分析",
+        "## 竞争格局",
+        "## 趋势判断",
+        "## 风险",
+        "## 结论",
+        "## 引用支持",
         "## References",
     ]
     for heading in expected_order:
@@ -1919,9 +1944,9 @@ def test_reporter_marks_sections_insufficient_without_supported_evidence(monkeyp
 
     updated = write_report(state)
 
-    assert "Evidence is insufficient for this section." in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
-    assert "## Analysis" in updated.report_markdown
+    assert "本节证据仍不足，需要继续补充来源。" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
+    assert "## 证据分析" in updated.report_markdown
 
 
 def test_reporter_renders_competitive_matrix_v2_fields() -> None:
@@ -2032,11 +2057,11 @@ def test_reporter_uses_section_research_plan_for_deterministic_body(monkeypatch)
 
     updated = write_report(state)
 
-    assert "## Key Findings" not in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
+    assert "## 核心发现" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
     assert "## Pricing and Packaging" in updated.report_markdown
     assert "## References" in updated.report_markdown
-    assert updated.report_markdown.index("## Executive Summary") < updated.report_markdown.index(
+    assert updated.report_markdown.index("## 摘要") < updated.report_markdown.index(
         "## Pricing and Packaging"
     )
     pricing_index = updated.report_markdown.index("## Pricing and Packaging")
@@ -2056,13 +2081,14 @@ def test_reporter_completes_required_sections_when_plan_is_partial(monkeypatch) 
     updated = write_report(state)
 
     expected_order = [
-        "## Executive Summary",
-        "## Background",
+        "## 摘要",
+        "## 背景",
         "## Product Analysis",
-        "## Competitive Landscape",
-        "## Risks",
-        "## Outlook",
-        "## Citation Support",
+        "## 竞争格局",
+        "## 趋势判断",
+        "## 风险",
+        "## 结论",
+        "## 引用支持",
         "## References",
     ]
     for heading in expected_order:
@@ -2084,7 +2110,7 @@ def test_reporter_omits_competitive_matrix_without_citable_rows() -> None:
 
     updated = write_report(state)
 
-    assert "## Competitive Matrix" not in updated.report_markdown
+    assert "## 竞争矩阵" not in updated.report_markdown
 
 
 def test_llm_reporter_inserts_competitive_matrix_when_missing(monkeypatch) -> None:
@@ -2100,7 +2126,7 @@ def test_llm_reporter_inserts_competitive_matrix_when_missing(monkeypatch) -> No
 
     updated = write_report(state, llm_client=client)
 
-    assert "## Competitive Matrix" in updated.report_markdown
+    assert "## 竞争矩阵" in updated.report_markdown
     assert (
         "| Cursor | Official product positioning signal | "
         "Official/documented source coverage | [1] |"
@@ -2120,13 +2146,15 @@ def test_llm_reporter_completes_required_sections(monkeypatch) -> None:
     updated = write_report(make_reporter_state(), llm_client=client)
 
     expected_order = [
-        "## Executive Summary",
-        "## Background",
-        "## Analysis",
-        "## Competitive Landscape",
-        "## Risks",
-        "## Outlook",
-        "## Citation Support",
+        "## 摘要",
+        "## 背景",
+        "## 核心发现",
+        "## 证据分析",
+        "## 竞争格局",
+        "## 趋势判断",
+        "## 风险",
+        "## 结论",
+        "## 引用支持",
         "## References",
     ]
     for heading in expected_order:
@@ -2203,7 +2231,7 @@ def test_llm_reporter_writes_failed_full_trace_when_enabled(tmp_path, monkeypatc
     updated = write_report(make_reporter_state(), llm_client=client)
 
     event = json.loads(trace_path.read_text(encoding="utf-8").strip())
-    assert "# InsightGraph Research Report" in updated.report_markdown
+    assert "# InsightGraph 深度研究报告" in updated.report_markdown
     assert event["stage"] == "reporter"
     assert event["success"] is False
     assert event["error"] == "RuntimeError: LLM call failed."
@@ -2229,8 +2257,28 @@ def test_llm_reporter_prompt_uses_verified_snippets_as_fact_boundary(monkeypatch
 
     prompt = calls[0]["messages"][-1].content
     assert "Evidence snippets are the only allowed factual basis." in prompt
+    assert "默认输出中文深度研究报告" in prompt
+    assert "摘要、背景、证据分析、趋势判断、风险、结论" in prompt
     assert "Verified evidence snippets:" in prompt
     assert "Cursor lists Pro and Business pricing tiers." in prompt
+
+
+def test_reporter_defaults_to_chinese_markdown(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+
+    updated = write_report(make_reporter_state())
+
+    assert updated.report_markdown.startswith("# InsightGraph 深度研究报告")
+    for heading in [
+        "## 摘要",
+        "## 背景",
+        "## 核心发现",
+        "## 证据分析",
+        "## 竞争格局",
+        "## 风险",
+        "## 结论",
+    ]:
+        assert heading in updated.report_markdown
 
 
 def test_llm_reporter_prompt_uses_only_supported_claims(monkeypatch) -> None:
@@ -2307,7 +2355,7 @@ def test_llm_reporter_falls_back_when_output_mentions_unapproved_claim(monkeypat
 
     updated = write_report(state, llm_client=client)
 
-    main_body = updated.report_markdown.split("## Citation Support", maxsplit=1)[0]
+    main_body = updated.report_markdown.split("## 引用支持", maxsplit=1)[0]
     assert "Unsupported security claim" not in main_body
     assert "Pricing and packaging differ" in main_body
 
@@ -2328,7 +2376,7 @@ def test_llm_reporter_does_not_duplicate_competitive_matrix(monkeypatch) -> None
 
     updated = write_report(state, llm_client=client)
 
-    assert updated.report_markdown.count("## Competitive Matrix") == 1
+    assert updated.report_markdown.count("## 竞争矩阵") == 1
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
@@ -2353,7 +2401,7 @@ def test_llm_reporter_replaces_uncited_competitive_matrix(monkeypatch) -> None:
         "| Cursor | Official product positioning signal | "
         "Official/documented source coverage | [1] |"
     ) in updated.report_markdown
-    assert updated.report_markdown.count("## Competitive Matrix") == 1
+    assert updated.report_markdown.count("## 竞争矩阵") == 1
 
 
 def test_llm_reporter_replaces_mixed_uncited_competitive_matrix(monkeypatch) -> None:
@@ -2378,7 +2426,7 @@ def test_llm_reporter_replaces_mixed_uncited_competitive_matrix(monkeypatch) -> 
         "| Cursor | Official product positioning signal | "
         "Official/documented source coverage | [1] |"
     ) in updated.report_markdown
-    assert updated.report_markdown.count("## Competitive Matrix") == 1
+    assert updated.report_markdown.count("## 竞争矩阵") == 1
 
 
 def test_llm_reporter_inserts_competitive_matrix_before_later_sections(monkeypatch) -> None:
@@ -2395,11 +2443,11 @@ def test_llm_reporter_inserts_competitive_matrix_before_later_sections(monkeypat
 
     updated = write_report(state, llm_client=client)
 
-    assert updated.report_markdown.index("## Key Findings") < updated.report_markdown.index(
-        "## Competitive Matrix"
+    assert updated.report_markdown.index("## 核心发现") < updated.report_markdown.index(
+        "## 竞争矩阵"
     )
-    assert updated.report_markdown.index("## Competitive Matrix") < updated.report_markdown.index(
-        "## Critic Assessment"
+    assert updated.report_markdown.index("## 竞争矩阵") < updated.report_markdown.index(
+        "## 质量评审"
     )
 
 
@@ -2419,7 +2467,7 @@ def test_llm_reporter_detects_competitive_matrix_heading_variants(monkeypatch) -
 
     updated = write_report(state, llm_client=client)
 
-    assert updated.report_markdown.lower().count("competitive matrix") == 1
+    assert updated.report_markdown.count("## 竞争矩阵") == 1
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
@@ -2439,7 +2487,7 @@ def test_llm_reporter_detects_competitive_matrix_atx_heading_variants(monkeypatc
 
     updated = write_report(state, llm_client=client)
 
-    assert updated.report_markdown.count("Competitive Matrix") == 1
+    assert updated.report_markdown.count("## 竞争矩阵") == 1
     assert "| Cursor | Existing | Existing | [1] |" in updated.report_markdown
 
 
@@ -2460,7 +2508,7 @@ def test_write_report_uses_llm_provider_when_enabled(monkeypatch) -> None:
 
     assert updated.report_markdown is not None
     assert "Cursor and Copilot package their assistants differently" in updated.report_markdown
-    assert "## Critic Assessment" in updated.report_markdown
+    assert "## 质量评审" in updated.report_markdown
     assert "## References" in updated.report_markdown
     assert "[1] Cursor Pricing. https://cursor.com/pricing" in updated.report_markdown
     assert (
@@ -2600,7 +2648,7 @@ def test_write_report_uses_deterministic_fallback_when_token_budget_exhausted(
     updated = write_report(state, llm_client=client)
 
     assert client.messages == []
-    assert "# InsightGraph Research Report" in (updated.report_markdown or "")
+    assert "# InsightGraph 深度研究报告" in (updated.report_markdown or "")
     assert len(updated.llm_call_log) == 2
     assert updated.llm_call_log[-1].error == "budget_exhausted"
 
@@ -2765,7 +2813,7 @@ def test_write_report_falls_back_for_invalid_llm_output(monkeypatch, content) ->
 
     assert updated.report_markdown is not None
     assert "Pricing and packaging differ" in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
     assert (
         "Cursor pricing and Copilot documentation show different packaging signals"
         in updated.report_markdown
@@ -2782,7 +2830,7 @@ def test_write_report_falls_back_without_api_key(monkeypatch) -> None:
 
     assert updated.report_markdown is not None
     assert "Pricing and packaging differ" in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
     assert "## References" in updated.report_markdown
 
 
@@ -2795,7 +2843,7 @@ def test_write_report_falls_back_for_llm_error(monkeypatch) -> None:
 
     assert updated.report_markdown is not None
     assert "Pricing and packaging differ" in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
     assert "## References" in updated.report_markdown
 
 
@@ -2871,9 +2919,9 @@ def test_reporter_defaults_to_deterministic_when_env_is_clear(monkeypatch) -> No
     updated = write_report(state)
 
     assert updated.report_markdown is not None
-    assert "# InsightGraph Research Report" in updated.report_markdown
+    assert "# InsightGraph 深度研究报告" in updated.report_markdown
     assert "Verified finding" in updated.report_markdown
-    assert "## Executive Summary" in updated.report_markdown
+    assert "## 摘要" in updated.report_markdown
     assert "[1] Verified Source. https://example.com/verified" in updated.report_markdown
 
 
@@ -3272,7 +3320,7 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
 
     updated = write_report(state)
 
-    assert "## Citation Support" in updated.report_markdown
+    assert "## 引用支持" in updated.report_markdown
     assert "| Claim | Status | Evidence | Reason |" in updated.report_markdown
     assert (
         "| Pricing and packaging differ | supported | cursor-pricing | "
@@ -3285,5 +3333,5 @@ def test_reporter_renders_citation_support_summary(monkeypatch) -> None:
         "| Partial claim | partial | cursor-pricing | "
         "partial lexical support; support_score=0.75; matched_terms=cursor, pricing |"
     ) in updated.report_markdown
-    support_section = updated.report_markdown.split("## Citation Support", maxsplit=1)[1]
+    support_section = updated.report_markdown.split("## 引用支持", maxsplit=1)[1]
     assert "unverified-source" not in support_section

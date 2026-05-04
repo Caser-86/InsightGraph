@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 from enum import StrEnum
 from pathlib import Path
@@ -8,13 +9,18 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
-
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
+from insight_graph.llm.config import resolve_llm_config
 from insight_graph.state import GraphState, LLMCallRecord
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
+
+
+def _load_local_dotenv() -> None:
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 
 class ResearchPreset(StrEnum):
@@ -35,13 +41,16 @@ LIVE_LLM_PRESET_DEFAULTS = {
 LIVE_RESEARCH_PRESET_DEFAULTS = {
     "INSIGHT_GRAPH_USE_WEB_SEARCH": "1",
     "INSIGHT_GRAPH_SEARCH_PROVIDER": "duckduckgo",
-    "INSIGHT_GRAPH_SEARCH_LIMIT": "5",
+    "INSIGHT_GRAPH_SEARCH_LIMIT": "12",
     "INSIGHT_GRAPH_USE_GITHUB_SEARCH": "1",
     "INSIGHT_GRAPH_GITHUB_PROVIDER": "live",
     "INSIGHT_GRAPH_USE_SEC_FILINGS": "1",
     "INSIGHT_GRAPH_USE_SEC_FINANCIALS": "1",
     "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION": "1",
-    "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS": "3",
+    "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS": "5",
+    "INSIGHT_GRAPH_MAX_TOOL_CALLS": "40",
+    "INSIGHT_GRAPH_MAX_FETCHES": "20",
+    "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN": "40",
     "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS": "1",
     "INSIGHT_GRAPH_RELEVANCE_FILTER": "1",
     "INSIGHT_GRAPH_RELEVANCE_JUDGE": "openai_compatible",
@@ -136,13 +145,14 @@ def _build_research_json_payload(state: GraphState) -> dict[str, object]:
         "iterations": state.iterations,
         "evidence_pool": _build_evidence_drilldown(state),
         "global_evidence_pool": [
-            evidence.model_dump(mode="json", exclude_none=True)
+            _redact_payload(evidence.model_dump(mode="json", exclude_none=True))
             for evidence in state.global_evidence_pool
         ],
         "citation_support": state.citation_support,
         "url_validation": state.url_validation,
         "quality": quality,
         "quality_cards": _build_quality_cards(state, quality),
+        "runtime_diagnostics": _build_runtime_diagnostics(state),
     }
 
 
@@ -150,13 +160,32 @@ def _build_evidence_drilldown(state: GraphState) -> list[dict[str, object]]:
     citation_status = _citation_status_by_evidence_id(state)
     validation_status = _url_validation_status_by_evidence_id(state)
     return [
-        {
-            **evidence.model_dump(mode="json", exclude_none=True),
-            "citation_support_status": citation_status.get(evidence.id, "unknown"),
-            "url_validation_status": validation_status.get(evidence.id, "unknown"),
-        }
+        _redact_payload(
+            {
+                **evidence.model_dump(mode="json", exclude_none=True),
+                "citation_support_status": citation_status.get(evidence.id, "unknown"),
+                "url_validation_status": validation_status.get(evidence.id, "unknown"),
+            }
+        )
         for evidence in state.evidence_pool
     ]
+
+
+def _redact_payload(value: object) -> object:
+    if isinstance(value, str):
+        return _redact_sensitive_text(value)
+    if isinstance(value, list):
+        return [_redact_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_payload(item) for key, item in value.items()}
+    return value
+
+
+def _redact_sensitive_text(value: str) -> str:
+    redacted = re.sub(r"sk-[A-Za-z0-9_-]+", "[REDACTED]", value)
+    for token in ("Authorization", "request-body", "Sensitive prompt"):
+        redacted = redacted.replace(token, "[REDACTED]")
+    return redacted
 
 
 def _citation_status_by_evidence_id(state: GraphState) -> dict[str, str]:
@@ -192,6 +221,72 @@ def _build_quality_cards(state: GraphState, quality: dict[str, object]) -> dict[
     }
 
 
+def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
+    llm_config = _safe_llm_config()
+    evidence = state.evidence_pool or state.global_evidence_pool
+    web_search_calls = [
+        record for record in state.tool_call_log if record.tool_name == "web_search"
+    ]
+    return {
+        "search_provider": os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock"),
+        "search_limit": _int_env("INSIGHT_GRAPH_SEARCH_LIMIT"),
+        "use_web_search": _truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"),
+        "use_github_search": _truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"),
+        "use_multi_source_collection": _truthy_env(
+            "INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"
+        ),
+        "max_tool_calls": _int_env("INSIGHT_GRAPH_MAX_TOOL_CALLS"),
+        "max_fetches": _int_env("INSIGHT_GRAPH_MAX_FETCHES"),
+        "max_evidence_per_run": _int_env("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"),
+        "analyst_provider": os.getenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "deterministic"),
+        "reporter_provider": os.getenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "deterministic"),
+        "llm_provider": llm_config.get("provider"),
+        "llm_model": llm_config.get("model"),
+        "llm_configured": bool(llm_config.get("api_key_configured")),
+        "tool_call_count": len(state.tool_call_log),
+        "web_search_call_count": len(web_search_calls),
+        "successful_web_search_call_count": sum(
+            1 for record in web_search_calls if record.success
+        ),
+        "llm_call_count": len(state.llm_call_log),
+        "successful_llm_call_count": sum(
+            1 for record in state.llm_call_log if record.success
+        ),
+        "evidence_count": len(evidence),
+        "verified_evidence_count": sum(1 for item in evidence if item.verified),
+        "collection_stop_reason": state.collection_stop_reason,
+        "collection_rounds": state.collection_rounds,
+    }
+
+
+def _safe_llm_config() -> dict[str, object]:
+    try:
+        config = resolve_llm_config()
+    except ValueError as exc:
+        return {
+            "provider": os.getenv("INSIGHT_GRAPH_LLM_PROVIDER", "openai_compatible"),
+            "model": os.getenv("INSIGHT_GRAPH_LLM_MODEL"),
+            "api_key_configured": False,
+            "error": str(exc),
+        }
+    return {
+        "provider": config.provider,
+        "model": config.model,
+        "api_key_configured": bool(config.api_key),
+    }
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _int_env(name: str) -> int | None:
+    try:
+        return int(os.environ[name])
+    except (KeyError, ValueError):
+        return None
+
+
 def _url_validation_rate(state: GraphState) -> int:
     if not state.url_validation:
         return 100
@@ -202,6 +297,7 @@ def _url_validation_rate(state: GraphState) -> int:
 @app.callback()
 def main() -> None:
     """InsightGraph research workflow CLI."""
+    _load_local_dotenv()
     _configure_output_encoding()
 
 
@@ -228,6 +324,7 @@ def research(
     ] = False,
 ) -> None:
     """Run a research workflow and print a Markdown report."""
+    _load_local_dotenv()
     _apply_research_preset(preset)
     state = run_research(query)
     if output_json:

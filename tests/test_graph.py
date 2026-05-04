@@ -38,8 +38,8 @@ def test_run_research_executes_full_graph(monkeypatch) -> None:
     assert result.critique is not None
     assert result.critique.passed is True
     assert result.report_markdown is not None
-    assert "# InsightGraph Research Report" in result.report_markdown
-    assert "## Competitive Matrix" in result.report_markdown
+    assert "# InsightGraph 深度研究报告" in result.report_markdown
+    assert "## 核心发现" in result.report_markdown
     assert "https://cursor.com/pricing" in result.report_markdown
     assert result.domain_profile == "competitive_intel"
     assert [entity["id"] for entity in result.resolved_entities] == [
@@ -69,7 +69,7 @@ def test_run_research_stops_after_failed_retry(monkeypatch) -> None:
     assert result.critique.passed is False
     assert result.iterations == 1
     assert result.report_markdown is not None
-    assert "# InsightGraph Research Report" in result.report_markdown
+    assert "# InsightGraph 深度研究报告" in result.report_markdown
     assert "Official sources establish baseline product positioning" not in result.report_markdown
     assert "Evidence, findings, or citation support are insufficient." in result.report_markdown
 
