@@ -135,6 +135,13 @@ class InMemoryResearchJobsBackend:
                 del self._jobs[job_id]
             return len(expired_ids)
 
+    def delete_job(self, job_id: str) -> bool:
+        with self._lock:
+            if job_id not in self._jobs:
+                return False
+            del self._jobs[job_id]
+            return True
+
     def snapshot(self) -> ResearchJobsBackendSnapshot:
         with self._lock:
             return ResearchJobsBackendSnapshot(

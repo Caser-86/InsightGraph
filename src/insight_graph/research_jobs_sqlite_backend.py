@@ -325,6 +325,16 @@ class SQLiteResearchJobsBackend:
             connection.commit()
         return cursor.rowcount
 
+    def delete_job(self, job_id: str) -> bool:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                "DELETE FROM research_jobs WHERE id = ?",
+                (job_id,),
+            )
+            connection.commit()
+        return cursor.rowcount > 0
+
     def snapshot(self) -> ResearchJobsBackendSnapshot:
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM research_jobs").fetchall()

@@ -2,9 +2,13 @@ import json
 import os
 import sys
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated
 
 import typer
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research

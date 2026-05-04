@@ -200,6 +200,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .btn.danger { border-color: rgba(255, 107, 130, 0.44); color: var(--red); }
 
     .btn.ghost { color: var(--cyan); }
+    .btn.small { font-size: 0.75rem; padding: 4px 8px; min-height: auto; }
 
     .message {
       min-height: 24px;
@@ -488,6 +489,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
             <select id="preset-input">
               <option value="offline">offline</option>
               <option value="live-llm">live-llm</option>
+              <option value="live-research" selected>live-research</option>
             </select>
           </label>
           <label>Query
@@ -647,6 +649,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
       els.metrics.active.textContent = `${summary?.active_count || 0}/${summary?.active_limit || 0}`;
     }
 
+    function deleteJob(jobId) {
+      const key = els.apiKey.value.trim();
+      const url = '/research/jobs/' + encodeURIComponent(jobId);
+      return fetch(url, { method: 'DELETE', headers: headers() }).then((response) => {
+        if (!response.ok) return response.json().then((data) => { throw new Error(data.detail || 'Delete failed'); });
+        return response.json();
+      });
+    }
+
     function renderJobList() {
       if (!state.jobs.length) {
         els.jobList.innerHTML = '<div class="empty">No jobs yet. Submit a query to start.</div>';
@@ -655,15 +666,18 @@ _DASHBOARD_HTML = r"""<!doctype html>
       els.jobList.innerHTML = state.jobs.map((job) => {
         const active = job.job_id === state.selectedJobId ? ' active' : '';
         const queue = job.queue_position ? `Queue #${job.queue_position}` : job.preset;
+        const isTerminal = jobIsTerminal(job.status);
+        const deleteBtn = isTerminal ? `<button class="btn danger small" data-delete-job-id="${escapeHtml(job.job_id)}" type="button">Delete</button>` : '';
         return `
-          <button class="job-card${active}" data-job-id="${escapeHtml(job.job_id)}" type="button">
+          <div class="job-card${active}" data-job-id="${escapeHtml(job.job_id)}">
             <span class="${statusClass(job.status)}">${escapeHtml(job.status)}</span>
             <h3>${escapeHtml(job.query || job.job_id)}</h3>
             <div class="job-meta">
               <span>${escapeHtml(queue)}</span>
               <span>${escapeHtml(job.created_at || '')}</span>
             </div>
-          </button>`;
+            ${deleteBtn}
+          </div>`;
       }).join('');
     }
 
@@ -1094,7 +1108,26 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (state.autoRefresh && state.selectedJobId) connectJobStream(state.selectedJobId);
       scheduleRefresh();
     });
-    els.jobList.addEventListener('click', (event) => {
+    els.jobList.addEventListener('click', async (event) => {
+      const deleteBtn = event.target.closest('[data-delete-job-id]');
+      if (deleteBtn) {
+        event.stopPropagation();
+        const jobId = deleteBtn.dataset.deleteJobId;
+        if (confirm('Delete this job?')) {
+          try {
+            await deleteJob(jobId);
+            if (state.selectedJobId === jobId) {
+              state.selectedJobId = null;
+              state.detail = null;
+            }
+            setMessage(`Deleted job ${jobId}`, 'ok');
+            await refresh();
+          } catch (error) {
+            setMessage(error.message, 'error');
+          }
+        }
+        return;
+      }
       const card = event.target.closest('[data-job-id]');
       if (!card) return;
       state.selectedJobId = card.dataset.jobId;

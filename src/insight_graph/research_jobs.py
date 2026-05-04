@@ -590,6 +590,23 @@ def get_research_job(job_id: str) -> dict[str, Any]:
         return _job_detail(job, _queued_job_positions_locked())
 
 
+def delete_research_job(job_id: str) -> dict[str, Any]:
+    with _JOBS_LOCK:
+        job = _get_research_job_locked(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Research job not found.")
+        if job.status in ACTIVE_RESEARCH_JOB_STATUSES:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete active research job. Cancel it first.",
+            )
+        deleted = _RESEARCH_JOBS_BACKEND.delete_job(job_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Research job not found.")
+        _persist_research_jobs_best_effort_locked()
+    return {"deleted": True, "job_id": job_id}
+
+
 def mark_research_job_running(
     job_id: str,
     started_at: Callable[[], str],

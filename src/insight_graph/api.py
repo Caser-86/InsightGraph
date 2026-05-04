@@ -60,6 +60,9 @@ from insight_graph.research_jobs import (
     create_research_job as create_research_job_record,
 )
 from insight_graph.research_jobs import (
+    delete_research_job as delete_research_job_record,
+)
+from insight_graph.research_jobs import (
     get_research_job as get_research_job_record,
 )
 from insight_graph.research_jobs import (
@@ -225,6 +228,18 @@ _RESEARCH_JOB_RETRY_CONFLICT_RESPONSE = {
             "example": {"detail": "Only failed or cancelled research jobs can be retried."}
         }
     },
+}
+_RESEARCH_JOB_DELETE_CONFLICT_RESPONSE = {
+    "description": "Cannot delete active research job. Cancel it first.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Cannot delete active research job. Cancel it first."}
+        }
+    },
+}
+_RESEARCH_JOB_DELETE_EXAMPLE = {
+    "deleted": True,
+    "job_id": "job-123",
 }
 _RESEARCH_JOB_CREATE_EXAMPLE = {
     "job_id": "job-123",
@@ -954,6 +969,24 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
         job_id=job_id,
         finished_at=_current_utc_timestamp(),
     )
+
+
+@router.delete(
+    "/research/jobs/{job_id}",
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Delete a terminal research job",
+    description="Delete a succeeded, failed, or cancelled research job. Active jobs cannot be deleted.",
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_DELETE_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_DELETE_CONFLICT_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def delete_research_job(job_id: str) -> dict[str, Any]:
+    return delete_research_job_record(job_id=job_id)
 
 
 @router.post(
