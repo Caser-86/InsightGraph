@@ -4,6 +4,10 @@ from insight_graph.report_quality.budgeting import (
     get_research_budgets,
     used_llm_tokens,
 )
+from insight_graph.report_quality.intensity import (
+    apply_report_intensity_defaults,
+    get_report_intensity_config,
+)
 from insight_graph.state import GraphState, LLMCallRecord
 
 
@@ -14,15 +18,16 @@ def test_get_research_budgets_uses_defaults(monkeypatch) -> None:
         "INSIGHT_GRAPH_MAX_FETCHES",
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
         "INSIGHT_GRAPH_MAX_TOKENS",
+        "INSIGHT_GRAPH_REPORT_INTENSITY",
     ]:
         monkeypatch.delenv(name, raising=False)
 
     assert get_research_budgets() == ResearchBudgets(
-        max_tool_calls=20,
+        max_tool_calls=40,
         max_steps=10,
-        max_fetches=10,
-        max_evidence_per_run=20,
-        max_tokens=50_000,
+        max_fetches=20,
+        max_evidence_per_run=40,
+        max_tokens=80_000,
     )
 
 
@@ -50,12 +55,32 @@ def test_get_research_budgets_ignores_invalid_env_values(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "0")
 
     assert get_research_budgets() == ResearchBudgets(
-        max_tool_calls=20,
+        max_tool_calls=40,
         max_steps=10,
-        max_fetches=10,
-        max_evidence_per_run=20,
-        max_tokens=50_000,
+        max_fetches=20,
+        max_evidence_per_run=40,
+        max_tokens=80_000,
     )
+
+
+def test_report_intensity_configs_define_budget_profiles() -> None:
+    concise = get_report_intensity_config("concise")
+    standard = get_report_intensity_config("standard")
+    deep = get_report_intensity_config("deep")
+
+    assert concise.max_tokens < standard.max_tokens < deep.max_tokens
+    assert concise.max_evidence_per_run < standard.max_evidence_per_run < deep.max_evidence_per_run
+    assert standard.name == "standard"
+
+
+def test_apply_report_intensity_defaults_can_override_budget_env(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_TOKENS", "123")
+
+    apply_report_intensity_defaults("deep", overwrite=True)
+
+    assert get_research_budgets().max_tokens == 160_000
+    assert get_research_budgets().max_tool_calls == 80
+    assert get_research_budgets().max_fetches == 40
 
 
 def test_used_llm_tokens_sums_known_total_tokens() -> None:

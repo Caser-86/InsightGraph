@@ -11,6 +11,10 @@ from insight_graph.llm.observability import (
 )
 from insight_graph.llm.trace_writer import write_full_llm_trace_event
 from insight_graph.report_quality.budgeting import can_start_llm_call
+from insight_graph.report_quality.report_review import (
+    append_report_quality_diagnostics,
+    strip_report_quality_diagnostics,
+)
 from insight_graph.report_quality.url_validation import validate_evidence_url
 from insight_graph.state import CompetitiveMatrixRow, Evidence, Finding, GraphState, LLMCallRecord
 
@@ -39,6 +43,7 @@ SMART_PUNCTUATION_TRANSLATION = str.maketrans(
     }
 )
 REPORTER_VALIDATE_URLS_ENV = "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"
+REPORT_REVIEW_PROVIDER_ENV = "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER"
 REQUIRED_REPORT_SECTIONS = (
     "摘要",
     "背景",
@@ -71,15 +76,23 @@ def write_report(
 ) -> GraphState:
     provider = get_reporter_provider()
     if provider == "deterministic":
-        return _write_report_deterministic(state)
+        state = _write_report_deterministic(state)
+        return _finalize_report_quality(state)
     if not can_start_llm_call(state):
         state.llm_call_log.append(_budget_exhausted_record("reporter"))
-        return _write_report_deterministic(state)
+        state = _write_report_deterministic(state)
+        return _finalize_report_quality(state)
 
     try:
-        return _write_report_with_llm(state, llm_client=llm_client)
+        state = _write_report_with_llm(state, llm_client=llm_client)
     except ReporterFallbackError:
-        return _write_report_deterministic(state)
+        state = _write_report_deterministic(state)
+    return _finalize_report_quality(state)
+
+
+def _finalize_report_quality(state: GraphState) -> GraphState:
+    state = _maybe_review_report_with_llm(state)
+    return append_report_quality_diagnostics(state)
 
 
 def _write_report_deterministic(state: GraphState) -> GraphState:
@@ -607,6 +620,153 @@ def _write_report_with_llm(
 
     state.report_markdown = "\n".join(lines).rstrip() + "\n"
     return state
+
+
+def _report_review_provider() -> str:
+    provider = os.getenv(REPORT_REVIEW_PROVIDER_ENV, "deterministic").strip().lower()
+    if provider in {"", "deterministic", "none"}:
+        return "deterministic"
+    if provider == "llm":
+        return "llm"
+    raise ValueError(f"Unknown report review provider: {provider}")
+
+
+def _maybe_review_report_with_llm(state: GraphState) -> GraphState:
+    if _report_review_provider() != "llm":
+        return state
+    if not can_start_llm_call(state):
+        state.llm_call_log.append(_budget_exhausted_record("report_review"))
+        return state
+
+    verified_evidence = [item for item in state.evidence_pool if item.verified]
+    reference_numbers = _build_reference_numbers(verified_evidence)
+    if not reference_numbers or not state.report_markdown:
+        return state
+
+    config = resolve_llm_config()
+    if not config.api_key:
+        state.llm_call_log.append(
+            LLMCallRecord(
+                stage="report_review",
+                provider="llm",
+                model=config.model,
+                success=False,
+                duration_ms=0,
+                error="api_key_required",
+            )
+        )
+        return state
+
+    messages = _build_report_review_messages(state, verified_evidence, reference_numbers)
+    llm_client = get_llm_client(config, purpose="report_review", messages=messages)
+    wire_api = get_llm_wire_api(llm_client)
+    started = time.perf_counter()
+    try:
+        result = complete_json_with_observability(llm_client, messages)
+        reviewed_body = _parse_llm_report_body(result.content)
+        reviewed_body = _strip_references_section(reviewed_body)
+        reviewed_body = strip_report_quality_diagnostics(reviewed_body)
+        reviewed_body = _normalize_smart_punctuation(reviewed_body)
+        reviewed_body = _normalize_report_language_headings(reviewed_body)
+        reviewed_body = _complete_required_report_body(reviewed_body)
+        _validate_llm_report_body(reviewed_body, set(reference_numbers.values()))
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        state.llm_call_log.append(
+            build_llm_call_record(
+                stage="report_review",
+                provider="llm",
+                model=getattr(getattr(llm_client, "config", None), "model", config.model),
+                success=False,
+                duration_ms=duration_ms,
+                wire_api=wire_api,
+                error=exc,
+                secrets=[config.api_key],
+                llm_client=llm_client,
+            )
+        )
+        return state
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    state.llm_call_log.append(
+        build_llm_call_record(
+            stage="report_review",
+            provider="llm",
+            model=getattr(getattr(llm_client, "config", None), "model", config.model),
+            success=True,
+            duration_ms=duration_ms,
+            wire_api=wire_api,
+            secrets=[config.api_key],
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens,
+            llm_client=llm_client,
+        )
+    )
+    state.report_markdown = (
+        "\n".join(
+            [
+                reviewed_body.rstrip(),
+                "",
+                *_build_references_section(
+                    verified_evidence,
+                    reference_numbers,
+                    state.url_validation,
+                ),
+            ]
+        ).rstrip()
+        + "\n"
+    )
+    return state
+
+
+def _build_report_review_messages(
+    state: GraphState,
+    verified_evidence: list[Evidence],
+    reference_numbers: dict[str, int],
+) -> list[ChatMessage]:
+    evidence_lines = []
+    for item in verified_evidence:
+        evidence_lines.append(
+            "\n".join(
+                [
+                    f"- reference: [{reference_numbers[item.id]}]",
+                    f"  title: {item.title}",
+                    f"  url: {item.source_url}",
+                    f"  source_type: {item.source_type}",
+                    f"  snippet: {item.snippet}",
+                ]
+            )
+        )
+    report_body = _strip_references_section(
+        strip_report_quality_diagnostics(state.report_markdown or "")
+    )
+    prompt = "\n\n".join(
+        [
+            f"User request: {state.user_request}",
+            "Current report markdown without deterministic references:",
+            report_body,
+            "Verified evidence and allowed citations:",
+            "\n".join(evidence_lines),
+            (
+                "请对这份中文研究报告做一次审稿式润色和适度扩写："
+                "让行文更顺、段落更完整、证据解释更充分、风险边界更清楚。"
+                "只能使用上面 verified evidence 中已有事实；不要新增来源、数字或未经证实的判断。"
+                "只能使用允许的 [n] 引用；不要生成 References 或 Sources。"
+                "Return strict JSON only: {\"markdown\":\"# InsightGraph 深度研究报告\\n...\"}."
+            ),
+        ]
+    )
+    return [
+        ChatMessage(
+            role="system",
+            content=(
+                "You are a senior Chinese editor for evidence-grounded research reports. "
+                "Return JSON only."
+            ),
+        ),
+        ChatMessage(role="user", content=prompt),
+    ]
 
 
 def _url_validation_enabled() -> bool:

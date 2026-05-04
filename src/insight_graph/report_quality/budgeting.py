@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.state import GraphState, LLMCallRecord
 
 
@@ -14,12 +15,19 @@ class ResearchBudgets:
 
 
 def get_research_budgets() -> ResearchBudgets:
+    intensity = get_report_intensity_config()
     return ResearchBudgets(
-        max_tool_calls=_positive_int_env("INSIGHT_GRAPH_MAX_TOOL_CALLS", 20),
+        max_tool_calls=_positive_int_env(
+            "INSIGHT_GRAPH_MAX_TOOL_CALLS",
+            intensity.max_tool_calls,
+        ),
         max_steps=_positive_int_env("INSIGHT_GRAPH_MAX_STEPS", 10),
-        max_fetches=_positive_int_env("INSIGHT_GRAPH_MAX_FETCHES", 10),
-        max_evidence_per_run=_positive_int_env("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN", 20),
-        max_tokens=_positive_int_env("INSIGHT_GRAPH_MAX_TOKENS", 50_000),
+        max_fetches=_positive_int_env("INSIGHT_GRAPH_MAX_FETCHES", intensity.max_fetches),
+        max_evidence_per_run=_positive_int_env(
+            "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+            intensity.max_evidence_per_run,
+        ),
+        max_tokens=_positive_int_env("INSIGHT_GRAPH_MAX_TOKENS", intensity.max_tokens),
     )
 
 

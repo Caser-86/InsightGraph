@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from insight_graph.cli import ResearchPreset
+from insight_graph.report_quality.intensity import ReportIntensity
 from insight_graph.research_jobs_backend import InMemoryResearchJobsBackend
 from insight_graph.research_jobs_store import (
     ResearchJobsStoreError,
@@ -73,6 +74,7 @@ class ResearchJob:
     preset: ResearchPreset
     created_order: int
     created_at: str
+    report_intensity: ReportIntensity = ReportIntensity.standard
     status: str = RESEARCH_JOB_STATUS_QUEUED
     started_at: str | None = None
     finished_at: str | None = None
@@ -247,6 +249,7 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
         id=item["id"],
         query=item["query"],
         preset=ResearchPreset(item["preset"]),
+        report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
         created_order=item["created_order"],
         created_at=item["created_at"],
         status=item["status"],
@@ -468,6 +471,7 @@ def create_research_job(
     query: str,
     preset: ResearchPreset,
     created_at: str,
+    report_intensity: ReportIntensity = ReportIntensity.standard,
 ) -> dict[str, str]:
     global _NEXT_JOB_SEQUENCE
 
@@ -478,6 +482,7 @@ def create_research_job(
                     job_id=str(uuid4()),
                     query=query,
                     preset=preset,
+                    report_intensity=report_intensity,
                     created_at=created_at,
                 )
             except ValueError as exc:
@@ -499,6 +504,7 @@ def create_research_job(
             id=str(uuid4()),
             query=query,
             preset=preset,
+            report_intensity=report_intensity,
             created_order=_NEXT_JOB_SEQUENCE,
             created_at=created_at,
         )
@@ -525,6 +531,7 @@ def retry_research_job(job_id: str, created_at: str) -> dict[str, str]:
     return create_research_job(
         query=source.query,
         preset=source.preset,
+        report_intensity=source.report_intensity,
         created_at=created_at,
     )
 

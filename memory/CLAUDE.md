@@ -12,17 +12,13 @@ Batch A-F complete. Deferred: MCP sandbox /tasks release - need explicit decisio
 
 ### Key Env Vars
 - `INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1`
-- `INSIGHT_GRAPH_LLM_API_KEY=sk-9ee03adb2ddc43ff8a5ce4a09887d224`
+- `INSIGHT_GRAPH_LLM_API_KEY=<set in local .env; never commit>`
 - `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`
 - `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`
-- User wants model: `deepseek-v4-pro`
+- User wants model: `deepseek-reasoner`
 
 ### Reports Generated
-1. `reports/xiaomi-full-analysis.md` (10k chars, 11 chapters)
-2. `reports/xiaomi-serpapi-analysis.md` (4.5k, real search)
-3. `reports/xiaomi-duckduckgo-analysis.md` (1.4k, DDG)
-4. `reports/deepseek-apple-analysis.md` (3.3k)
-5. `reports/ai-coding-tools-deep-analysis.md` (3.5k)
+Generated reports are local artifacts and should not be committed.
 
 ### Verifications
 - Search: `$env:PYTHONPATH='src'; python -m pytest tests/test_web_search.py -q`

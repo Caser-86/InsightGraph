@@ -51,6 +51,7 @@ def test_serialize_research_job_uses_public_fields() -> None:
         "id": "job-1",
         "query": "Compare Cursor",
         "preset": "offline",
+        "report_intensity": "standard",
         "created_order": 7,
         "created_at": "2026-04-27T10:00:00Z",
         "status": "succeeded",

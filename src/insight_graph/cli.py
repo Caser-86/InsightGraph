@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.llm.config import resolve_llm_config
+from insight_graph.report_quality.intensity import (
+    ReportIntensity,
+    apply_report_intensity_defaults,
+    get_report_intensity,
+)
 from insight_graph.state import GraphState, LLMCallRecord
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
@@ -70,6 +75,13 @@ def _apply_research_preset(preset: ResearchPreset) -> None:
     )
     for name, value in defaults.items():
         os.environ.setdefault(name, value)
+
+
+def _apply_report_intensity(intensity: ReportIntensity | None) -> None:
+    if intensity is None:
+        apply_report_intensity_defaults(overwrite=False)
+        return
+    apply_report_intensity_defaults(intensity, overwrite=True)
 
 
 def _configure_output_encoding(stdout=None, stderr=None) -> None:
@@ -150,6 +162,7 @@ def _build_research_json_payload(state: GraphState) -> dict[str, object]:
         ],
         "citation_support": state.citation_support,
         "url_validation": state.url_validation,
+        "report_quality_review": state.report_quality_review,
         "quality": quality,
         "quality_cards": _build_quality_cards(state, quality),
         "runtime_diagnostics": _build_runtime_diagnostics(state),
@@ -255,6 +268,7 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
         "evidence_count": len(evidence),
         "verified_evidence_count": sum(1 for item in evidence if item.verified),
         "collection_stop_reason": state.collection_stop_reason,
+        "report_intensity": get_report_intensity().value,
         "collection_rounds": state.collection_rounds,
     }
 
@@ -322,10 +336,18 @@ def research(
             help="Print a safe structured JSON summary instead of Markdown.",
         ),
     ] = False,
+    report_intensity: Annotated[
+        ReportIntensity | None,
+        typer.Option(
+            "--report-intensity",
+            help="Report strength: concise, standard, or deep.",
+        ),
+    ] = None,
 ) -> None:
     """Run a research workflow and print a Markdown report."""
     _load_local_dotenv()
     _apply_research_preset(preset)
+    _apply_report_intensity(report_intensity)
     state = run_research(query)
     if output_json:
         typer.echo(

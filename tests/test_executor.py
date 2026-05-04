@@ -1097,6 +1097,7 @@ def test_executor_caps_evidence_per_section_budget(monkeypatch) -> None:
 
 def test_executor_caps_total_evidence_per_run(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN", "20")
 
     class FakeRegistry:
         def run(self, name: str, query: str, subtask_id: str):

@@ -36,6 +36,9 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_MAX_TOOL_CALLS",
         "INSIGHT_GRAPH_MAX_FETCHES",
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+        "INSIGHT_GRAPH_MAX_TOKENS",
+        "INSIGHT_GRAPH_REPORT_INTENSITY",
+        "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER",
         "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
@@ -140,6 +143,41 @@ def test_apply_offline_preset_does_not_set_live_defaults(monkeypatch) -> None:
     cli_module._apply_research_preset(cli_module.ResearchPreset.offline)
 
     assert "INSIGHT_GRAPH_USE_WEB_SEARCH" not in os.environ
+
+
+def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    observed = {}
+
+    def fake_run_research(query: str) -> GraphState:
+        observed["query"] = query
+        observed["intensity"] = os.environ["INSIGHT_GRAPH_REPORT_INTENSITY"]
+        observed["tokens"] = os.environ["INSIGHT_GRAPH_MAX_TOKENS"]
+        observed["tool_calls"] = os.environ["INSIGHT_GRAPH_MAX_TOOL_CALLS"]
+        return GraphState(user_request=query, report_markdown="# Report\n")
+
+    monkeypatch.setattr(cli_module, "run_research", fake_run_research)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "Compare AI coding agents",
+            "--report-intensity",
+            "deep",
+            "--output-json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert observed == {
+        "query": "Compare AI coding agents",
+        "intensity": "deep",
+        "tokens": "160000",
+        "tool_calls": "80",
+    }
+    payload = json.loads(result.output)
+    assert payload["runtime_diagnostics"]["report_intensity"] == "deep"
     assert "INSIGHT_GRAPH_SEARCH_PROVIDER" not in os.environ
     assert "INSIGHT_GRAPH_RELEVANCE_FILTER" not in os.environ
     assert "INSIGHT_GRAPH_RELEVANCE_JUDGE" not in os.environ

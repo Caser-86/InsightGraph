@@ -53,6 +53,11 @@ A-F complete. The report-quality and operations hardening route below is impleme
 
 These items expand API surface, attack surface, or release risk. Do them only with an explicit decision and dedicated safety review.
 
+0. V3 Deep Research Loop.
+- Priority: high for report quality, but intentionally deferred until V1 quality diagnostics and optional V2 LLM review have enough live-run evidence.
+- Purpose: automatically review report quality, generate gap-specific follow-up searches, recollect evidence, and rewrite the report until a target score or budget limit is reached.
+- Required safety: hard search/tool/token budgets, duplicate-query suppression, citation validation after every rewrite, visible quality diagnostics, and explicit operator controls for cost.
+
 1. `/tasks` API compatibility aliases.
 - Priority: highest among deferred items because it is mostly an API adapter and has the smallest security footprint.
 - Purpose: provide reference-compatible aliases for `/research/jobs` if a real consumer needs them.

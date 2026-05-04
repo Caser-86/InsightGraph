@@ -37,6 +37,10 @@ from insight_graph.graph import run_research, run_research_with_events
 from insight_graph.memory.embeddings import embed_text
 from insight_graph.memory.store import ResearchMemoryRecord, get_research_memory_store
 from insight_graph.persistence.checkpoints import get_checkpoint_store
+from insight_graph.report_quality.intensity import (
+    ReportIntensity,
+    apply_report_intensity_defaults,
+)
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
     RESEARCH_JOB_LEASE_TTL_SECONDS,
@@ -117,6 +121,7 @@ ResearchJobsLimitQuery = Annotated[
 class ResearchRequest(BaseModel):
     query: str
     preset: ResearchPreset = ResearchPreset.offline
+    report_intensity: ReportIntensity | None = None
 
     @field_validator("query")
     @classmethod
@@ -331,20 +336,38 @@ _PROGRESS_STAGE_PERCENT = {
 
 
 @contextmanager
-def _research_preset_environment(preset: ResearchPreset) -> Iterator[None]:
+def _research_preset_environment(
+    preset: ResearchPreset,
+    report_intensity: ReportIntensity | None = None,
+) -> Iterator[None]:
     if preset == ResearchPreset.offline:
-        yield
-        return
+        defaults: dict[str, str] = {}
+    else:
+        defaults = (
+            LIVE_RESEARCH_PRESET_DEFAULTS
+            if preset == ResearchPreset.live_research
+            else LIVE_LLM_PRESET_DEFAULTS
+        )
 
-    defaults = (
-        LIVE_RESEARCH_PRESET_DEFAULTS
-        if preset == ResearchPreset.live_research
-        else LIVE_LLM_PRESET_DEFAULTS
-    )
-    previous_values = {name: os.environ.get(name) for name in defaults}
+    intensity_env = set()
+    if report_intensity is not None:
+        intensity_env = {
+            "INSIGHT_GRAPH_REPORT_INTENSITY",
+            "INSIGHT_GRAPH_SEARCH_LIMIT",
+            "INSIGHT_GRAPH_MAX_TOOL_CALLS",
+            "INSIGHT_GRAPH_MAX_FETCHES",
+            "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+            "INSIGHT_GRAPH_MAX_TOKENS",
+        }
+    previous_values = {
+        name: os.environ.get(name)
+        for name in {*defaults.keys(), *intensity_env}
+    }
     try:
         for name, value in defaults.items():
             os.environ.setdefault(name, value)
+        if report_intensity is not None:
+            apply_report_intensity_defaults(report_intensity, overwrite=True)
         yield
     finally:
         for name, value in previous_values.items():
@@ -814,7 +837,10 @@ _API_KEY_DEPENDENCY = [Depends(require_api_key)]
 def research(request: ResearchRequest) -> dict[str, Any]:
     try:
         with _RESEARCH_ENV_LOCK:
-            with _research_preset_environment(request.preset):
+            with _research_preset_environment(
+                request.preset,
+                request.report_intensity,
+            ):
                 state = run_research(request.query)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
@@ -899,6 +925,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
     response = create_research_job_record(
         query=request.query,
         preset=request.preset,
+        report_intensity=request.report_intensity or ReportIntensity.standard,
         created_at=_current_utc_timestamp(),
     )
     _JOB_EXECUTOR.submit(_run_research_job, response["job_id"])
@@ -977,7 +1004,10 @@ def cancel_research_job(job_id: str) -> dict[str, Any]:
     dependencies=_API_KEY_DEPENDENCY,
     tags=[_RESEARCH_JOBS_TAG],
     summary="Delete a terminal research job",
-    description="Delete a succeeded, failed, or cancelled research job. Active jobs cannot be deleted.",
+    description=(
+        "Delete a succeeded, failed, or cancelled research job. "
+        "Active jobs cannot be deleted."
+    ),
     responses={
         200: {"content": {"application/json": {"example": _RESEARCH_JOB_DELETE_EXAMPLE}}},
         404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
@@ -1249,7 +1279,7 @@ def _run_research_job(job_id: str) -> None:
     try:
         try:
             with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(job.preset):
+                with _research_preset_environment(job.preset, job.report_intensity):
                     state = _run_research_job_workflow(
                         job.query,
                         lambda event: _publish_research_job_event(job.id, event),
@@ -1281,7 +1311,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
     try:
         try:
             with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(job.preset):
+                with _research_preset_environment(job.preset, job.report_intensity):
                     state = _run_research_job_workflow(
                         job.query,
                         lambda event: _publish_research_job_event(job.id, event),

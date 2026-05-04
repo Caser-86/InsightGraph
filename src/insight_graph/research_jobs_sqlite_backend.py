@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from insight_graph.cli import ResearchPreset
+from insight_graph.report_quality.intensity import ReportIntensity
 from insight_graph.research_jobs import ResearchJob
 from insight_graph.research_jobs_backend import (
     ACTIVE_RESEARCH_JOB_STATUSES,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     id TEXT PRIMARY KEY,
     query TEXT NOT NULL,
     preset TEXT NOT NULL,
+    report_intensity TEXT NOT NULL DEFAULT 'standard',
     status TEXT NOT NULL CHECK (
         status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')
     ),
@@ -56,6 +58,7 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "id": job.id,
         "query": job.query,
         "preset": job.preset.value,
+        "report_intensity": job.report_intensity.value,
         "status": job.status,
         "created_order": job.created_order,
         "created_at": job.created_at,
@@ -77,6 +80,7 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         id=row["id"],
         query=row["query"],
         preset=ResearchPreset(row["preset"]),
+        report_intensity=ReportIntensity(row["report_intensity"]),
         created_order=row["created_order"],
         created_at=row["created_at"],
         status=row["status"],
@@ -94,6 +98,10 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
     }
     migrations = {
         "events_json": "ALTER TABLE research_jobs ADD COLUMN events_json TEXT",
+        "report_intensity": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN report_intensity TEXT NOT NULL DEFAULT 'standard'"
+        ),
         "worker_id": "ALTER TABLE research_jobs ADD COLUMN worker_id TEXT",
         "lease_expires_at": "ALTER TABLE research_jobs ADD COLUMN lease_expires_at TEXT",
         "heartbeat_at": "ALTER TABLE research_jobs ADD COLUMN heartbeat_at TEXT",
@@ -159,11 +167,11 @@ class SQLiteResearchJobsBackend:
             connection.executemany(
                 """
                 INSERT INTO research_jobs (
-                    id, query, preset, status, created_order, created_at,
+                    id, query, preset, report_intensity, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
@@ -189,11 +197,11 @@ class SQLiteResearchJobsBackend:
             connection.executemany(
                 """
                 INSERT OR REPLACE INTO research_jobs (
-                    id, query, preset, status, created_order, created_at,
+                    id, query, preset, report_intensity, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
@@ -252,6 +260,7 @@ class SQLiteResearchJobsBackend:
                 UPDATE research_jobs
                 SET query = :query,
                     preset = :preset,
+                    report_intensity = :report_intensity,
                     status = :status,
                     created_order = :created_order,
                     created_at = :created_at,
@@ -357,6 +366,7 @@ class SQLiteResearchJobsBackend:
         job_id: str,
         query: str,
         preset: ResearchPreset,
+        report_intensity: ReportIntensity = ReportIntensity.standard,
         created_at: str,
     ) -> ResearchJob:
         with self._connect() as connection:
@@ -381,17 +391,18 @@ class SQLiteResearchJobsBackend:
                 id=job_id,
                 query=query,
                 preset=preset,
+                report_intensity=report_intensity,
                 created_order=next_sequence,
                 created_at=created_at,
             )
             connection.execute(
                 """
                 INSERT INTO research_jobs (
-                    id, query, preset, status, created_order, created_at,
+                    id, query, preset, report_intensity, status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )

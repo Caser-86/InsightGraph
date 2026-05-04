@@ -70,7 +70,9 @@ Built-in Markdown profile example: `biotech_finance`, used for biotech/clinical/
 | `INSIGHT_GRAPH_MAX_STEPS` | 预留的 workflow step budget，供后续 agent loop/checkpoint 使用 | `10` |
 | `INSIGHT_GRAPH_MAX_FETCHES` | pre-fetch candidate 抓取上限；候选会先按 canonical URL 去重 | `10` |
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | 单次研究最终保留的 evidence 数上限 | `20` |
-| `INSIGHT_GRAPH_MAX_TOKENS` | 单次研究已记录 LLM total token 上限；耗尽后 Analyst/Reporter 回退 deterministic，OpenAI relevance judge 保守拒绝新 LLM 判断 | `50000` |
+| `INSIGHT_GRAPH_MAX_TOKENS` | 单次研究已记录 LLM total token 上限；耗尽后 Analyst/Reporter/Report Review 回退 deterministic，OpenAI relevance judge 保守拒绝新 LLM 判断 | `80000` |
+| `INSIGHT_GRAPH_REPORT_INTENSITY` | 报告强度：`concise`、`standard`、`deep`；默认 `standard` | `standard` |
+| `INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER` | 可选 V2 报告审稿：`llm` 时在最终输出前做一次 LLM 润色/扩写；失败自动回退 | 未启用 |
 | `INSIGHT_GRAPH_MAX_TOOL_ROUNDS` | Executor 对每个 planned tool/subtask collection loop 允许的最大轮数；未设置时沿用 `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` | `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` |
 | `INSIGHT_GRAPH_CONVERSATION_COMPRESSION` | `1` / `true` / `yes` 时 Executor 在 collection loop 后写入 deterministic `GraphState.conversation_summary` | 未启用 |
 

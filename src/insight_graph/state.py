@@ -154,3 +154,4 @@ class GraphState(BaseModel):
     tried_strategies: list[str] = Field(default_factory=list)
     conversation_summary: dict[str, object] | None = None
     url_validation: list[dict[str, object]] = Field(default_factory=list)
+    report_quality_review: dict[str, object] = Field(default_factory=dict)

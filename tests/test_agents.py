@@ -1932,6 +1932,46 @@ def test_reporter_renders_standard_long_form_sections(monkeypatch) -> None:
         assert heading in report
     positions = [report.index(heading) for heading in expected_order]
     assert positions == sorted(positions)
+    assert "## 报告质量诊断" in report
+    assert "综合评分" in report
+
+
+def test_reporter_stores_report_quality_review(monkeypatch) -> None:
+    state = make_reporter_state()
+
+    updated = write_report(state)
+
+    assert updated.report_quality_review["score"] >= 0
+    assert updated.report_quality_review["intensity"] == "standard"
+    assert updated.report_quality_review["metrics"]["verified_evidence_count"] == 2
+
+
+def test_reporter_optional_llm_review_polishes_report(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "deepseek-reasoner")
+    calls = []
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph 深度研究报告\\n\\n## 摘要\\n\\n'
+            '审稿后摘要更通顺 [1].\\n\\n## 核心发现\\n\\n'
+            '审稿后发现仍只引用允许来源 [1]."}'
+        )
+    )
+
+    def fake_get_llm_client(config, *, purpose=None, messages=None):
+        calls.append({"purpose": purpose, "model": config.model})
+        return client
+
+    monkeypatch.setattr("insight_graph.agents.reporter.get_llm_client", fake_get_llm_client)
+
+    updated = write_report(make_reporter_state())
+
+    assert calls == [{"purpose": "report_review", "model": "deepseek-reasoner"}]
+    assert "审稿后摘要更通顺 [1]." in updated.report_markdown
+    assert "## 报告质量诊断" in updated.report_markdown
+    assert updated.llm_call_log[-1].stage == "report_review"
 
 
 def test_reporter_marks_sections_insufficient_without_supported_evidence(monkeypatch) -> None:

@@ -6,12 +6,10 @@ sys.path.insert(0, "src")
 
 # Configure for real search + DeepSeek
 os.environ["INSIGHT_GRAPH_LLM_BASE_URL"] = "https://api.deepseek.com/v1"
-os.environ["INSIGHT_GRAPH_LLM_API_KEY"] = "sk-9ee03adb2ddc43ff8a5ce4a09887d224"
-os.environ["INSIGHT_GRAPH_LLM_MODEL"] = "deepseek-chat"
+os.environ["INSIGHT_GRAPH_LLM_MODEL"] = "deepseek-reasoner"
 os.environ["INSIGHT_GRAPH_ANALYST_PROVIDER"] = "llm"
 os.environ["INSIGHT_GRAPH_REPORTER_PROVIDER"] = "llm"
 os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] = "serpapi"
-os.environ["INSIGHT_GRAPH_SERPAPI_KEY"] = "bb6ac21c7517fd94953fa00d34eade2dedb91822a26f9a907cdec551021808cb"
 os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] = "1"
 os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] = "10"
 
@@ -23,8 +21,8 @@ print("=" * 70)
 print("小米公司深度分析报告生成（真实搜索数据）")
 print("=" * 70)
 print(f"查询: {QUERY}")
-print(f"搜索: SerpAPI (Google)")
-print(f"分析: DeepSeek")
+print("搜索: SerpAPI (Google)")
+print("分析: DeepSeek")
 print("=" * 70)
 print()
 

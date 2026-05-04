@@ -227,19 +227,37 @@ INSIGHT_GRAPH_SEARCH_PROXY=http://127.0.0.1:7890
 | `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` | `1` | 采集最多跑几轮 |
 | `INSIGHT_GRAPH_MAX_TOOL_ROUNDS` | 同 collection rounds | Executor 对 planned tool loop 的轮数 |
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | `20` | 最终保留多少条 evidence |
-| `INSIGHT_GRAPH_MAX_TOKENS` | `50000` | LLM token 预算，耗尽后 Analyst/Reporter fallback |
+| `INSIGHT_GRAPH_MAX_TOKENS` | `80000` | 标准版 LLM token 预算，耗尽后 Analyst/Reporter/Review fallback |
 
 `live-research` 会补齐更适合真实研究的默认值：
 
 ```env
+INSIGHT_GRAPH_REPORT_INTENSITY=standard
 INSIGHT_GRAPH_SEARCH_LIMIT=12
 INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=5
 INSIGHT_GRAPH_MAX_TOOL_CALLS=40
 INSIGHT_GRAPH_MAX_FETCHES=20
 INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN=40
+INSIGHT_GRAPH_MAX_TOKENS=80000
 ```
 
 注意：SerpAPI 和 Google Custom Search 当前单次请求的 `num` 会使用 `min(INSIGHT_GRAPH_SEARCH_LIMIT, 10)`。之后 `pre_fetch_results()` 再按 `min(search_limit, max_fetches)` 抓取候选 URL。
+
+### 报告强度
+
+`INSIGHT_GRAPH_REPORT_INTENSITY` 支持三档，默认 `standard`：
+
+| 强度 | 适合场景 | 主要预算 |
+| --- | --- | --- |
+| `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=40000` |
+| `standard` | 默认标准报告 | `SEARCH_LIMIT=12`、`MAX_TOOL_CALLS=40`、`MAX_TOKENS=80000` |
+| `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=160000` |
+
+CLI 可直接指定：
+
+```bash
+python -m insight_graph.cli research "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research --report-intensity deep
+```
 
 ### LLM 配置
 
@@ -250,11 +268,19 @@ INSIGHT_GRAPH_ANALYST_PROVIDER=llm
 INSIGHT_GRAPH_REPORTER_PROVIDER=llm
 INSIGHT_GRAPH_LLM_PROVIDER=openai_compatible
 INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1
-INSIGHT_GRAPH_LLM_MODEL=deepseek-chat
+INSIGHT_GRAPH_LLM_MODEL=deepseek-reasoner
 INSIGHT_GRAPH_LLM_API_KEY=your-api-key
 ```
 
 `live-research` 会默认启用 LLM Analyst 和 LLM Reporter，但不会在命令行参数里接收 API key；key 通过环境变量或 `.env` 提供。
+
+可选 V2 审稿润色：
+
+```env
+INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER=llm
+```
+
+开启后 Reporter 完成初稿后会再调用一次 LLM 做中文审稿、润色和适度扩写；引用仍会校验，只允许使用当前 verified evidence 的编号。失败时会保留 V1 报告。
 
 ## API 与 Dashboard
 

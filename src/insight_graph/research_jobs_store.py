@@ -13,6 +13,7 @@ _REQUIRED_JOB_FIELDS = {
     "id",
     "query",
     "preset",
+    "report_intensity",
     "created_order",
     "created_at",
     "status",
@@ -22,9 +23,10 @@ _REQUIRED_JOB_FIELDS = {
     "error",
     "events",
 }
-_LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {"events"}
+_LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {"events", "report_intensity"}
 _RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
-_RESEARCH_PRESETS = {"offline", "live-llm"}
+_RESEARCH_PRESETS = {"offline", "live-llm", "live-research"}
+_REPORT_INTENSITIES = {"concise", "standard", "deep"}
 
 
 class ResearchJobsStoreError(RuntimeError):
@@ -62,10 +64,17 @@ def research_jobs_sqlite_path_from_env() -> Path:
 
 def serialize_research_job(job: Any) -> dict[str, Any]:
     preset = job.preset.value if hasattr(job.preset, "value") else job.preset
+    raw_report_intensity = getattr(job, "report_intensity", "standard")
+    report_intensity = (
+        raw_report_intensity.value
+        if hasattr(raw_report_intensity, "value")
+        else raw_report_intensity
+    )
     return {
         "id": job.id,
         "query": job.query,
         "preset": preset,
+        "report_intensity": report_intensity,
         "created_order": job.created_order,
         "created_at": job.created_at,
         "status": job.status,
@@ -118,6 +127,7 @@ def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
         raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
     job = dict(item)
     job.setdefault("events", [])
+    job.setdefault("report_intensity", "standard")
     _validate_job_values(job)
     if job["status"] in {"queued", "running"}:
         job["status"] = "failed"
@@ -133,6 +143,11 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         raise ResearchJobsStoreError("Research jobs store job query is invalid.")
     if not isinstance(job["preset"], str) or job["preset"] not in _RESEARCH_PRESETS:
         raise ResearchJobsStoreError("Research jobs store job preset is invalid.")
+    if (
+        not isinstance(job["report_intensity"], str)
+        or job["report_intensity"] not in _REPORT_INTENSITIES
+    ):
+        raise ResearchJobsStoreError("Research jobs store job intensity is invalid.")
     if not _is_int(job["created_order"]):
         raise ResearchJobsStoreError("Research jobs store job created_order is invalid.")
     if not isinstance(job["created_at"], str):

@@ -521,6 +521,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
               <option value="live-research" selected>live-research</option>
             </select>
           </label>
+          <label><span data-i18n="intensityLabel">报告强度</span>
+            <select id="intensity-input">
+              <option value="concise" data-i18n="intensityConcise">精简版</option>
+              <option value="standard" selected data-i18n="intensityStandard">标准版</option>
+              <option value="deep" data-i18n="intensityDeep">高强度版</option>
+            </select>
+          </label>
           <label><span data-i18n="queryLabel">查询</span>
             <textarea id="query-input" spellcheck="true"></textarea>
           </label>
@@ -599,6 +606,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         apiKeyLabel: 'API 密钥',
         apiKeyPlaceholder: '可选 Bearer 密钥',
         presetLabel: '预设',
+        intensityLabel: '报告强度',
+        intensityConcise: '精简版',
+        intensityStandard: '标准版',
+        intensityDeep: '高强度版',
         queryLabel: '查询',
         eventTypeLabel: '事件类型过滤',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',
@@ -709,6 +720,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         qualitySignals: '质量信号',
         sectionCoverage: '章节覆盖',
         sourceDiversity: '来源多样性',
+        reportQualityScore: '报告质量评分',
+        reportIntensity: '报告强度',
         unsupportedClaims: '未支撑声明',
         tokenTotals: 'Token 总计',
         sourceCandidates: '候选来源',
@@ -765,6 +778,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         apiKeyLabel: 'API key',
         apiKeyPlaceholder: 'Optional bearer key',
         presetLabel: 'Preset',
+        intensityLabel: 'Report intensity',
+        intensityConcise: 'Concise',
+        intensityStandard: 'Standard',
+        intensityDeep: 'Deep',
         queryLabel: 'Query',
         eventTypeLabel: 'Event type filter',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',
@@ -875,6 +892,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         qualitySignals: 'Quality Signals',
         sectionCoverage: 'Section coverage',
         sourceDiversity: 'Source diversity',
+        reportQualityScore: 'Report quality score',
+        reportIntensity: 'Report intensity',
         unsupportedClaims: 'Unsupported claims',
         tokenTotals: 'Token Totals',
         tokenTotalsLegacy: 'Token totals',
@@ -990,6 +1009,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       language: document.getElementById('language-input'),
       apiKey: document.getElementById('api-key'),
       preset: document.getElementById('preset-input'),
+      intensity: document.getElementById('intensity-input'),
       query: document.getElementById('query-input'),
       eventTypeFilter: document.getElementById('event-type-filter'),
       eventStageFilter: document.getElementById('event-stage-filter'),
@@ -1016,6 +1036,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     els.apiKey.value = localStorage.getItem('insightgraph.dashboard.apiKey') || '';
     els.query.value = savedQuery || t('defaultQuery');
     els.preset.value = localStorage.getItem('insightgraph.dashboard.preset') || 'offline';
+    els.intensity.value = localStorage.getItem('insightgraph.dashboard.intensity') || 'standard';
 
     function applyLanguage() {
       document.documentElement.lang = state.language === 'zh' ? 'zh-CN' : 'en';
@@ -1380,11 +1401,14 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     function renderQualityCards(result, detail) {
       const cards = result?.quality_cards || {};
+      const review = result?.report_quality_review || {};
       const runtime = cards.runtime_seconds ?? detail?.runtime_seconds ?? 0;
       const items = [
         [t('sectionCoverage'), `${cards.section_coverage_score ?? 0}%`],
         [t('citationSupport'), `${cards.citation_support_score ?? 0}%`],
         [t('sourceDiversity'), `${cards.source_diversity_score ?? 0}%`],
+        [t('reportQualityScore'), `${review.score ?? 0}/100`],
+        [t('reportIntensity'), review.intensity_label || review.intensity || 'standard'],
         [t('unsupportedClaims'), cards.unsupported_claim_count ?? 0],
         [t('urlValidation'), `${cards.url_validation_rate ?? 0}%`],
         [t('tokenTotals'), cards.total_tokens ?? 0],
@@ -1405,6 +1429,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         [t('successfulLlmCalls'), diagnostics.successful_llm_call_count ?? 0],
         [t('verifiedEvidence'), `${diagnostics.verified_evidence_count ?? 0} / ${diagnostics.evidence_count ?? 0}`],
         [t('collectionStopReason'), diagnostics.collection_stop_reason || t('unknown')],
+        [t('reportIntensity'), diagnostics.report_intensity || t('unknown')],
       ];
       return `<div class="overview-grid">${items.map(([label, value]) => `<div class="info-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>`;
     }
@@ -1483,6 +1508,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       try {
         localStorage.setItem('insightgraph.dashboard.apiKey', els.apiKey.value.trim());
         localStorage.setItem('insightgraph.dashboard.preset', els.preset.value);
+        localStorage.setItem('insightgraph.dashboard.intensity', els.intensity.value);
         localStorage.setItem('insightgraph.dashboard.query', els.query.value);
         const summary = await apiFetch('/research/jobs/summary', { headers: headers() });
         const list = await apiFetch('/research/jobs?limit=20', { headers: headers() });
@@ -1522,7 +1548,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
         const payload = await apiFetch('/research/jobs', {
           method: 'POST',
           headers: headers(true),
-          body: JSON.stringify({ query, preset: els.preset.value }),
+          body: JSON.stringify({
+            query,
+            preset: els.preset.value,
+            report_intensity: els.intensity.value,
+          }),
         });
         state.selectedJobId = payload.job_id;
         closeJobStream();
