@@ -251,7 +251,7 @@ INSIGHT_GRAPH_MAX_TOKENS=500000
 | --- | --- | --- |
 | `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=100000` |
 | `standard` | 默认标准报告 | `SEARCH_LIMIT=12`、`MAX_TOOL_CALLS=40`、`MAX_TOKENS=500000` |
-| `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=1000000` |
+| `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=2000000` |
 
 这些值是单次研究的 LLM total token 上限，不等于每次都会用满；实际效果还取决于模型上下文窗口、供应商限额和调用费用。搜索、抓取和证据数量仍由对应预算单独控制，避免为了提高 token 上限而无界扩大外部请求。
 

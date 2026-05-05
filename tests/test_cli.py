@@ -173,7 +173,7 @@ def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
     assert observed == {
         "query": "Compare AI coding agents",
         "intensity": "deep",
-        "tokens": "1000000",
+        "tokens": "2000000",
         "tool_calls": "80",
     }
     payload = json.loads(result.output)

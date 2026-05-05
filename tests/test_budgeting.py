@@ -78,7 +78,7 @@ def test_apply_report_intensity_defaults_can_override_budget_env(monkeypatch) ->
 
     apply_report_intensity_defaults("deep", overwrite=True)
 
-    assert get_research_budgets().max_tokens == 1_000_000
+    assert get_research_budgets().max_tokens == 2_000_000
     assert get_research_budgets().max_tool_calls == 80
     assert get_research_budgets().max_fetches == 40
 

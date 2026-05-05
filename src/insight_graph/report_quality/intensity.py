@@ -54,7 +54,7 @@ INTENSITY_CONFIGS = {
         max_tool_calls=80,
         max_fetches=40,
         max_evidence_per_run=80,
-        max_tokens=1_000_000,
+        max_tokens=2_000_000,
         target_words=2_500,
         min_verified_evidence=14,
     ),
