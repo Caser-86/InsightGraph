@@ -249,7 +249,7 @@ INSIGHT_GRAPH_MAX_TOKENS=500000
 
 | 强度 | 适合场景 | 主要预算 |
 | --- | --- | --- |
-| `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=50000` |
+| `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=100000` |
 | `standard` | 默认标准报告 | `SEARCH_LIMIT=12`、`MAX_TOOL_CALLS=40`、`MAX_TOKENS=500000` |
 | `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=1000000` |
 
