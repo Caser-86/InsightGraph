@@ -1317,6 +1317,10 @@ def test_research_live_research_preset_applies_network_and_llm_defaults(
 
     assert response.status_code == 200
     assert observed_env == LIVE_RESEARCH_PRESET_DEFAULTS
+    diagnostics = response.json()["runtime_diagnostics"]
+    assert diagnostics["search_provider"] == "duckduckgo"
+    assert diagnostics["use_web_search"] is True
+    assert diagnostics["max_tool_calls"] == 200
     assert {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS} == {
         name: None for name in LIVE_RESEARCH_PRESET_DEFAULTS
     }
@@ -1613,6 +1617,33 @@ def test_create_research_job_response_stays_queued_if_executor_runs_immediately(
     assert payload["status"] == "queued"
     job_response = client.get(f"/research/jobs/{payload['job_id']}")
     assert job_response.json()["status"] == "succeeded"
+
+
+def test_research_job_result_keeps_preset_runtime_diagnostics(monkeypatch) -> None:
+    clear_live_env(monkeypatch)
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "_JOB_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    jobs_module.reset_research_jobs_state()
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/research/jobs",
+        json={"query": "Compare Cursor", "preset": "live-research"},
+    )
+
+    assert response.status_code == 202
+    detail = client.get(f"/research/jobs/{response.json()['job_id']}").json()
+    diagnostics = detail["result"]["runtime_diagnostics"]
+    assert diagnostics["search_provider"] == "duckduckgo"
+    assert diagnostics["use_web_search"] is True
+    assert diagnostics["max_tool_calls"] == 200
+    assert {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS} == {
+        name: None for name in LIVE_RESEARCH_PRESET_DEFAULTS
+    }
 
 
 def test_get_research_job_includes_progress_metadata_for_queued_job() -> None:

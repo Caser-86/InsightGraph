@@ -1,15 +1,18 @@
 import asyncio
 import hmac
 import os
+import sys
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html import escape as html_escape
+from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Annotated, Any
 
+from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
     Depends,
@@ -79,6 +82,15 @@ from insight_graph.research_jobs import (
     summarize_research_jobs as summarize_research_jobs_state,
 )
 from insight_graph.state import GraphState
+
+
+def _load_local_dotenv() -> None:
+    if "pytest" in sys.modules:
+        return
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+
+
+_load_local_dotenv()
 
 router = APIRouter()
 
@@ -842,9 +854,9 @@ def research(request: ResearchRequest) -> dict[str, Any]:
                 request.report_intensity,
             ):
                 state = run_research(request.query)
+                return _build_research_json_payload(state)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
-    return _build_research_json_payload(state)
 
 
 def _memory_record_response(record: ResearchMemoryRecord) -> dict[str, Any]:
@@ -1285,7 +1297,7 @@ def _run_research_job(job_id: str) -> None:
                         lambda event: _publish_research_job_event(job.id, event),
                         job_id=job.id,
                     )
-            result = _build_research_json_payload(state)
+                    result = _build_research_json_payload(state)
         except Exception:
             mark_research_job_failed(
                 job,
@@ -1317,7 +1329,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                         lambda event: _publish_research_job_event(job.id, event),
                         job_id=job.id,
                     )
-            result = _build_research_json_payload(state)
+                    result = _build_research_json_payload(state)
         except Exception:
             mark_research_job_failed(
                 job,
