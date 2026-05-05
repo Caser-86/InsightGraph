@@ -227,7 +227,7 @@ INSIGHT_GRAPH_SEARCH_PROXY=http://127.0.0.1:7890
 | `INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS` | `1` | 采集最多跑几轮 |
 | `INSIGHT_GRAPH_MAX_TOOL_ROUNDS` | 同 collection rounds | Executor 对 planned tool loop 的轮数 |
 | `INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN` | `20` | 最终保留多少条 evidence |
-| `INSIGHT_GRAPH_MAX_TOKENS` | `80000` | 标准版 LLM token 预算，耗尽后 Analyst/Reporter/Review fallback |
+| `INSIGHT_GRAPH_MAX_TOKENS` | `500000` | 标准版 LLM token 预算，耗尽后 Analyst/Reporter/Review fallback |
 
 `live-research` 会补齐更适合真实研究的默认值：
 
@@ -238,7 +238,7 @@ INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS=5
 INSIGHT_GRAPH_MAX_TOOL_CALLS=40
 INSIGHT_GRAPH_MAX_FETCHES=20
 INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN=40
-INSIGHT_GRAPH_MAX_TOKENS=80000
+INSIGHT_GRAPH_MAX_TOKENS=500000
 ```
 
 注意：SerpAPI 和 Google Custom Search 当前单次请求的 `num` 会使用 `min(INSIGHT_GRAPH_SEARCH_LIMIT, 10)`。之后 `pre_fetch_results()` 再按 `min(search_limit, max_fetches)` 抓取候选 URL。
@@ -249,9 +249,11 @@ INSIGHT_GRAPH_MAX_TOKENS=80000
 
 | 强度 | 适合场景 | 主要预算 |
 | --- | --- | --- |
-| `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=40000` |
-| `standard` | 默认标准报告 | `SEARCH_LIMIT=12`、`MAX_TOOL_CALLS=40`、`MAX_TOKENS=80000` |
-| `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=160000` |
+| `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=50000` |
+| `standard` | 默认标准报告 | `SEARCH_LIMIT=12`、`MAX_TOOL_CALLS=40`、`MAX_TOKENS=500000` |
+| `deep` | 高强度长报告 | `SEARCH_LIMIT=15`、`MAX_TOOL_CALLS=80`、`MAX_TOKENS=1000000` |
+
+这些值是单次研究的 LLM total token 上限，不等于每次都会用满；实际效果还取决于模型上下文窗口、供应商限额和调用费用。搜索、抓取和证据数量仍由对应预算单独控制，避免为了提高 token 上限而无界扩大外部请求。
 
 CLI 可直接指定：
 

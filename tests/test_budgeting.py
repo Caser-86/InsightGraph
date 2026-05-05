@@ -27,7 +27,7 @@ def test_get_research_budgets_uses_defaults(monkeypatch) -> None:
         max_steps=10,
         max_fetches=20,
         max_evidence_per_run=40,
-        max_tokens=80_000,
+        max_tokens=500_000,
     )
 
 
@@ -59,7 +59,7 @@ def test_get_research_budgets_ignores_invalid_env_values(monkeypatch) -> None:
         max_steps=10,
         max_fetches=20,
         max_evidence_per_run=40,
-        max_tokens=80_000,
+        max_tokens=500_000,
     )
 
 
@@ -78,7 +78,7 @@ def test_apply_report_intensity_defaults_can_override_budget_env(monkeypatch) ->
 
     apply_report_intensity_defaults("deep", overwrite=True)
 
-    assert get_research_budgets().max_tokens == 160_000
+    assert get_research_budgets().max_tokens == 1_000_000
     assert get_research_budgets().max_tool_calls == 80
     assert get_research_budgets().max_fetches == 40
 
