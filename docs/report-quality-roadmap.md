@@ -9,7 +9,7 @@ Current product path is `live-research`. Offline remains the deterministic testi
 
 | Item | Decision |
 |------|----------|
-| Primary goal | Generate high-quality, evidence-grounded deep research reports comparable to `wenyi-research-agent`. |
+| Primary goal | Generate high-quality, evidence-grounded deep research reports. |
 | Route priority | This roadmap supersedes deployment, dashboard, eval artifact, and smoke-test feature work as the main direction. |
 | Allowed exceptions | Bug fixes, security fixes, CI failures, broken releases, and changes that directly support report quality. |
 | Forbidden drift | Do not add unrelated deployment, dashboard, auth, storage, or eval convenience features without user approval. |

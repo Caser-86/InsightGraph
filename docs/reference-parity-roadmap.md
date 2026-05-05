@@ -1,6 +1,6 @@
 # Reference Parity Roadmap
 
-This roadmap uses `wenyi-research-agent` as the reference standard for a production-grade deep research agent. InsightGraph keeps deterministic/offline defaults; live LLM, network, database, embeddings, MCP, and code execution remain explicit opt-in surfaces.
+This roadmap tracks the path toward a production-grade deep research agent. InsightGraph keeps deterministic/offline defaults; live LLM, network, database, embeddings, MCP, and code execution remain explicit opt-in surfaces.
 
 Current product path is `live-research`. Offline remains the deterministic testing/CI fallback. The next optimization goal is generating high-quality, evidence-grounded reports before expanding high-risk runtime surfaces.
 
