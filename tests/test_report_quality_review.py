@@ -36,6 +36,18 @@ def make_quality_state() -> GraphState:
                 source_type="news",
                 verified=True,
             ),
+            *[
+                Evidence(
+                    id=f"extra-{index}",
+                    subtask_id="collect",
+                    title=f"Additional Source {index}",
+                    source_url=f"https://example.com/source-{index}",
+                    snippet=f"Additional verified evidence {index}.",
+                    source_type=["official_site", "docs", "news"][index % 3],
+                    verified=True,
+                )
+                for index in range(1, 10)
+            ],
         ],
         findings=[
             Finding(
@@ -103,7 +115,7 @@ Cursor 发布价格信号，Copilot 发布功能文档 [1] [2]。
 
     assert review["score"] >= 80
     assert review["status"] == "pass"
-    assert review["metrics"]["verified_evidence_count"] == 3
+    assert review["metrics"]["verified_evidence_count"] == 12
     assert review["metrics"]["unique_source_type_count"] == 3
 
 

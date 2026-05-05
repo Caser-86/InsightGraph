@@ -26,7 +26,7 @@ _REQUIRED_JOB_FIELDS = {
 _LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {"events", "report_intensity"}
 _RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
 _RESEARCH_PRESETS = {"offline", "live-llm", "live-research"}
-_REPORT_INTENSITIES = {"concise", "standard", "deep"}
+_REPORT_INTENSITIES = {"concise", "standard", "deep", "deep-plus"}
 
 
 class ResearchJobsStoreError(RuntimeError):

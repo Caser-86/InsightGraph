@@ -107,16 +107,16 @@ def test_apply_live_research_preset_sets_network_defaults(monkeypatch) -> None:
 
     assert os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
     assert os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
-    assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "12"
+    assert os.environ["INSIGHT_GRAPH_SEARCH_LIMIT"] == "20"
     assert os.environ["INSIGHT_GRAPH_USE_GITHUB_SEARCH"] == "1"
     assert os.environ["INSIGHT_GRAPH_GITHUB_PROVIDER"] == "live"
     assert os.environ["INSIGHT_GRAPH_USE_SEC_FILINGS"] == "1"
     assert os.environ["INSIGHT_GRAPH_USE_SEC_FINANCIALS"] == "1"
     assert os.environ["INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION"] == "1"
     assert os.environ["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "5"
-    assert os.environ["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "40"
-    assert os.environ["INSIGHT_GRAPH_MAX_FETCHES"] == "20"
-    assert os.environ["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "40"
+    assert os.environ["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "200"
+    assert os.environ["INSIGHT_GRAPH_MAX_FETCHES"] == "80"
+    assert os.environ["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "120"
     assert os.environ["INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_FILTER"] == "1"
     assert os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] == "openai_compatible"
@@ -174,7 +174,7 @@ def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
         "query": "Compare AI coding agents",
         "intensity": "deep",
         "tokens": "2000000",
-        "tool_calls": "80",
+        "tool_calls": "320",
     }
     payload = json.loads(result.output)
     assert payload["runtime_diagnostics"]["report_intensity"] == "deep"

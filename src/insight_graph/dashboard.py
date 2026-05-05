@@ -526,6 +526,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
               <option value="concise" data-i18n="intensityConcise">精简版</option>
               <option value="standard" selected data-i18n="intensityStandard">标准版</option>
               <option value="deep" data-i18n="intensityDeep">高强度版</option>
+              <option value="deep-plus" data-i18n="intensityDeepPlus">极限高强度版</option>
             </select>
           </label>
           <label><span data-i18n="queryLabel">查询</span>
@@ -610,6 +611,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         intensityConcise: '精简版',
         intensityStandard: '标准版',
         intensityDeep: '高强度版',
+        intensityDeepPlus: '极限高强度版',
         queryLabel: '查询',
         eventTypeLabel: '事件类型过滤',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',
@@ -782,6 +784,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         intensityConcise: 'Concise',
         intensityStandard: 'Standard',
         intensityDeep: 'Deep',
+        intensityDeepPlus: 'Deep Plus',
         queryLabel: 'Query',
         eventTypeLabel: 'Event type filter',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',

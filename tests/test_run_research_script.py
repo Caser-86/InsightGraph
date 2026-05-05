@@ -311,11 +311,11 @@ def test_main_live_research_preset_applies_defaults(monkeypatch):
 def test_live_research_preset_uses_production_quality_budgets() -> None:
     defaults = run_research_script.LIVE_RESEARCH_PRESET_DEFAULTS
 
-    assert defaults["INSIGHT_GRAPH_SEARCH_LIMIT"] == "12"
+    assert defaults["INSIGHT_GRAPH_SEARCH_LIMIT"] == "20"
     assert defaults["INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"] == "5"
-    assert defaults["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "40"
-    assert defaults["INSIGHT_GRAPH_MAX_FETCHES"] == "20"
-    assert defaults["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "40"
+    assert defaults["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "200"
+    assert defaults["INSIGHT_GRAPH_MAX_FETCHES"] == "80"
+    assert defaults["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "120"
 
 
 def test_main_returns_one_for_workflow_exception_without_raw_error():

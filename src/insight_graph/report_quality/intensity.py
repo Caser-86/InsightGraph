@@ -9,6 +9,7 @@ class ReportIntensity(StrEnum):
     concise = "concise"
     standard = "standard"
     deep = "deep"
+    deep_plus = "deep-plus"
 
 
 @dataclass(frozen=True)
@@ -39,24 +40,35 @@ INTENSITY_CONFIGS = {
     ReportIntensity.standard: ReportIntensityConfig(
         name="standard",
         label="标准版",
-        search_limit=12,
-        max_tool_calls=40,
-        max_fetches=20,
-        max_evidence_per_run=40,
+        search_limit=20,
+        max_tool_calls=200,
+        max_fetches=80,
+        max_evidence_per_run=120,
         max_tokens=500_000,
-        target_words=1_500,
-        min_verified_evidence=8,
+        target_words=5_000,
+        min_verified_evidence=12,
     ),
     ReportIntensity.deep: ReportIntensityConfig(
         name="deep",
         label="高强度版",
-        search_limit=15,
-        max_tool_calls=80,
-        max_fetches=40,
-        max_evidence_per_run=80,
+        search_limit=30,
+        max_tool_calls=320,
+        max_fetches=140,
+        max_evidence_per_run=220,
         max_tokens=2_000_000,
-        target_words=2_500,
-        min_verified_evidence=14,
+        target_words=8_000,
+        min_verified_evidence=24,
+    ),
+    ReportIntensity.deep_plus: ReportIntensityConfig(
+        name="deep-plus",
+        label="极限高强度版",
+        search_limit=45,
+        max_tool_calls=500,
+        max_fetches=220,
+        max_evidence_per_run=350,
+        max_tokens=4_000_000,
+        target_words=12_000,
+        min_verified_evidence=36,
     ),
 }
 

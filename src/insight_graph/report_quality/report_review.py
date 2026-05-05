@@ -191,7 +191,7 @@ def _quality_gaps(metrics: dict[str, Any], intensity: str) -> tuple[list[str], l
     if metrics["empty_sections"]:
         gaps.append("存在空泛或证据不足章节")
         actions.append("针对薄弱章节补搜并重写段落")
-    if intensity == "deep" and metrics["report_depth_score"] < 70:
+    if intensity in {"deep", "deep-plus"} and metrics["report_depth_score"] < 70:
         gaps.append("高强度报告篇幅仍偏短")
         actions.append("在保持引用约束的前提下扩写证据解释和业务影响")
     return gaps, actions
