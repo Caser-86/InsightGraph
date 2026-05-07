@@ -1003,10 +1003,11 @@ def make_numbered_evidence(
 
 def test_executor_caps_evidence_per_tool(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_INTENSITY", "standard")
 
     class FakeRegistry:
         def run(self, name: str, query: str, subtask_id: str):
-            return make_numbered_evidence("tool", 7)
+            return make_numbered_evidence("tool", 20)
 
     monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
     state = GraphState(
@@ -1016,9 +1017,101 @@ def test_executor_caps_evidence_per_tool(monkeypatch) -> None:
 
     updated = execute_subtasks(state)
 
-    assert len(updated.evidence_pool) == 5
-    assert updated.tool_call_log[0].evidence_count == 7
-    assert updated.tool_call_log[0].filtered_count == 2
+    assert len(updated.evidence_pool) == 12
+    assert updated.tool_call_log[0].evidence_count == 20
+    assert updated.tool_call_log[0].filtered_count == 8
+
+
+def test_executor_prioritizes_official_domains_and_filters_github_noise(
+    monkeypatch,
+) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            return [
+                Evidence(
+                    id="noise-daily",
+                    subtask_id=subtask_id,
+                    title="GitHubDaily curated projects",
+                    source_url="https://github.com/githubdaily/githubdaily",
+                    snippet="curated list",
+                    source_type="github",
+                    verified=True,
+                ),
+                Evidence(
+                    id="cursor-pricing",
+                    subtask_id=subtask_id,
+                    title="Cursor Pricing",
+                    source_url="https://cursor.com/pricing",
+                    snippet="official pricing",
+                    source_type="official_site",
+                    verified=True,
+                ),
+                Evidence(
+                    id="cursor-security",
+                    subtask_id=subtask_id,
+                    title="Cursor Security",
+                    source_url="https://cursor.com/security",
+                    snippet="security details",
+                    source_type="official_site",
+                    verified=True,
+                ),
+                Evidence(
+                    id="cursor-docs",
+                    subtask_id=subtask_id,
+                    title="Cursor Docs",
+                    source_url="https://docs.cursor.com",
+                    snippet="documentation",
+                    source_type="docs",
+                    verified=True,
+                ),
+                Evidence(
+                    id="cursor-github",
+                    subtask_id=subtask_id,
+                    title="Cursor GitHub",
+                    source_url="https://github.com/getcursor/cursor",
+                    snippet="repository",
+                    source_type="github",
+                    verified=True,
+                ),
+                Evidence(
+                    id="copilot-page",
+                    subtask_id=subtask_id,
+                    title="Copilot",
+                    source_url="https://github.com/features/copilot",
+                    snippet="copilot page",
+                    source_type="github",
+                    verified=True,
+                ),
+                Evidence(
+                    id="noise-awesome",
+                    subtask_id=subtask_id,
+                    title="Awesome AI list",
+                    source_url="https://github.com/awesome-selfhosted/awesome-selfhosted",
+                    snippet="awesome list",
+                    source_type="github",
+                    verified=True,
+                ),
+            ]
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Compare Cursor and Copilot",
+        resolved_entities=[
+            {"name": "Cursor", "official_domains": ["cursor.com", "docs.cursor.com"]}
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["fake"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    kept_ids = [item.id for item in updated.evidence_pool]
+    assert "cursor-pricing" in kept_ids
+    assert "cursor-security" in kept_ids
+    assert "cursor-docs" in kept_ids
+    assert "noise-daily" not in kept_ids
+    assert "noise-awesome" not in kept_ids
 
 
 def test_executor_stops_before_exceeding_tool_call_budget(monkeypatch) -> None:

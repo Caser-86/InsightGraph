@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from insight_graph.graph import run_research
+from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.state import GraphState
 
 OFFLINE_ENV_VARS = [
@@ -289,9 +290,13 @@ def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dic
     claim_count = len(state.findings) + len(state.competitive_matrix)
     unsupported_claim_count = unsupported_finding_count + unsupported_matrix_row_count
     supported_claim_count = max(0, claim_count - unsupported_claim_count)
+    citation_support_total, citation_supported, citation_partial, citation_unsupported = (
+        _citation_support_counts(state)
+    )
     unique_source_types = {item.source_type for item in verified_evidence}
     duplicate_source_rate = _duplicate_source_rate(verified_evidence)
     evidence_per_section = _evidence_per_section(state, verified_evidence)
+    fact_mapping = build_fact_conclusion_mapping(state)
     claim_count_per_section = _claim_count_per_section(state, verified_ids)
     unsupported_claim_count_per_section = _unsupported_claim_count_per_section(
         state,
@@ -323,6 +328,16 @@ def build_report_quality_metrics(state: GraphState, report_markdown: str) -> dic
         "citation_support_score": 100
         if claim_count == 0
         else _percentage(supported_claim_count, claim_count),
+        "citation_support_total": citation_support_total,
+        "citation_supported_count": citation_supported,
+        "citation_partial_count": citation_partial,
+        "citation_unsupported_count": citation_unsupported,
+        "citation_supported_ratio": _percentage(citation_supported, citation_support_total),
+        "topic_coverage_ratio": _topic_coverage_ratio(state.section_collection_status),
+        "conclusion_count": int(fact_mapping.get("conclusion_count", 0)),
+        "mapped_conclusion_count": int(fact_mapping.get("mapped_conclusion_count", 0)),
+        "weak_conclusion_count": int(fact_mapping.get("weak_conclusion_count", 0)),
+        "fact_mapping_score": int(fact_mapping.get("mapping_score", 0)),
         "duplicate_source_rate": duplicate_source_rate,
         "collection_round_count": len(state.collection_rounds),
         "collection_stop_reason": state.collection_stop_reason or "unknown",
@@ -353,6 +368,16 @@ def _empty_report_quality_metrics() -> dict[str, Any]:
         "unsupported_claim_count": 0,
         "citation_support_ratio": 0,
         "citation_support_score": 0,
+        "citation_support_total": 0,
+        "citation_supported_count": 0,
+        "citation_partial_count": 0,
+        "citation_unsupported_count": 0,
+        "citation_supported_ratio": 0,
+        "topic_coverage_ratio": 0,
+        "conclusion_count": 0,
+        "mapped_conclusion_count": 0,
+        "weak_conclusion_count": 0,
+        "fact_mapping_score": 0,
         "duplicate_source_rate": 0,
         "collection_round_count": 0,
         "collection_stop_reason": "unknown",
@@ -481,6 +506,51 @@ def _official_source_coverage_score(state: GraphState) -> int:
     return _percentage(covered_count, required_count)
 
 
+def _citation_support_counts(state: GraphState) -> tuple[int, int, int, int]:
+    if not state.citation_support:
+        return (0, 0, 0, 0)
+    supported = 0
+    partial = 0
+    unsupported = 0
+    for item in state.citation_support:
+        status = item.get("support_status")
+        if status == "supported":
+            supported += 1
+        elif status == "partial":
+            partial += 1
+        else:
+            unsupported += 1
+    return (len(state.citation_support), supported, partial, unsupported)
+
+
+def _topic_coverage_ratio(statuses: list[dict[str, Any]]) -> int:
+    if not statuses:
+        return 100
+    meaningful = [
+        status
+        for status in statuses
+        if str(status.get("section_id", "")).strip().lower() not in {"references", "sources"}
+    ]
+    if not meaningful:
+        return 100
+    covered = sum(1 for status in meaningful if _status_is_sufficient(status))
+    return _percentage(covered, len(meaningful))
+
+
+def _status_is_sufficient(status: dict[str, Any]) -> bool:
+    if "sufficient" in status:
+        return bool(status.get("sufficient", False))
+    missing_evidence = int(status.get("missing_evidence", 0) or 0)
+    missing_source_types = _string_list(status.get("missing_source_types", []))
+    if missing_evidence > 0 or missing_source_types:
+        return False
+    required = _string_list(status.get("required_source_types", []))
+    covered = set(_string_list(status.get("covered_source_types", [])))
+    if required:
+        return all(source_type in covered for source_type in required)
+    return True
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -562,6 +632,16 @@ def _build_summary(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         "average_collection_round_count": _average_quality(
             case_results, "collection_round_count"
         ),
+        "average_topic_coverage_ratio": _average_quality(case_results, "topic_coverage_ratio"),
+        "average_fact_mapping_score": _average_quality(case_results, "fact_mapping_score"),
+        "average_citation_supported_ratio": _average_quality(
+            case_results,
+            "citation_supported_ratio",
+        ),
+        "total_weak_conclusions": sum(
+            int(item.get("quality", {}).get("weak_conclusion_count", 0))
+            for item in case_results
+        ),
     }
 
 
@@ -634,6 +714,9 @@ def _memory_quality_deltas(
         "average_evidence_count_per_claim",
         "average_duplicate_source_rate",
         "average_collection_round_count",
+        "average_topic_coverage_ratio",
+        "average_fact_mapping_score",
+        "average_citation_supported_ratio",
     ]
     return {
         key: int(enabled_summary.get(key, 0)) - int(disabled_summary.get(key, 0))

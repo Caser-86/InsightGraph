@@ -1,10 +1,11 @@
 import json
+import re
 
 from insight_graph.llm import ChatMessage
 from insight_graph.state import Evidence, Finding
 
 MIN_SUPPORT_SCORE = 0.5
-FULL_SUPPORT_SCORE = 1.0
+FULL_SUPPORT_SCORE = 0.8
 
 
 def validate_citation_support(
@@ -174,4 +175,20 @@ def _sorted_terms(text: str) -> list[str]:
 
 
 def _meaningful_terms(text: str) -> set[str]:
-    return {term.lower().strip(".,;:()[]") for term in text.split() if len(term) > 3}
+    terms = {
+        term.lower().strip(".,;:()[]")
+        for term in text.split()
+        if len(term.strip(".,;:()[]")) > 3
+    }
+    terms.update(_cjk_terms(text))
+    return {term for term in terms if term}
+
+
+def _cjk_terms(text: str) -> set[str]:
+    terms: set[str] = set()
+    for segment in re.findall(r"[\u4e00-\u9fff]+", text):
+        for size in (2, 3, 4):
+            if len(segment) < size:
+                continue
+            terms.update(segment[index : index + size] for index in range(len(segment) - size + 1))
+    return terms

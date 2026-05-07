@@ -33,3 +33,22 @@ def test_build_section_research_plan_serializes_payloads() -> None:
         "budget": 2,
         "entity_ids": [],
     }
+
+
+def test_build_section_research_plan_single_entity_adds_detail_density() -> None:
+    single = build_section_research_plan(
+        profile=get_domain_profile("competitive_intel"),
+        resolved_entities=[{"id": "cursor", "name": "Cursor"}],
+    )
+    multi = build_section_research_plan(
+        profile=get_domain_profile("competitive_intel"),
+        resolved_entities=[
+            {"id": "cursor", "name": "Cursor"},
+            {"id": "github-copilot", "name": "GitHub Copilot"},
+        ],
+    )
+
+    # Keep section-0 stable for compatibility, increase depth on later sections.
+    assert single[0].min_evidence == multi[0].min_evidence
+    assert single[1].min_evidence > multi[1].min_evidence
+    assert single[1].budget > multi[1].budget

@@ -341,6 +341,57 @@ def test_news_search_returns_deterministic_verified_news_evidence() -> None:
     ]
 
 
+def test_news_search_prefetches_live_news_provider_results(monkeypatch) -> None:
+    news_module = importlib.import_module("insight_graph.tools.news_search")
+    captured = {}
+
+    def fake_search_news_with_providers(query: str, limit: int):
+        captured["query"] = query
+        captured["limit"] = limit
+        return [
+            SearchResult(
+                title="Xiaomi SU7 delivery update",
+                url="https://example.com/xiaomi-su7",
+                snippet="Recent Xiaomi auto delivery news.",
+                source="serpapi_news",
+            )
+        ]
+
+    def fake_pre_fetch_results(results, subtask_id: str, limit: int, query: str | None = None):
+        captured["prefetch_urls"] = [result.url for result in results]
+        captured["subtask_id"] = subtask_id
+        captured["prefetch_limit"] = limit
+        captured["prefetch_query"] = query
+        return [
+            Evidence(
+                id="xiaomi-news",
+                subtask_id=subtask_id,
+                title="Xiaomi SU7 delivery update",
+                source_url="https://example.com/xiaomi-su7",
+                snippet="Recent Xiaomi auto delivery news.",
+                source_type="news",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "serpapi")
+    monkeypatch.setenv("INSIGHT_GRAPH_SEARCH_LIMIT", "7")
+    monkeypatch.setattr(news_module, "search_news_with_providers", fake_search_news_with_providers)
+    monkeypatch.setattr(news_module, "pre_fetch_results", fake_pre_fetch_results)
+
+    evidence = news_search("小米 汽车 SU7 2025 交付", "s1")
+
+    assert captured == {
+        "query": "小米 汽车 SU7 2025 交付 latest recent news 2024 2025 2026",
+        "limit": 7,
+        "prefetch_urls": ["https://example.com/xiaomi-su7"],
+        "subtask_id": "s1",
+        "prefetch_limit": 7,
+        "prefetch_query": "小米 汽车 SU7 2025 交付 latest recent news 2024 2025 2026",
+    }
+    assert [item.id for item in evidence] == ["xiaomi-news"]
+
+
 def test_sec_filings_maps_recent_company_filings(monkeypatch) -> None:
     sec_module = importlib.import_module("insight_graph.tools.sec_filings")
     observed: dict[str, object] = {}

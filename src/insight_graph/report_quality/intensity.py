@@ -21,6 +21,7 @@ class ReportIntensityConfig:
     max_fetches: int
     max_evidence_per_run: int
     max_tokens: int
+    max_output_tokens: int
     target_words: int
     min_verified_evidence: int
 
@@ -34,41 +35,45 @@ INTENSITY_CONFIGS = {
         max_fetches=10,
         max_evidence_per_run=24,
         max_tokens=100_000,
+        max_output_tokens=8_000,
         target_words=800,
         min_verified_evidence=5,
     ),
     ReportIntensity.standard: ReportIntensityConfig(
         name="standard",
         label="标准版",
-        search_limit=20,
-        max_tool_calls=200,
-        max_fetches=80,
-        max_evidence_per_run=120,
-        max_tokens=500_000,
-        target_words=5_000,
-        min_verified_evidence=12,
-    ),
-    ReportIntensity.deep: ReportIntensityConfig(
-        name="deep",
-        label="高强度版",
         search_limit=30,
         max_tool_calls=320,
         max_fetches=140,
         max_evidence_per_run=220,
+        max_tokens=500_000,
+        max_output_tokens=32_000,
+        target_words=7_000,
+        min_verified_evidence=18,
+    ),
+    ReportIntensity.deep: ReportIntensityConfig(
+        name="deep",
+        label="高强度版",
+        search_limit=55,
+        max_tool_calls=700,
+        max_fetches=320,
+        max_evidence_per_run=520,
         max_tokens=2_000_000,
+        max_output_tokens=64_000,
         target_words=8_000,
         min_verified_evidence=24,
     ),
     ReportIntensity.deep_plus: ReportIntensityConfig(
         name="deep-plus",
         label="极限高强度版",
-        search_limit=45,
-        max_tool_calls=500,
-        max_fetches=220,
-        max_evidence_per_run=350,
-        max_tokens=4_000_000,
-        target_words=12_000,
-        min_verified_evidence=36,
+        search_limit=180,
+        max_tool_calls=4_000,
+        max_fetches=1_600,
+        max_evidence_per_run=2_800,
+        max_tokens=40_000_000,
+        max_output_tokens=128_000,
+        target_words=18_000,
+        min_verified_evidence=72,
     ),
 }
 
@@ -106,6 +111,7 @@ def apply_report_intensity_defaults(
         "INSIGHT_GRAPH_MAX_FETCHES": str(config.max_fetches),
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN": str(config.max_evidence_per_run),
         "INSIGHT_GRAPH_MAX_TOKENS": str(config.max_tokens),
+        "INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS": str(config.max_output_tokens),
     }
     for name, env_value in defaults.items():
         if overwrite:

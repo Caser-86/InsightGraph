@@ -153,6 +153,11 @@ def test_build_eval_payload_includes_report_quality_metrics(monkeypatch) -> None
     assert quality["unsupported_matrix_row_count"] == 0
     assert quality["unsupported_claim_count"] == 0
     assert quality["citation_support_score"] == 100
+    assert quality["citation_support_total"] == 0
+    assert quality["citation_supported_ratio"] == 100
+    assert quality["topic_coverage_ratio"] == 50
+    assert quality["fact_mapping_score"] == 100
+    assert quality["weak_conclusion_count"] == 0
     assert quality["duplicate_source_rate"] == 0
 
 

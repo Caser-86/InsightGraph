@@ -14,6 +14,9 @@ _REQUIRED_JOB_FIELDS = {
     "query",
     "preset",
     "report_intensity",
+    "single_entity_detail_mode",
+    "search_provider",
+    "web_search_mode",
     "created_order",
     "created_at",
     "status",
@@ -23,10 +26,19 @@ _REQUIRED_JOB_FIELDS = {
     "error",
     "events",
 }
-_LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {"events", "report_intensity"}
+_LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {
+    "events",
+    "report_intensity",
+    "single_entity_detail_mode",
+    "search_provider",
+    "web_search_mode",
+}
 _RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
 _RESEARCH_PRESETS = {"offline", "live-llm", "live-research"}
 _REPORT_INTENSITIES = {"concise", "standard", "deep", "deep-plus"}
+_SINGLE_ENTITY_DETAIL_MODES = {"auto", "on", "off"}
+_SEARCH_PROVIDER_MODES = {"auto", "all", "mock", "duckduckgo", "google", "serpapi"}
+_WEB_SEARCH_MODES = {"auto", "on", "off"}
 
 
 class ResearchJobsStoreError(RuntimeError):
@@ -70,11 +82,17 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
         if hasattr(raw_report_intensity, "value")
         else raw_report_intensity
     )
+    single_entity_detail_mode = getattr(job, "single_entity_detail_mode", "auto")
+    search_provider = getattr(job, "search_provider", "auto")
+    web_search_mode = getattr(job, "web_search_mode", "auto")
     return {
         "id": job.id,
         "query": job.query,
         "preset": preset,
         "report_intensity": report_intensity,
+        "single_entity_detail_mode": single_entity_detail_mode,
+        "search_provider": search_provider,
+        "web_search_mode": web_search_mode,
         "created_order": job.created_order,
         "created_at": job.created_at,
         "status": job.status,
@@ -128,6 +146,9 @@ def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
     job = dict(item)
     job.setdefault("events", [])
     job.setdefault("report_intensity", "standard")
+    job.setdefault("single_entity_detail_mode", "auto")
+    job.setdefault("search_provider", "auto")
+    job.setdefault("web_search_mode", "auto")
     _validate_job_values(job)
     if job["status"] in {"queued", "running"}:
         job["status"] = "failed"
@@ -148,6 +169,24 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         or job["report_intensity"] not in _REPORT_INTENSITIES
     ):
         raise ResearchJobsStoreError("Research jobs store job intensity is invalid.")
+    if (
+        not isinstance(job["single_entity_detail_mode"], str)
+        or job["single_entity_detail_mode"] not in _SINGLE_ENTITY_DETAIL_MODES
+    ):
+        raise ResearchJobsStoreError("Research jobs store job detail mode is invalid.")
+    if not isinstance(job["search_provider"], str):
+        raise ResearchJobsStoreError("Research jobs store job search provider is invalid.")
+    provider_expr = job["search_provider"].strip().lower()
+    if not provider_expr:
+        raise ResearchJobsStoreError("Research jobs store job search provider is invalid.")
+    for part in provider_expr.split(","):
+        if part.strip() not in _SEARCH_PROVIDER_MODES:
+            raise ResearchJobsStoreError("Research jobs store job search provider is invalid.")
+    if (
+        not isinstance(job["web_search_mode"], str)
+        or job["web_search_mode"] not in _WEB_SEARCH_MODES
+    ):
+        raise ResearchJobsStoreError("Research jobs store job web search mode is invalid.")
     if not _is_int(job["created_order"]):
         raise ResearchJobsStoreError("Research jobs store job created_order is invalid.")
     if not isinstance(job["created_at"], str):

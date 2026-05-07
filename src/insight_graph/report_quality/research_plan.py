@@ -35,18 +35,29 @@ def build_section_research_plan(
     resolved_entities: list[dict[str, Any]],
 ) -> list[SectionResearchPlan]:
     entity_ids = tuple(str(entity["id"]) for entity in resolved_entities if "id" in entity)
-    return [
-        SectionResearchPlan(
-            section_id=_section_id(section),
-            title=section,
-            questions=_section_questions(profile, section),
-            required_source_types=profile.priority_source_types,
-            min_evidence=profile.min_evidence_per_section,
-            budget=max(2, profile.min_evidence_per_section + 1),
-            entity_ids=entity_ids,
+    single_entity_detail = len(entity_ids) == 1
+    plan: list[SectionResearchPlan] = []
+    for index, section in enumerate(profile.report_sections):
+        section_id = _section_id(section)
+        min_evidence = profile.min_evidence_per_section
+        if single_entity_detail and index > 0 and section_id not in {"references", "sources"}:
+            # Single-company reports should be denser in section-level evidence.
+            min_evidence += 1
+        budget = max(2, min_evidence + 1)
+        if single_entity_detail and index > 0:
+            budget += 1
+        plan.append(
+            SectionResearchPlan(
+                section_id=section_id,
+                title=section,
+                questions=_section_questions(profile, section),
+                required_source_types=profile.priority_source_types,
+                min_evidence=min_evidence,
+                budget=budget,
+                entity_ids=entity_ids,
+            )
         )
-        for section in profile.report_sections
-    ]
+    return plan
 
 
 def _section_questions(profile: DomainProfile, section: str) -> tuple[str, ...]:

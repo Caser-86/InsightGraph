@@ -6,8 +6,8 @@ from insight_graph.tools.pre_fetch import pre_fetch_results
 from insight_graph.tools.search_providers import (
     MockSearchProvider,
     SearchResult,
-    get_search_provider,
     parse_search_limit,
+    search_with_providers,
 )
 
 
@@ -17,7 +17,7 @@ def mock_web_search(query: str) -> list[SearchResult]:
 
 def web_search(query: str, subtask_id: str = "collect") -> list[Evidence]:
     limit = parse_search_limit()
-    results = get_search_provider().search(query, limit)
+    results = search_with_providers(query, limit)
     return pre_fetch_results(results, subtask_id, limit=limit, query=query)
 
 

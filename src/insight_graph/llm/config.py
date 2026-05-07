@@ -56,6 +56,10 @@ class LLMConfig(BaseModel):
     model: str
     provider: str = DEFAULT_LLM_PROVIDER
     wire_api: str = DEFAULT_LLM_WIRE_API
+    max_output_tokens: int | None = None
+    max_retries: int = 2
+    retry_backoff_seconds: float = 0.8
+    fallback_models: tuple[str, ...] = ()
 
     @field_validator("provider")
     @classmethod
@@ -122,4 +126,59 @@ def resolve_llm_config(
         wire_api=wire_api
         if wire_api is not None
         else os.getenv("INSIGHT_GRAPH_LLM_WIRE_API") or DEFAULT_LLM_WIRE_API,
+        max_output_tokens=_positive_int_env("INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS"),
+        max_retries=_non_negative_int_env("INSIGHT_GRAPH_LLM_MAX_RETRIES", 2),
+        retry_backoff_seconds=_non_negative_float_env(
+            "INSIGHT_GRAPH_LLM_RETRY_BACKOFF_SECONDS",
+            0.8,
+        ),
+        fallback_models=_fallback_models_env(),
     )
+
+
+def _positive_int_env(name: str) -> int | None:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _non_negative_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def _non_negative_float_env(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def _fallback_models_env() -> tuple[str, ...]:
+    raw = os.getenv("INSIGHT_GRAPH_LLM_FALLBACK_MODELS", "")
+    if not raw.strip():
+        return ()
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in raw.split(","):
+        model = item.strip()
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        models.append(model)
+    return tuple(models)

@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     query TEXT NOT NULL,
     preset TEXT NOT NULL,
     report_intensity TEXT NOT NULL DEFAULT 'standard',
+    single_entity_detail_mode TEXT NOT NULL DEFAULT 'auto',
+    search_provider TEXT NOT NULL DEFAULT 'auto',
+    web_search_mode TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL CHECK (
         status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')
     ),
@@ -59,6 +62,9 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "query": job.query,
         "preset": job.preset.value,
         "report_intensity": job.report_intensity.value,
+        "single_entity_detail_mode": job.single_entity_detail_mode,
+        "search_provider": job.search_provider,
+        "web_search_mode": job.web_search_mode,
         "status": job.status,
         "created_order": job.created_order,
         "created_at": job.created_at,
@@ -81,6 +87,9 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         query=row["query"],
         preset=ResearchPreset(row["preset"]),
         report_intensity=ReportIntensity(row["report_intensity"]),
+        single_entity_detail_mode=row["single_entity_detail_mode"] or "auto",
+        search_provider=row["search_provider"] or "auto",
+        web_search_mode=row["web_search_mode"] or "auto",
         created_order=row["created_order"],
         created_at=row["created_at"],
         status=row["status"],
@@ -101,6 +110,18 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
         "report_intensity": (
             "ALTER TABLE research_jobs "
             "ADD COLUMN report_intensity TEXT NOT NULL DEFAULT 'standard'"
+        ),
+        "single_entity_detail_mode": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN single_entity_detail_mode TEXT NOT NULL DEFAULT 'auto'"
+        ),
+        "search_provider": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN search_provider TEXT NOT NULL DEFAULT 'auto'"
+        ),
+        "web_search_mode": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN web_search_mode TEXT NOT NULL DEFAULT 'auto'"
         ),
         "worker_id": "ALTER TABLE research_jobs ADD COLUMN worker_id TEXT",
         "lease_expires_at": "ALTER TABLE research_jobs ADD COLUMN lease_expires_at TEXT",
@@ -167,11 +188,15 @@ class SQLiteResearchJobsBackend:
             connection.executemany(
                 """
                 INSERT INTO research_jobs (
-                    id, query, preset, report_intensity, status, created_order, created_at,
+                    id, query, preset, report_intensity, single_entity_detail_mode,
+                    search_provider, web_search_mode,
+                    status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
+                    :search_provider, :web_search_mode,
+                    :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
@@ -197,11 +222,15 @@ class SQLiteResearchJobsBackend:
             connection.executemany(
                 """
                 INSERT OR REPLACE INTO research_jobs (
-                    id, query, preset, report_intensity, status, created_order, created_at,
+                    id, query, preset, report_intensity, single_entity_detail_mode,
+                    search_provider, web_search_mode,
+                    status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
+                    :search_provider, :web_search_mode,
+                    :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
@@ -261,6 +290,7 @@ class SQLiteResearchJobsBackend:
                 SET query = :query,
                     preset = :preset,
                     report_intensity = :report_intensity,
+                    single_entity_detail_mode = :single_entity_detail_mode,
                     status = :status,
                     created_order = :created_order,
                     created_at = :created_at,
@@ -367,6 +397,9 @@ class SQLiteResearchJobsBackend:
         query: str,
         preset: ResearchPreset,
         report_intensity: ReportIntensity = ReportIntensity.standard,
+        single_entity_detail_mode: str = "auto",
+        search_provider: str = "auto",
+        web_search_mode: str = "auto",
         created_at: str,
     ) -> ResearchJob:
         with self._connect() as connection:
@@ -392,17 +425,24 @@ class SQLiteResearchJobsBackend:
                 query=query,
                 preset=preset,
                 report_intensity=report_intensity,
+                single_entity_detail_mode=single_entity_detail_mode,
+                search_provider=search_provider,
+                web_search_mode=web_search_mode,
                 created_order=next_sequence,
                 created_at=created_at,
             )
             connection.execute(
                 """
                 INSERT INTO research_jobs (
-                    id, query, preset, report_intensity, status, created_order, created_at,
+                    id, query, preset, report_intensity, single_entity_detail_mode,
+                    search_provider, web_search_mode,
+                    status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
-                    :id, :query, :preset, :report_intensity, :status, :created_order, :created_at,
+                    :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
+                    :search_provider, :web_search_mode,
+                    :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
@@ -640,6 +680,10 @@ class SQLiteResearchJobsBackend:
                 id=item["id"],
                 query=item["query"],
                 preset=ResearchPreset(item["preset"]),
+                report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
+                single_entity_detail_mode=item.get("single_entity_detail_mode", "auto"),
+                search_provider=item.get("search_provider", "auto"),
+                web_search_mode=item.get("web_search_mode", "auto"),
                 created_order=item["created_order"],
                 created_at=item["created_at"],
                 status=item["status"],

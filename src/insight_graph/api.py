@@ -10,7 +10,7 @@ from html import escape as html_escape
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from dotenv import load_dotenv
 from fastapi import (
@@ -134,6 +134,9 @@ class ResearchRequest(BaseModel):
     query: str
     preset: ResearchPreset = ResearchPreset.offline
     report_intensity: ReportIntensity | None = None
+    single_entity_detail_mode: Literal["auto", "on", "off"] = "auto"
+    search_provider: str = "auto"
+    web_search_mode: Literal["auto", "on", "off"] = "auto"
 
     @field_validator("query")
     @classmethod
@@ -141,6 +144,21 @@ class ResearchRequest(BaseModel):
         stripped = value.strip()
         if not stripped:
             raise ValueError("query must not be blank")
+        return stripped
+
+    @field_validator("search_provider")
+    @classmethod
+    def search_provider_must_be_valid(cls, value: str) -> str:
+        stripped = value.strip().lower()
+        if not stripped:
+            return "auto"
+        valid = {"auto", "all", "mock", "duckduckgo", "google", "serpapi"}
+        for part in stripped.split(","):
+            token = part.strip()
+            if token not in valid:
+                raise ValueError(
+                    "search_provider must be auto/all or comma-separated providers"
+                )
         return stripped
 
 
@@ -351,6 +369,9 @@ _PROGRESS_STAGE_PERCENT = {
 def _research_preset_environment(
     preset: ResearchPreset,
     report_intensity: ReportIntensity | None = None,
+    single_entity_detail_mode: Literal["auto", "on", "off"] = "auto",
+    search_provider: str = "auto",
+    web_search_mode: Literal["auto", "on", "off"] = "auto",
 ) -> Iterator[None]:
     if preset == ResearchPreset.offline:
         defaults: dict[str, str] = {}
@@ -370,16 +391,36 @@ def _research_preset_environment(
             "INSIGHT_GRAPH_MAX_FETCHES",
             "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
             "INSIGHT_GRAPH_MAX_TOKENS",
+            "INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS",
         }
+    mode_env = {
+        "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
+        "INSIGHT_GRAPH_SEARCH_PROVIDER",
+        "INSIGHT_GRAPH_SEARCH_PROVIDERS",
+        "INSIGHT_GRAPH_USE_WEB_SEARCH",
+    }
     previous_values = {
         name: os.environ.get(name)
-        for name in {*defaults.keys(), *intensity_env}
+        for name in {*defaults.keys(), *intensity_env, *mode_env}
     }
     try:
         for name, value in defaults.items():
             os.environ.setdefault(name, value)
         if report_intensity is not None:
             apply_report_intensity_defaults(report_intensity, overwrite=True)
+        os.environ["INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE"] = single_entity_detail_mode
+        if search_provider != "auto":
+            normalized = search_provider.strip().lower()
+            providers = [part.strip() for part in normalized.split(",") if part.strip()]
+            if normalized == "all":
+                providers = ["duckduckgo", "serpapi", "google"]
+            os.environ["INSIGHT_GRAPH_SEARCH_PROVIDERS"] = ",".join(providers)
+            if providers:
+                os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] = providers[0]
+        if web_search_mode == "on":
+            os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] = "1"
+        elif web_search_mode == "off":
+            os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] = "0"
         yield
     finally:
         for name, value in previous_values.items():
@@ -851,7 +892,10 @@ def research(request: ResearchRequest) -> dict[str, Any]:
         with _RESEARCH_ENV_LOCK:
             with _research_preset_environment(
                 request.preset,
-                request.report_intensity,
+                request.report_intensity or ReportIntensity.standard,
+                request.single_entity_detail_mode,
+                request.search_provider,
+                request.web_search_mode,
             ):
                 state = run_research(request.query)
                 return _build_research_json_payload(state)
@@ -938,6 +982,9 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         query=request.query,
         preset=request.preset,
         report_intensity=request.report_intensity or ReportIntensity.standard,
+        single_entity_detail_mode=request.single_entity_detail_mode,
+        search_provider=request.search_provider,
+        web_search_mode=request.web_search_mode,
         created_at=_current_utc_timestamp(),
     )
     _JOB_EXECUTOR.submit(_run_research_job, response["job_id"])
@@ -1291,7 +1338,13 @@ def _run_research_job(job_id: str) -> None:
     try:
         try:
             with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(job.preset, job.report_intensity):
+                with _research_preset_environment(
+                    job.preset,
+                    job.report_intensity,
+                    job.single_entity_detail_mode,
+                    job.search_provider,
+                    job.web_search_mode,
+                ):
                     state = _run_research_job_workflow(
                         job.query,
                         lambda event: _publish_research_job_event(job.id, event),
@@ -1323,7 +1376,13 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
     try:
         try:
             with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(job.preset, job.report_intensity):
+                with _research_preset_environment(
+                    job.preset,
+                    job.report_intensity,
+                    job.single_entity_detail_mode,
+                    job.search_provider,
+                    job.web_search_mode,
+                ):
                     state = _run_research_job_workflow(
                         job.query,
                         lambda event: _publish_research_job_event(job.id, event),

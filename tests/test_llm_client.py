@@ -55,9 +55,12 @@ class FakeOpenAICompletions:
         self.error = error
         self.usage = usage
         self.calls: list[dict] = []
+        self.errors: list[Exception] = []
 
     def create(self, **kwargs) -> FakeOpenAIResponse:
         self.calls.append(kwargs)
+        if self.errors:
+            raise self.errors.pop(0)
         if self.error is not None:
             raise self.error
         return FakeOpenAIResponse(self.content, usage=self.usage)
@@ -190,6 +193,23 @@ def test_openai_compatible_chat_client_completes_json_with_usage() -> None:
     )
 
 
+def test_openai_compatible_chat_client_passes_chat_output_token_limit() -> None:
+    completions = FakeOpenAICompletions(content='{"answer": "yes"}')
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            max_output_tokens=32000,
+        ),
+        client=FakeOpenAIClient(completions),
+    )
+
+    client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
+
+    assert completions.calls[0]["max_tokens"] == 32000
+
+
 def test_openai_compatible_chat_client_handles_missing_usage() -> None:
     client = OpenAICompatibleChatClient(
         config=LLMConfig(api_key="test-key", base_url=None, model="test-model"),
@@ -271,6 +291,24 @@ def test_openai_compatible_chat_client_maps_responses_usage() -> None:
     )
 
 
+def test_openai_compatible_chat_client_passes_responses_output_token_limit() -> None:
+    responses = FakeOpenAIResponses(output_text='{"answer": "yes"}')
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            wire_api="responses",
+            max_output_tokens=64000,
+        ),
+        client=FakeOpenAIClient(responses=responses),
+    )
+
+    client.complete_json([ChatMessage(role="user", content="Reply as JSON")])
+
+    assert responses.calls[0]["max_output_tokens"] == 64000
+
+
 def test_openai_compatible_chat_client_reads_nested_responses_output_text() -> None:
     responses = FakeOpenAIResponses(
         response=FakeNestedResponsesResponse(
@@ -347,10 +385,82 @@ def test_openai_compatible_chat_client_requires_api_key() -> None:
         client.complete_json([ChatMessage(role="user", content="Return JSON")])
 
 
+def test_resolve_llm_config_reads_max_output_tokens(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS", "48000")
+
+    config = resolve_llm_config(api_key="test-key", model="test-model")
+
+    assert config.max_output_tokens == 48000
+
+
+def test_resolve_llm_config_reads_retry_and_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MAX_RETRIES", "3")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_RETRY_BACKOFF_SECONDS", "0.25")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_FALLBACK_MODELS", "deepseek-chat,qwen-max")
+
+    config = resolve_llm_config(api_key="test-key", model="deepseek-reasoner")
+
+    assert config.max_retries == 3
+    assert config.retry_backoff_seconds == 0.25
+    assert config.fallback_models == ("deepseek-chat", "qwen-max")
+
+
+def test_openai_compatible_chat_client_retries_then_succeeds(monkeypatch) -> None:
+    monkeypatch.setattr("insight_graph.llm.client.time.sleep", lambda _: None)
+    completions = FakeOpenAICompletions(content='{"answer": "yes"}')
+    completions.errors = [RuntimeError("transient"), RuntimeError("transient")]
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            max_retries=2,
+            retry_backoff_seconds=0.01,
+        ),
+        client=FakeOpenAIClient(completions),
+    )
+
+    result = client.complete_json([ChatMessage(role="user", content="Return JSON")])
+
+    assert result == '{"answer": "yes"}'
+    assert len(completions.calls) == 3
+
+
+def test_openai_compatible_chat_client_falls_back_model_after_primary_failures(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("insight_graph.llm.client.time.sleep", lambda _: None)
+    completions = FakeOpenAICompletions(content='{"answer": "fallback"}')
+    completions.errors = [RuntimeError("primary down")]
+    client = OpenAICompatibleChatClient(
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="primary-model",
+            max_retries=0,
+            fallback_models=("fallback-model",),
+        ),
+        client=FakeOpenAIClient(completions),
+    )
+
+    result = client.complete_json([ChatMessage(role="user", content="Return JSON")])
+
+    assert result == '{"answer": "fallback"}'
+    assert [call["model"] for call in completions.calls] == [
+        "primary-model",
+        "fallback-model",
+    ]
+
+
 def test_openai_compatible_chat_client_propagates_api_error() -> None:
     api_error = RuntimeError("upstream failed")
     client = OpenAICompatibleChatClient(
-        config=LLMConfig(api_key="test-key", base_url=None, model="test-model"),
+        config=LLMConfig(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+            max_retries=0,
+        ),
         client=FakeOpenAIClient(FakeOpenAICompletions(error=api_error)),
     )
 

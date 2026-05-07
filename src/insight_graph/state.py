@@ -135,6 +135,7 @@ class GraphState(BaseModel):
     section_research_plan: list[dict[str, object]] = Field(default_factory=list)
     query_strategies: list[dict[str, object]] = Field(default_factory=list)
     section_collection_status: list[dict[str, object]] = Field(default_factory=list)
+    entity_collection_status: list[dict[str, object]] = Field(default_factory=list)
     evidence_scores: list[dict[str, object]] = Field(default_factory=list)
     citation_support: list[dict[str, object]] = Field(default_factory=list)
     replan_requests: list[dict[str, object]] = Field(default_factory=list)

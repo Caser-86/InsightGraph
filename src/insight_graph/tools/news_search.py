@@ -1,7 +1,33 @@
 from insight_graph.state import Evidence
+from insight_graph.tools.pre_fetch import pre_fetch_results
+from insight_graph.tools.search_providers import (
+    parse_search_limit,
+    resolve_search_providers,
+    search_news_with_providers,
+)
 
 
 def news_search(query: str, subtask_id: str = "collect") -> list[Evidence]:
+    limit = parse_search_limit()
+    if resolve_search_providers() == ["mock"]:
+        return _mock_news_evidence(subtask_id)
+
+    news_query = _news_query(query)
+    results = search_news_with_providers(news_query, limit)
+    evidence = pre_fetch_results(results, subtask_id, limit=limit, query=news_query)
+    return [_as_news_evidence(item) for item in evidence]
+
+
+def _news_query(query: str) -> str:
+    recency_hint = "latest recent news 2024 2025 2026"
+    return f"{query.strip()} {recency_hint}".strip()
+
+
+def _as_news_evidence(evidence: Evidence) -> Evidence:
+    return evidence.model_copy(update={"source_type": "news"})
+
+
+def _mock_news_evidence(subtask_id: str) -> list[Evidence]:
     return [
         Evidence(
             id="news-github-copilot-changelog",

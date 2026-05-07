@@ -176,25 +176,100 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .panel-body { padding: 18px; }
 
     .form-stack { display: grid; gap: 14px; }
+    .query-primary textarea {
+      min-height: 168px;
+      font-size: 0.96rem;
+      border-color: rgba(117, 229, 232, 0.36);
+      box-shadow: inset 0 0 0 1px rgba(117, 229, 232, 0.1);
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .setting-card {
+      display: grid;
+      gap: 6px;
+      padding: 8px 10px;
+      border: 1px solid rgba(117, 229, 232, 0.16);
+      border-radius: 10px;
+      background: rgba(3, 14, 22, 0.45);
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: none;
+    }
+    .setting-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+    }
+    .setting-icon {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 7px;
+      border: 1px solid rgba(117, 229, 232, 0.35);
+      color: var(--cyan);
+      font-size: 0.55rem;
+      font-weight: 900;
+      letter-spacing: 0;
+      flex: 0 0 16px;
+    }
+    .collapsible-group {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 6px 8px 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .collapsible-toggle {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--ink);
+      outline: none;
+    }
+    .collapsible-toggle::before {
+      content: "▸";
+      display: inline-block;
+      margin-right: 8px;
+      transition: transform .2s ease;
+    }
+    .collapsible-group.open .collapsible-toggle::before { transform: rotate(90deg); }
+    .collapsible-body {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .collapsible-body[hidden] { display: none; }
 
     label {
       display: grid;
-      gap: 7px;
+      gap: 5px;
       color: var(--muted);
-      font-size: 0.74rem;
-      font-weight: 800;
-      letter-spacing: 0.11em;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
     }
 
     input, select, textarea {
       width: 100%;
       border: 1px solid rgba(117, 229, 232, 0.2);
-      border-radius: 14px;
+      border-radius: 10px;
       outline: 0;
       background: rgba(2, 10, 16, 0.58);
       color: var(--text);
-      padding: 12px 13px;
+      padding: 8px 10px;
+      font-size: 0.84rem;
     }
 
     textarea { min-height: 128px; resize: vertical; line-height: 1.5; }
@@ -236,18 +311,21 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .message.ok { color: var(--green); }
 
     .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(112px, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      overflow-x: auto;
+      padding-bottom: 4px;
     }
 
     .metric {
+      flex: 1 1 0;
+      min-width: 116px;
       border: 1px solid var(--line);
-      border-radius: 20px;
+      border-radius: 14px;
       background: rgba(8, 24, 36, 0.68);
-      padding: 15px;
-      min-height: 104px;
+      padding: 10px 12px;
+      min-height: 64px;
     }
 
     .metric span {
@@ -261,19 +339,28 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .metric strong {
       display: block;
-      margin-top: 10px;
+      margin-top: 6px;
       color: var(--text);
-      font-size: clamp(1.55rem, 3vw, 2.3rem);
+      font-size: clamp(1.2rem, 2.2vw, 1.8rem);
       letter-spacing: -0.05em;
     }
 
     .workspace {
       display: grid;
-      grid-template-columns: minmax(280px, 360px) 1fr;
+      grid-template-columns: minmax(220px, 260px) 1fr;
       gap: 18px;
     }
+    .recent-panel {
+      width: 100%;
+      max-width: 260px;
+      justify-self: start;
+    }
+    .recent-panel.collapsed .panel-body {
+      display: none;
+    }
 
-    .job-list { display: grid; gap: 10px; max-height: 640px; overflow: auto; }
+    .job-list { display: grid; gap: 8px; max-height: 240px; overflow: auto; }
+    .job-list.expanded { max-height: 640px; }
 
     .job-card {
       width: 100%;
@@ -291,7 +378,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .job-card h3 {
       margin: 9px 0 8px;
-      font-size: 0.94rem;
+      font-size: 0.86rem;
       line-height: 1.35;
     }
 
@@ -300,7 +387,12 @@ _DASHBOARD_HTML = r"""<!doctype html>
       flex-wrap: wrap;
       gap: 6px;
       color: var(--muted);
-      font-size: 0.75rem;
+      font-size: 0.7rem;
+    }
+    .job-list-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
     }
 
     .status-chip {
@@ -440,8 +532,30 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .live-event p { color: var(--muted); margin-top: 6px; }
 
+    .markdown { overflow-wrap: anywhere; }
     .markdown h1, .markdown h2, .markdown h3 { margin: 0.9em 0 0.45em; }
-    .markdown p, .markdown ul, .markdown pre { margin: 0.7em 0; }
+    .markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote { margin: 0.7em 0; }
+    .markdown ul, .markdown ol { padding-left: 1.2em; }
+    .markdown table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.85em 0;
+      display: block;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .markdown th, .markdown td {
+      border: 1px solid rgba(117, 229, 232, 0.18);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .markdown th { background: rgba(12, 38, 53, 0.75); color: var(--cyan); }
+    .markdown blockquote {
+      border-left: 3px solid rgba(99, 242, 227, 0.45);
+      padding-left: 10px;
+      color: #bde7eb;
+    }
     .markdown a { color: var(--cyan); }
     .markdown code, pre {
       border: 1px solid rgba(117, 229, 232, 0.14);
@@ -453,27 +567,35 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .empty {
       display: grid;
-      min-height: 260px;
+      min-height: 120px;
       place-items: center;
       border: 1px dashed rgba(117, 229, 232, 0.18);
       border-radius: 18px;
       color: var(--muted);
       text-align: center;
-      padding: 24px;
+      padding: 16px;
     }
 
     @media (max-width: 1120px) {
       .grid, .workspace { grid-template-columns: 1fr; }
-      .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .progress-timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .job-list { max-height: none; }
+      .recent-panel { width: 100%; }
+    }
+
+    @media (max-width: 1200px) {
+      .settings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 980px) {
+      .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 680px) {
       .shell { width: min(100% - 18px, 1480px); padding-top: 12px; }
       .topbar { align-items: flex-start; flex-direction: column; }
       .status-row { justify-content: flex-start; }
-      .metric-grid, .overview-grid, .actions { grid-template-columns: 1fr; }
+      .metric-grid, .overview-grid, .actions, .settings-grid { grid-template-columns: 1fr; }
       .progress-timeline { grid-template-columns: 1fr; }
       .panel { border-radius: 18px; }
     }
@@ -511,36 +633,65 @@ _DASHBOARD_HTML = r"""<!doctype html>
           </div>
         </div>
         <div class="panel-body form-stack">
-          <label><span data-i18n="apiKeyLabel">API 密钥</span>
-            <input id="api-key" autocomplete="off" placeholder="可选 Bearer 密钥" data-i18n-placeholder="apiKeyPlaceholder">
-          </label>
-          <label><span data-i18n="presetLabel">预设</span>
-            <select id="preset-input">
-              <option value="offline">offline</option>
-              <option value="live-llm">live-llm</option>
-              <option value="live-research" selected>live-research</option>
-            </select>
-          </label>
-          <label><span data-i18n="intensityLabel">报告强度</span>
-            <select id="intensity-input">
-              <option value="concise" data-i18n="intensityConcise">精简版</option>
-              <option value="standard" selected data-i18n="intensityStandard">标准版</option>
-              <option value="deep" data-i18n="intensityDeep">高强度版</option>
-              <option value="deep-plus" data-i18n="intensityDeepPlus">极限高强度版</option>
-            </select>
-          </label>
-          <label><span data-i18n="queryLabel">查询</span>
+          <label class="query-primary"><span data-i18n="queryLabel">查询</span>
             <textarea id="query-input" spellcheck="true"></textarea>
           </label>
-          <label><span data-i18n="eventTypeLabel">事件类型过滤</span>
-            <input id="event-type-filter" autocomplete="off" placeholder="stage_started, tool_call, report_ready" data-i18n-placeholder="eventTypePlaceholder">
-          </label>
-          <label><span data-i18n="eventStageLabel">事件阶段过滤</span>
-            <input id="event-stage-filter" autocomplete="off" placeholder="planner, collector, analyst" data-i18n-placeholder="eventStagePlaceholder">
-          </label>
-          <label><span data-i18n="traceIdLabel">Trace ID 过滤</span>
-            <input id="trace-id-filter" autocomplete="off" placeholder="trace id" data-i18n-placeholder="traceIdPlaceholder">
-          </label>
+          <div class="settings-grid">
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">K</span><span data-i18n="apiKeyLabel">API 密钥</span></span>
+              <input id="api-key" autocomplete="off" placeholder="可选 Bearer 密钥" data-i18n-placeholder="apiKeyPlaceholder">
+              <small class="muted" data-i18n="apiKeyHelp">用于调用受保护接口；若服务端未启用密钥校验可留空。</small>
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">P</span><span data-i18n="presetLabel">预设</span></span>
+              <select id="preset-input">
+                <option value="offline">offline</option>
+                <option value="live-llm">live-llm</option>
+                <option value="live-research" selected>live-research</option>
+              </select>
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">R</span><span data-i18n="intensityLabel">报告强度</span></span>
+              <select id="intensity-input">
+                <option value="concise" data-i18n="intensityConcise">精简版</option>
+                <option value="standard" selected data-i18n="intensityStandard">标准版</option>
+                <option value="deep" data-i18n="intensityDeep">高强度版</option>
+                <option value="deep-plus" data-i18n="intensityDeepPlus">极限高强度版</option>
+              </select>
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">S</span><span data-i18n="singleEntityDetailModeLabel">单公司详实策略</span></span>
+              <select id="single-entity-detail-mode-input">
+                <option value="auto" data-i18n="singleEntityDetailAuto">自动（仅单公司）</option>
+                <option value="on" data-i18n="singleEntityDetailOn">开启（始终加严）</option>
+                <option value="off" data-i18n="singleEntityDetailOff">关闭（不加严）</option>
+              </select>
+            </label>
+            <div class="setting-card">
+              <div class="collapsible-group" id="search-providers-group">
+                <button id="search-providers-toggle" class="collapsible-toggle" type="button" aria-expanded="false" data-i18n="searchProviderModeLabel">搜索引擎（可多选）</button>
+                <div id="search-providers-body" class="collapsible-body" hidden>
+                  <label><input id="search-provider-all" type="checkbox"> <span data-i18n="searchProviderAll">全选</span></label>
+                  <label><input class="search-provider-checkbox" type="checkbox" data-provider="duckduckgo"> DuckDuckGo</label>
+                  <label><input class="search-provider-checkbox" type="checkbox" data-provider="serpapi"> SerpAPI</label>
+                  <label><input class="search-provider-checkbox" type="checkbox" data-provider="google"> Google CSE</label>
+                  <label><input class="search-provider-checkbox" type="checkbox" data-provider="mock"> Mock</label>
+                </div>
+              </div>
+            </div>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">W</span><span data-i18n="webSearchModeLabel">网页搜索开关</span></span>
+              <select id="web-search-mode-input">
+                <option value="auto" data-i18n="webSearchModeAuto">自动（跟随预设）</option>
+                <option value="on" data-i18n="webSearchModeOn">开启</option>
+                <option value="off" data-i18n="webSearchModeOff">关闭</option>
+              </select>
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">E</span><span data-i18n="eventTypeLabel">事件类型过滤</span></span>
+              <input id="event-type-filter" autocomplete="off" placeholder="stage_started, tool_call, report_ready" data-i18n-placeholder="eventTypePlaceholder">
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">ST</span><span data-i18n="eventStageLabel">事件阶段过滤</span></span>
+              <input id="event-stage-filter" autocomplete="off" placeholder="planner, collector, analyst" data-i18n-placeholder="eventStagePlaceholder">
+            </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">T</span><span data-i18n="traceIdLabel">Trace ID 过滤</span></span>
+              <input id="trace-id-filter" autocomplete="off" placeholder="trace id" data-i18n-placeholder="traceIdPlaceholder">
+            </label>
+          </div>
           <div class="actions">
             <button id="submit-job" class="btn primary" type="button" data-i18n="submitJob">提交任务</button>
             <button id="refresh-now" class="btn ghost" type="button" data-i18n="refresh">刷新</button>
@@ -560,15 +711,20 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </section>
 
         <div class="workspace">
-          <section class="panel">
+          <section class="panel recent-panel" id="recent-panel">
             <div class="panel-head">
               <div>
                 <div class="eyebrow" data-i18n="progressEyebrow">进度</div>
                 <h2 class="panel-title" data-i18n="recentJobs">最近任务</h2>
               </div>
+              <div style="display:flex;gap:8px;">
+                <button id="recent-panel-toggle" class="btn small ghost" type="button" data-i18n="collapsePanel">收起</button>
+                <button id="job-list-toggle" class="btn small ghost" type="button" hidden data-i18n="expandJobs">展开</button>
+              </div>
             </div>
             <div class="panel-body">
               <div id="job-list" class="job-list"></div>
+              <div class="job-list-actions"></div>
             </div>
           </section>
 
@@ -606,12 +762,23 @@ _DASHBOARD_HTML = r"""<!doctype html>
         researchJobTitle: '研究任务',
         apiKeyLabel: 'API 密钥',
         apiKeyPlaceholder: '可选 Bearer 密钥',
+        apiKeyHelp: '用于调用受保护接口；若服务端未启用密钥校验可留空。',
         presetLabel: '预设',
         intensityLabel: '报告强度',
         intensityConcise: '精简版',
         intensityStandard: '标准版',
         intensityDeep: '高强度版',
         intensityDeepPlus: '极限高强度版',
+        singleEntityDetailModeLabel: '单公司详实策略',
+        singleEntityDetailAuto: '自动（仅单公司）',
+        singleEntityDetailOn: '开启（始终加严）',
+        singleEntityDetailOff: '关闭（不加严）',
+        searchProviderModeLabel: '搜索引擎（可多选）',
+        searchProviderAll: '全选',
+        webSearchModeLabel: '网页搜索开关',
+        webSearchModeAuto: '自动（跟随预设）',
+        webSearchModeOn: '开启',
+        webSearchModeOff: '关闭',
         queryLabel: '查询',
         eventTypeLabel: '事件类型过滤',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',
@@ -630,6 +797,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         metricActive: '活跃',
         progressEyebrow: '进度',
         recentJobs: '最近任务',
+        collapsePanel: '收起面板',
+        expandPanel: '展开面板',
+        expandJobs: '展开',
+        collapseJobs: '收起',
         jobTabsLabel: '任务详情标签',
         tabOverview: '概览',
         tabReport: '报告',
@@ -724,6 +895,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         sourceDiversity: '来源多样性',
         reportQualityScore: '报告质量评分',
         reportIntensity: '报告强度',
+        singleEntityDetailMode: '单公司详实策略',
         unsupportedClaims: '未支撑声明',
         tokenTotals: 'Token 总计',
         sourceCandidates: '候选来源',
@@ -779,12 +951,23 @@ _DASHBOARD_HTML = r"""<!doctype html>
         researchJobTitle: 'Research job',
         apiKeyLabel: 'API key',
         apiKeyPlaceholder: 'Optional bearer key',
+        apiKeyHelp: 'Used for protected API endpoints; leave blank if server auth is off.',
         presetLabel: 'Preset',
         intensityLabel: 'Report intensity',
         intensityConcise: 'Concise',
         intensityStandard: 'Standard',
         intensityDeep: 'Deep',
         intensityDeepPlus: 'Deep Plus',
+        singleEntityDetailModeLabel: 'Single-company detail mode',
+        singleEntityDetailAuto: 'Auto (single-company only)',
+        singleEntityDetailOn: 'On (always stricter)',
+        singleEntityDetailOff: 'Off (no stricter boost)',
+        searchProviderModeLabel: 'Search providers (multi-select)',
+        searchProviderAll: 'Select all',
+        webSearchModeLabel: 'Web search mode',
+        webSearchModeAuto: 'Auto (follow preset)',
+        webSearchModeOn: 'On',
+        webSearchModeOff: 'Off',
         queryLabel: 'Query',
         eventTypeLabel: 'Event type filter',
         eventTypePlaceholder: 'stage_started, tool_call, report_ready',
@@ -803,6 +986,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         metricActive: 'Active',
         progressEyebrow: 'Progress',
         recentJobs: 'Recent jobs',
+        collapsePanel: 'Collapse panel',
+        expandPanel: 'Expand panel',
+        expandJobs: 'Expand',
+        collapseJobs: 'Collapse',
         jobTabsLabel: 'Job detail tabs',
         tabOverview: 'Overview',
         tabReport: 'Report',
@@ -897,6 +1084,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
         sourceDiversity: 'Source diversity',
         reportQualityScore: 'Report quality score',
         reportIntensity: 'Report intensity',
+        singleEntityDetailMode: 'Single-company detail mode',
         unsupportedClaims: 'Unsupported claims',
         tokenTotals: 'Token Totals',
         tokenTotalsLegacy: 'Token totals',
@@ -1006,6 +1194,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
       streamApiKey: '',
       streamTerminal: false,
       liveEvents: [],
+      jobListExpanded: false,
+      recentPanelCollapsed: localStorage.getItem('insightgraph.dashboard.recentPanelCollapsed') === '1',
+      searchProvidersExpanded: localStorage.getItem('insightgraph.dashboard.searchProvidersExpanded') === '1',
     };
 
     const els = {
@@ -1013,6 +1204,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
       apiKey: document.getElementById('api-key'),
       preset: document.getElementById('preset-input'),
       intensity: document.getElementById('intensity-input'),
+      singleEntityDetailMode: document.getElementById('single-entity-detail-mode-input'),
+      searchProvidersGroup: document.getElementById('search-providers-group'),
+      searchProvidersToggle: document.getElementById('search-providers-toggle'),
+      searchProvidersBody: document.getElementById('search-providers-body'),
+      searchProviderAll: document.getElementById('search-provider-all'),
+      searchProviderBoxes: Array.from(document.querySelectorAll('.search-provider-checkbox')),
+      webSearchMode: document.getElementById('web-search-mode-input'),
       query: document.getElementById('query-input'),
       eventTypeFilter: document.getElementById('event-type-filter'),
       eventStageFilter: document.getElementById('event-stage-filter'),
@@ -1022,6 +1220,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
       message: document.getElementById('message'),
       connection: document.getElementById('connection-state'),
       autoRefresh: document.getElementById('auto-refresh'),
+      recentPanel: document.getElementById('recent-panel'),
+      recentPanelToggle: document.getElementById('recent-panel-toggle'),
+      jobListToggle: document.getElementById('job-list-toggle'),
       jobList: document.getElementById('job-list'),
       reportPanel: document.getElementById('report-panel'),
       metrics: {
@@ -1040,6 +1241,36 @@ _DASHBOARD_HTML = r"""<!doctype html>
     els.query.value = savedQuery || t('defaultQuery');
     els.preset.value = localStorage.getItem('insightgraph.dashboard.preset') || 'offline';
     els.intensity.value = localStorage.getItem('insightgraph.dashboard.intensity') || 'standard';
+    els.singleEntityDetailMode.value =
+      localStorage.getItem('insightgraph.dashboard.singleEntityDetailMode') || 'auto';
+    const savedProvidersRaw = localStorage.getItem('insightgraph.dashboard.searchProviders');
+    const savedProviders = savedProvidersRaw
+      ? savedProvidersRaw.split(',').map((item) => item.trim()).filter(Boolean)
+      : ['duckduckgo'];
+    els.searchProviderBoxes.forEach((box) => {
+      box.checked = savedProviders.includes(box.dataset.provider);
+    });
+    if (!els.searchProviderBoxes.some((box) => box.checked)) {
+      const defaultBox = els.searchProviderBoxes.find((box) => box.dataset.provider === 'duckduckgo');
+      if (defaultBox) defaultBox.checked = true;
+    }
+    els.searchProviderAll.checked = els.searchProviderBoxes.every((box) => box.checked);
+    els.webSearchMode.value =
+      localStorage.getItem('insightgraph.dashboard.webSearchMode') || 'auto';
+
+    function selectedSearchProviders() {
+      return els.searchProviderBoxes
+        .filter((box) => box.checked)
+        .map((box) => box.dataset.provider);
+    }
+
+    function renderSearchProvidersPanel() {
+      const expanded = state.searchProvidersExpanded;
+      els.searchProvidersBody.hidden = !expanded;
+      els.searchProvidersToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      els.searchProvidersGroup.classList.toggle('open', expanded);
+      localStorage.setItem('insightgraph.dashboard.searchProvidersExpanded', expanded ? '1' : '0');
+    }
 
     function applyLanguage() {
       document.documentElement.lang = state.language === 'zh' ? 'zh-CN' : 'en';
@@ -1055,6 +1286,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       });
       els.autoRefresh.textContent = state.autoRefresh ? t('autoRefreshOn') : t('autoRefreshOff');
       els.connection.textContent = t(state.connectionStateKey);
+      els.recentPanelToggle.textContent = state.recentPanelCollapsed ? t('expandPanel') : t('collapsePanel');
       if (!els.message.textContent) setMessage(t('ready'), 'ok');
       renderJobList();
       renderDetail();
@@ -1126,9 +1358,12 @@ _DASHBOARD_HTML = r"""<!doctype html>
     function renderJobList() {
       if (!state.jobs.length) {
         els.jobList.innerHTML = `<div class="empty">${escapeHtml(t('noJobs'))}</div>`;
+        els.jobListToggle.hidden = true;
         return;
       }
-      els.jobList.innerHTML = state.jobs.map((job) => {
+      const visibleJobs = state.jobListExpanded ? state.jobs : state.jobs.slice(0, 6);
+      els.jobList.classList.toggle('expanded', state.jobListExpanded);
+      els.jobList.innerHTML = visibleJobs.map((job) => {
         const active = job.job_id === state.selectedJobId ? ' active' : '';
         const queue = job.queue_position ? t('queuePosition', { position: job.queue_position }) : job.preset;
         const isTerminal = jobIsTerminal(job.status);
@@ -1144,6 +1379,17 @@ _DASHBOARD_HTML = r"""<!doctype html>
             ${deleteBtn}
           </div>`;
       }).join('');
+      const canToggle = state.jobs.length > 6;
+      els.jobListToggle.hidden = !canToggle;
+      if (canToggle) {
+        els.jobListToggle.textContent = state.jobListExpanded ? t('collapseJobs') : t('expandJobs');
+      }
+    }
+
+    function renderRecentPanel() {
+      els.recentPanel.classList.toggle('collapsed', state.recentPanelCollapsed);
+      els.recentPanelToggle.textContent = state.recentPanelCollapsed ? t('expandPanel') : t('collapsePanel');
+      localStorage.setItem('insightgraph.dashboard.recentPanelCollapsed', state.recentPanelCollapsed ? '1' : '0');
     }
 
     function renderLiveEvent(event) {
@@ -1254,30 +1500,136 @@ _DASHBOARD_HTML = r"""<!doctype html>
     }
 
     function renderMarkdown(markdown) {
-      const lines = escapeHtml(markdown || '').split('\n');
-      let inList = false;
+      const lines = (markdown || '').split('\n');
+      let listType = '';
       let inCode = false;
+      let inTable = false;
+      let pendingTableHeader = null;
       const html = [];
-      for (const line of lines) {
-        if (line.trim().startsWith('```')) {
-          if (inCode) { html.push('</code></pre>'); inCode = false; }
-          else { html.push('<pre><code>'); inCode = true; }
-          continue;
-        }
-        if (inCode) { html.push(`${line}\n`); continue; }
-        if (/^###\s+/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h3>${line.replace(/^###\s+/, '')}</h3>`); continue; }
-        if (/^##\s+/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h2>${line.replace(/^##\s+/, '')}</h2>`); continue; }
-        if (/^#\s+/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h1>${line.replace(/^#\s+/, '')}</h1>`); continue; }
-        if (/^-\s+/.test(line)) {
-          if (!inList) { html.push('<ul>'); inList = true; }
-          html.push(`<li>${line.replace(/^-\s+/, '')}</li>`);
-          continue;
-        }
-        if (inList) { html.push('</ul>'); inList = false; }
-        if (!line.trim()) { continue; }
-        html.push(`<p>${line}</p>`);
+
+      function closeList() {
+        if (!listType) return;
+        html.push(listType === 'ol' ? '</ol>' : '</ul>');
+        listType = '';
       }
-      if (inList) html.push('</ul>');
+
+      function closeTable() {
+        if (!inTable) return;
+        html.push('</tbody></table>');
+        inTable = false;
+      }
+
+      function formatInline(text) {
+        let formatted = escapeHtml(text);
+        formatted = formatted.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+        return formatted;
+      }
+
+      function splitTableCells(line) {
+        let value = line.trim();
+        if (value.startsWith('|')) value = value.slice(1);
+        if (value.endsWith('|')) value = value.slice(0, -1);
+        return value.split('|').map((cell) => formatInline(cell.trim()));
+      }
+
+      function isTableSeparator(line) {
+        return /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(line);
+      }
+
+      for (let i = 0; i < lines.length; i += 1) {
+        const rawLine = lines[i];
+        const line = rawLine.trimEnd();
+        const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+
+        if (line.trim().startsWith('```')) {
+          closeList();
+          closeTable();
+          if (inCode) {
+            html.push('</code></pre>');
+            inCode = false;
+          } else {
+            html.push('<pre><code>');
+            inCode = true;
+          }
+          continue;
+        }
+        if (inCode) {
+          html.push(`${escapeHtml(rawLine)}\n`);
+          continue;
+        }
+
+        if (pendingTableHeader !== null) {
+          html.push('<table><thead><tr>');
+          for (const cell of splitTableCells(pendingTableHeader)) html.push(`<th>${cell}</th>`);
+          html.push('</tr></thead><tbody>');
+          inTable = true;
+          pendingTableHeader = null;
+          continue;
+        }
+
+        if (line.includes('|') && isTableSeparator(nextLine)) {
+          closeList();
+          closeTable();
+          pendingTableHeader = line;
+          continue;
+        }
+
+        if (inTable && line.includes('|')) {
+          html.push('<tr>');
+          for (const cell of splitTableCells(line)) html.push(`<td>${cell}</td>`);
+          html.push('</tr>');
+          continue;
+        }
+        if (inTable && !line.trim()) continue;
+        if (inTable) closeTable();
+
+        if (/^###\s+/.test(line)) {
+          closeList();
+          html.push(`<h3>${formatInline(line.replace(/^###\s+/, ''))}</h3>`);
+          continue;
+        }
+        if (/^##\s+/.test(line)) {
+          closeList();
+          html.push(`<h2>${formatInline(line.replace(/^##\s+/, ''))}</h2>`);
+          continue;
+        }
+        if (/^#\s+/.test(line)) {
+          closeList();
+          html.push(`<h1>${formatInline(line.replace(/^#\s+/, ''))}</h1>`);
+          continue;
+        }
+        if (/^>\s+/.test(line)) {
+          closeList();
+          html.push(`<blockquote>${formatInline(line.replace(/^>\s+/, ''))}</blockquote>`);
+          continue;
+        }
+        if (/^-\s+/.test(line)) {
+          if (listType !== 'ul') {
+            closeList();
+            html.push('<ul>');
+            listType = 'ul';
+          }
+          html.push(`<li>${formatInline(line.replace(/^-\s+/, ''))}</li>`);
+          continue;
+        }
+        if (/^\d+\.\s+/.test(line)) {
+          if (listType !== 'ol') {
+            closeList();
+            html.push('<ol>');
+            listType = 'ol';
+          }
+          html.push(`<li>${formatInline(line.replace(/^\d+\.\s+/, ''))}</li>`);
+          continue;
+        }
+
+        closeList();
+        if (!line.trim()) continue;
+        html.push(`<p>${formatInline(line)}</p>`);
+      }
+      closeList();
+      closeTable();
       if (inCode) html.push('</code></pre>');
       return html.join('');
     }
@@ -1409,7 +1761,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
       const items = [
         [t('sectionCoverage'), `${cards.section_coverage_score ?? 0}%`],
         [t('citationSupport'), `${cards.citation_support_score ?? 0}%`],
+        ['Citation supported ratio', `${cards.citation_supported_ratio ?? 0}%`],
+        ['Citation supported/partial/unsupported', `${cards.citation_supported_count ?? 0}/${cards.citation_partial_count ?? 0}/${cards.citation_unsupported_count ?? 0}`],
         [t('sourceDiversity'), `${cards.source_diversity_score ?? 0}%`],
+        ['Fact mapping score', `${cards.fact_mapping_score ?? 0}%`],
+        ['Weak conclusions', cards.weak_conclusion_count ?? 0],
         [t('reportQualityScore'), `${review.score ?? 0}/100`],
         [t('reportIntensity'), review.intensity_label || review.intensity || 'standard'],
         [t('unsupportedClaims'), cards.unsupported_claim_count ?? 0],
@@ -1431,8 +1787,12 @@ _DASHBOARD_HTML = r"""<!doctype html>
         [t('llmCallsLabel'), diagnostics.llm_call_count ?? 0],
         [t('successfulLlmCalls'), diagnostics.successful_llm_call_count ?? 0],
         [t('verifiedEvidence'), `${diagnostics.verified_evidence_count ?? 0} / ${diagnostics.evidence_count ?? 0}`],
+        ['Topic coverage ratio', `${diagnostics.topic_coverage_ratio ?? 0}%`],
+        ['Citation support distribution', `${diagnostics.citation_supported_count ?? 0}/${diagnostics.citation_partial_count ?? 0}/${diagnostics.citation_unsupported_count ?? 0}`],
+        ['Fact mapping (mapped/weak/total)', `${diagnostics.mapped_conclusion_count ?? 0}/${diagnostics.weak_conclusion_count ?? 0}/${diagnostics.conclusion_count ?? 0}`],
         [t('collectionStopReason'), diagnostics.collection_stop_reason || t('unknown')],
         [t('reportIntensity'), diagnostics.report_intensity || t('unknown')],
+        [t('singleEntityDetailMode'), diagnostics.single_entity_detail_mode || t('unknown')],
       ];
       return `<div class="overview-grid">${items.map(([label, value]) => `<div class="info-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>`;
     }
@@ -1512,6 +1872,18 @@ _DASHBOARD_HTML = r"""<!doctype html>
         localStorage.setItem('insightgraph.dashboard.apiKey', els.apiKey.value.trim());
         localStorage.setItem('insightgraph.dashboard.preset', els.preset.value);
         localStorage.setItem('insightgraph.dashboard.intensity', els.intensity.value);
+        localStorage.setItem(
+          'insightgraph.dashboard.singleEntityDetailMode',
+          els.singleEntityDetailMode.value
+        );
+        localStorage.setItem(
+          'insightgraph.dashboard.searchProviders',
+          selectedSearchProviders().join(',')
+        );
+        localStorage.setItem(
+          'insightgraph.dashboard.webSearchMode',
+          els.webSearchMode.value
+        );
         localStorage.setItem('insightgraph.dashboard.query', els.query.value);
         const summary = await apiFetch('/research/jobs/summary', { headers: headers() });
         const list = await apiFetch('/research/jobs?limit=20', { headers: headers() });
@@ -1555,6 +1927,11 @@ _DASHBOARD_HTML = r"""<!doctype html>
             query,
             preset: els.preset.value,
             report_intensity: els.intensity.value,
+            single_entity_detail_mode: els.singleEntityDetailMode.value,
+            search_provider: selectedSearchProviders().length === els.searchProviderBoxes.length
+              ? 'all'
+              : selectedSearchProviders().join(','),
+            web_search_mode: els.webSearchMode.value,
           }),
         });
         state.selectedJobId = payload.job_id;
@@ -1594,6 +1971,14 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     els.submit.addEventListener('click', submitJob);
     els.refresh.addEventListener('click', () => { setMessage(t('refreshing')); refresh(); });
+    els.recentPanelToggle.addEventListener('click', () => {
+      state.recentPanelCollapsed = !state.recentPanelCollapsed;
+      renderRecentPanel();
+    });
+    els.jobListToggle.addEventListener('click', () => {
+      state.jobListExpanded = !state.jobListExpanded;
+      renderJobList();
+    });
     els.autoRefresh.addEventListener('click', () => {
       state.autoRefresh = !state.autoRefresh;
       els.autoRefresh.textContent = state.autoRefresh ? t('autoRefreshOn') : t('autoRefreshOff');
@@ -1605,6 +1990,25 @@ _DASHBOARD_HTML = r"""<!doctype html>
       state.language = normalizeLanguage(els.language.value);
       localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language);
       applyLanguage();
+    });
+    els.searchProviderAll.addEventListener('change', () => {
+      const checked = els.searchProviderAll.checked;
+      els.searchProviderBoxes.forEach((box) => {
+        box.checked = checked;
+      });
+    });
+    els.searchProvidersToggle.addEventListener('click', () => {
+      state.searchProvidersExpanded = !state.searchProvidersExpanded;
+      renderSearchProvidersPanel();
+    });
+    els.searchProviderBoxes.forEach((box) => {
+      box.addEventListener('change', () => {
+        const selected = selectedSearchProviders();
+        if (!selected.length) {
+          box.checked = true;
+        }
+        els.searchProviderAll.checked = els.searchProviderBoxes.every((item) => item.checked);
+      });
     });
     els.jobList.addEventListener('click', async (event) => {
       const deleteBtn = event.target.closest('[data-delete-job-id]');
@@ -1652,6 +2056,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
     });
 
     applyLanguage();
+    renderRecentPanel();
+    renderSearchProvidersPanel();
     refresh();
   </script>
 </body>

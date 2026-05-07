@@ -12,12 +12,14 @@ from dotenv import load_dotenv
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.llm.config import resolve_llm_config
+from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.report_quality.intensity import (
     ReportIntensity,
     apply_report_intensity_defaults,
     get_report_intensity,
 )
 from insight_graph.state import GraphState, LLMCallRecord
+from insight_graph.tools.search_providers import get_search_quota_snapshot
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
 
@@ -41,6 +43,7 @@ LIVE_LLM_PRESET_DEFAULTS = {
     "INSIGHT_GRAPH_RELEVANCE_JUDGE": "openai_compatible",
     "INSIGHT_GRAPH_ANALYST_PROVIDER": "llm",
     "INSIGHT_GRAPH_REPORTER_PROVIDER": "llm",
+    "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER": "llm",
 }
 
 LIVE_RESEARCH_PRESET_DEFAULTS = {
@@ -48,6 +51,7 @@ LIVE_RESEARCH_PRESET_DEFAULTS = {
     "INSIGHT_GRAPH_SEARCH_PROVIDER": "duckduckgo",
     "INSIGHT_GRAPH_SEARCH_LIMIT": "20",
     "INSIGHT_GRAPH_USE_GITHUB_SEARCH": "1",
+    "INSIGHT_GRAPH_USE_NEWS_SEARCH": "1",
     "INSIGHT_GRAPH_GITHUB_PROVIDER": "live",
     "INSIGHT_GRAPH_USE_SEC_FILINGS": "1",
     "INSIGHT_GRAPH_USE_SEC_FINANCIALS": "1",
@@ -61,6 +65,8 @@ LIVE_RESEARCH_PRESET_DEFAULTS = {
     "INSIGHT_GRAPH_RELEVANCE_JUDGE": "openai_compatible",
     "INSIGHT_GRAPH_ANALYST_PROVIDER": "llm",
     "INSIGHT_GRAPH_REPORTER_PROVIDER": "llm",
+    "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER": "llm",
+    "INSIGHT_GRAPH_MAX_RESEARCH_RETRIES": "2",
 }
 
 
@@ -223,11 +229,19 @@ def _url_validation_status_by_evidence_id(state: GraphState) -> dict[str, str]:
 
 
 def _build_quality_cards(state: GraphState, quality: dict[str, object]) -> dict[str, object]:
+    citation_summary = _citation_support_summary(state)
+    fact_mapping = build_fact_conclusion_mapping(state)
     return {
         "section_coverage_score": quality.get("section_coverage_score", 0),
         "citation_support_score": quality.get("citation_support_score", 0),
         "source_diversity_score": quality.get("source_diversity_score", 0),
         "unsupported_claim_count": quality.get("unsupported_claim_count", 0),
+        "citation_supported_count": citation_summary["supported_count"],
+        "citation_partial_count": citation_summary["partial_count"],
+        "citation_unsupported_count": citation_summary["unsupported_count"],
+        "citation_supported_ratio": citation_summary["supported_ratio"],
+        "fact_mapping_score": fact_mapping.get("mapping_score", 0),
+        "weak_conclusion_count": fact_mapping.get("weak_conclusion_count", 0),
         "url_validation_rate": _url_validation_rate(state),
         "total_tokens": sum(record.total_tokens or 0 for record in state.llm_call_log),
         "runtime_seconds": None,
@@ -240,8 +254,12 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
     web_search_calls = [
         record for record in state.tool_call_log if record.tool_name == "web_search"
     ]
+    citation_summary = _citation_support_summary(state)
+    fact_mapping = build_fact_conclusion_mapping(state)
+    topic_coverage_ratio = _topic_coverage_ratio(state.section_collection_status)
     return {
         "search_provider": os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock"),
+        "search_providers": os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDERS"),
         "search_limit": _int_env("INSIGHT_GRAPH_SEARCH_LIMIT"),
         "use_web_search": _truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"),
         "use_github_search": _truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"),
@@ -253,8 +271,13 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
         "max_evidence_per_run": _int_env("INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"),
         "analyst_provider": os.getenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "deterministic"),
         "reporter_provider": os.getenv("INSIGHT_GRAPH_REPORTER_PROVIDER", "deterministic"),
+        "report_review_provider": os.getenv(
+            "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER",
+            "deterministic",
+        ),
         "llm_provider": llm_config.get("provider"),
         "llm_model": llm_config.get("model"),
+        "llm_max_output_tokens": llm_config.get("max_output_tokens"),
         "llm_configured": bool(llm_config.get("api_key_configured")),
         "tool_call_count": len(state.tool_call_log),
         "web_search_call_count": len(web_search_calls),
@@ -267,9 +290,32 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
         ),
         "evidence_count": len(evidence),
         "verified_evidence_count": sum(1 for item in evidence if item.verified),
+        "topic_coverage_ratio": topic_coverage_ratio,
+        "entity_collection_status": state.entity_collection_status,
+        "entity_coverage_count": len(state.entity_collection_status),
+        "sufficient_entity_count": sum(
+            1
+            for status in state.entity_collection_status
+            if bool(status.get("sufficient", False))
+        ),
         "collection_stop_reason": state.collection_stop_reason,
         "report_intensity": get_report_intensity().value,
+        "max_research_retries": _int_env("INSIGHT_GRAPH_MAX_RESEARCH_RETRIES"),
+        "single_entity_detail_mode": os.getenv(
+            "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
+            "auto",
+        ),
+        "citation_support_total": citation_summary["total"],
+        "citation_supported_count": citation_summary["supported_count"],
+        "citation_partial_count": citation_summary["partial_count"],
+        "citation_unsupported_count": citation_summary["unsupported_count"],
+        "citation_supported_ratio": citation_summary["supported_ratio"],
+        "fact_mapping_score": fact_mapping.get("mapping_score", 0),
+        "weak_conclusion_count": fact_mapping.get("weak_conclusion_count", 0),
+        "mapped_conclusion_count": fact_mapping.get("mapped_conclusion_count", 0),
+        "conclusion_count": fact_mapping.get("conclusion_count", 0),
         "collection_rounds": state.collection_rounds,
+        "search_quota": get_search_quota_snapshot(),
     }
 
 
@@ -286,6 +332,7 @@ def _safe_llm_config() -> dict[str, object]:
     return {
         "provider": config.provider,
         "model": config.model,
+        "max_output_tokens": config.max_output_tokens,
         "api_key_configured": bool(config.api_key),
     }
 
@@ -306,6 +353,42 @@ def _url_validation_rate(state: GraphState) -> int:
         return 100
     valid_count = sum(1 for item in state.url_validation if item.get("valid") is True)
     return round(valid_count / len(state.url_validation) * 100)
+
+
+def _citation_support_summary(state: GraphState) -> dict[str, int]:
+    total = len(state.citation_support)
+    supported = 0
+    partial = 0
+    unsupported = 0
+    for item in state.citation_support:
+        status = item.get("support_status")
+        if status == "supported":
+            supported += 1
+        elif status == "partial":
+            partial += 1
+        else:
+            unsupported += 1
+    return {
+        "total": total,
+        "supported_count": supported,
+        "partial_count": partial,
+        "unsupported_count": unsupported,
+        "supported_ratio": 100 if total == 0 else round(supported / total * 100),
+    }
+
+
+def _topic_coverage_ratio(statuses: list[dict[str, object]]) -> int:
+    if not statuses:
+        return 100
+    meaningful = [
+        status
+        for status in statuses
+        if str(status.get("section_id", "")).strip().lower() not in {"references", "sources"}
+    ]
+    if not meaningful:
+        return 100
+    sufficient = sum(1 for status in meaningful if bool(status.get("sufficient", False)))
+    return round(sufficient / len(meaningful) * 100)
 
 
 @app.callback()

@@ -38,6 +38,9 @@ ResearchJobStatus = Literal[
     "failed",
     "cancelled",
 ]
+SingleEntityDetailMode = Literal["auto", "on", "off"]
+SearchProviderMode = str
+WebSearchMode = Literal["auto", "on", "off"]
 ACTIVE_RESEARCH_JOB_STATUSES = {
     RESEARCH_JOB_STATUS_QUEUED,
     RESEARCH_JOB_STATUS_RUNNING,
@@ -75,6 +78,9 @@ class ResearchJob:
     created_order: int
     created_at: str
     report_intensity: ReportIntensity = ReportIntensity.standard
+    single_entity_detail_mode: SingleEntityDetailMode = "auto"
+    search_provider: SearchProviderMode = "auto"
+    web_search_mode: WebSearchMode = "auto"
     status: str = RESEARCH_JOB_STATUS_QUEUED
     started_at: str | None = None
     finished_at: str | None = None
@@ -250,6 +256,9 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
         query=item["query"],
         preset=ResearchPreset(item["preset"]),
         report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
+        single_entity_detail_mode=item.get("single_entity_detail_mode", "auto"),
+        search_provider=item.get("search_provider", "auto"),
+        web_search_mode=item.get("web_search_mode", "auto"),
         created_order=item["created_order"],
         created_at=item["created_at"],
         status=item["status"],
@@ -472,6 +481,9 @@ def create_research_job(
     preset: ResearchPreset,
     created_at: str,
     report_intensity: ReportIntensity = ReportIntensity.standard,
+    single_entity_detail_mode: SingleEntityDetailMode = "auto",
+    search_provider: SearchProviderMode = "auto",
+    web_search_mode: WebSearchMode = "auto",
 ) -> dict[str, str]:
     global _NEXT_JOB_SEQUENCE
 
@@ -483,6 +495,9 @@ def create_research_job(
                     query=query,
                     preset=preset,
                     report_intensity=report_intensity,
+                    single_entity_detail_mode=single_entity_detail_mode,
+                    search_provider=search_provider,
+                    web_search_mode=web_search_mode,
                     created_at=created_at,
                 )
             except ValueError as exc:
@@ -505,6 +520,9 @@ def create_research_job(
             query=query,
             preset=preset,
             report_intensity=report_intensity,
+            single_entity_detail_mode=single_entity_detail_mode,
+            search_provider=search_provider,
+            web_search_mode=web_search_mode,
             created_order=_NEXT_JOB_SEQUENCE,
             created_at=created_at,
         )
@@ -532,6 +550,9 @@ def retry_research_job(job_id: str, created_at: str) -> dict[str, str]:
         query=source.query,
         preset=source.preset,
         report_intensity=source.report_intensity,
+        single_entity_detail_mode=source.single_entity_detail_mode,
+        search_provider=source.search_provider,
+        web_search_mode=source.web_search_mode,
         created_at=created_at,
     )
 

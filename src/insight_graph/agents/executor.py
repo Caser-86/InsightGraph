@@ -1,5 +1,6 @@
 import os
 import re
+from urllib.parse import urlparse
 
 from insight_graph.agents.relevance import (
     filter_relevant_evidence,
@@ -8,12 +9,12 @@ from insight_graph.agents.relevance import (
 from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.report_quality.conversation_compression import compress_conversation
 from insight_graph.report_quality.evidence_scoring import score_evidence
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
 
 WEB_SEARCH_TOOL = "web_search"
 WEB_SEARCH_EMPTY_ERROR = "web_search returned no live evidence"
-MAX_EVIDENCE_PER_TOOL = 5
 MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
 MAX_TOOL_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_TOOL_ROUNDS"
 CONVERSATION_COMPRESSION_ENV = "INSIGHT_GRAPH_CONVERSATION_COMPRESSION"
@@ -53,6 +54,7 @@ def _conversation_compression_enabled() -> bool:
 def execute_subtasks(state: GraphState) -> GraphState:
     registry = ToolRegistry()
     collected: list[Evidence] = _existing_retry_evidence(state)
+    official_domains = _resolved_entity_official_domains(state.resolved_entities)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
     filter_enabled = is_relevance_filter_enabled()
     relevance_drop_reasons: list[str] = []
@@ -88,6 +90,7 @@ def execute_subtasks(state: GraphState) -> GraphState:
                     str(work_item["tool_name"]),
                     str(work_item["query"]),
                     subtask,
+                    official_domains,
                     filter_enabled,
                     state.llm_call_log,
                     relevance_drop_reasons,
@@ -528,6 +531,7 @@ def _run_tool(
     tool_name: str,
     query: str,
     subtask: Subtask,
+    official_domains: set[str],
     filter_enabled: bool,
     llm_call_log: list[LLMCallRecord],
     relevance_drop_reasons: list[str],
@@ -572,6 +576,8 @@ def _run_tool(
         llm_call_log,
         relevance_drop_reasons,
     )
+    kept_results, low_signal_filtered_count = _filter_low_signal_aggregators(kept_results)
+    kept_results = _prioritize_tool_results(kept_results, official_domains)
     kept_results, cap_filtered_count = _cap_tool_results(kept_results)
     return kept_results, [
         ToolCallRecord(
@@ -579,7 +585,7 @@ def _run_tool(
             tool_name=tool_name,
             query=query,
             evidence_count=len(results),
-            filtered_count=filtered_count + cap_filtered_count,
+            filtered_count=filtered_count + low_signal_filtered_count + cap_filtered_count,
             round_index=round_index,
             section_id=section_id,
             strategy_id=strategy_id,
@@ -645,8 +651,116 @@ def _order_evidence_by_score(
 
 
 def _cap_tool_results(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
-    capped = evidence[:MAX_EVIDENCE_PER_TOOL]
+    capped = evidence[:_max_evidence_per_tool()]
     return capped, max(0, len(evidence) - len(capped))
+
+
+def _filter_low_signal_aggregators(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
+    if not any(not _is_low_signal_aggregator(item) for item in evidence):
+        return evidence, 0
+    kept = [item for item in evidence if not _is_low_signal_aggregator(item)]
+    return kept, len(evidence) - len(kept)
+
+
+def _max_evidence_per_tool() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "concise":
+        return 6
+    if intensity == "standard":
+        return 12
+    if intensity == "deep":
+        return 18
+    if intensity == "deep-plus":
+        return 24
+    return 12
+
+
+def _resolved_entity_official_domains(
+    entities: list[dict[str, object]],
+) -> set[str]:
+    domains: set[str] = set()
+    for entity in entities:
+        values = entity.get("official_domains", [])
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            host = _normalize_domain_host(value)
+            if host:
+                domains.add(host)
+    return domains
+
+
+def _prioritize_tool_results(
+    evidence: list[Evidence],
+    official_domains: set[str],
+) -> list[Evidence]:
+    scored = [
+        (_tool_result_priority(item, official_domains), index, item)
+        for index, item in enumerate(evidence)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [item for _, _, item in scored]
+
+
+def _tool_result_priority(evidence: Evidence, official_domains: set[str]) -> int:
+    score = 0
+    if evidence.verified:
+        score += 30
+    if evidence.fetch_status == "fetched":
+        score += 10
+    if evidence.source_type in {"official_site", "docs", "sec", "paper"}:
+        score += 18
+    elif evidence.source_type == "github":
+        score += 8
+    if evidence.search_rank is not None:
+        rank_score = 8 - min(max(evidence.search_rank, 1), 8)
+        score += max(0, rank_score)
+    if official_domains and _url_matches_official_domain(evidence.source_url, official_domains):
+        score += 25
+    if _is_low_signal_aggregator(evidence):
+        score -= 25
+    if evidence.claim_supported is False:
+        score -= 10
+    return score
+
+
+def _url_matches_official_domain(url: str, official_domains: set[str]) -> bool:
+    host = _normalize_domain_host(url)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in official_domains)
+
+
+def _normalize_domain_host(value: str) -> str:
+    raw = value.strip().lower()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    host = parsed.netloc or parsed.path.split("/", maxsplit=1)[0]
+    host = host.split("@", maxsplit=1)[-1].split(":", maxsplit=1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _is_low_signal_aggregator(evidence: Evidence) -> bool:
+    if evidence.source_type != "github":
+        return False
+    haystack = f"{evidence.title} {evidence.source_url}".lower()
+    signals = (
+        "githubdaily",
+        "awesome",
+        "curated list",
+        "list of",
+        "合集",
+        "导航",
+        "resources",
+    )
+    return any(signal in haystack for signal in signals)
 
 
 def _cap_evidence_pool(

@@ -46,6 +46,8 @@ def test_sqlite_backend_initializes_lease_columns(tmp_path) -> None:
     backend.initialize()
 
     assert {
+        "search_provider",
+        "web_search_mode",
         "worker_id",
         "lease_expires_at",
         "heartbeat_at",
@@ -93,6 +95,8 @@ def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
     backend.initialize()
 
     assert {
+        "search_provider",
+        "web_search_mode",
         "worker_id",
         "lease_expires_at",
         "heartbeat_at",

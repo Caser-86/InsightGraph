@@ -52,6 +52,7 @@ def clear_live_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
         "INSIGHT_GRAPH_SEARCH_LIMIT",
         "INSIGHT_GRAPH_USE_GITHUB_SEARCH",
+        "INSIGHT_GRAPH_USE_NEWS_SEARCH",
         "INSIGHT_GRAPH_GITHUB_PROVIDER",
         "INSIGHT_GRAPH_USE_SEC_FILINGS",
         "INSIGHT_GRAPH_USE_SEC_FINANCIALS",
@@ -60,9 +61,13 @@ def clear_live_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_MAX_TOOL_CALLS",
         "INSIGHT_GRAPH_MAX_FETCHES",
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+        "INSIGHT_GRAPH_MAX_TOKENS",
+        "INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS",
         "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
         "INSIGHT_GRAPH_RELEVANCE_FILTER",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
+        "INSIGHT_GRAPH_MAX_RESEARCH_RETRIES",
+        "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
     ]:
@@ -1143,7 +1148,13 @@ def test_research_json_payload_includes_dashboard_quality_cards() -> None:
     assert payload["quality_cards"] == {
         "section_coverage_score": 100,
         "citation_support_score": 100,
+        "citation_supported_count": 0,
+        "citation_partial_count": 0,
+        "citation_unsupported_count": 0,
+        "citation_supported_ratio": 100,
         "source_diversity_score": 67,
+        "fact_mapping_score": 100,
+        "weak_conclusion_count": 0,
         "unsupported_claim_count": 0,
         "url_validation_rate": 50,
         "total_tokens": 42,
@@ -1231,6 +1242,7 @@ def test_dashboard_quality_panel_renders_quality_cards() -> None:
     assert "URL validation" in html
     assert "Token totals" in html
     assert "Runtime" in html
+    assert "single-entity-detail-mode-input" in html
 
 
 def test_research_passes_query_to_workflow(monkeypatch) -> None:
@@ -1316,11 +1328,20 @@ def test_research_live_research_preset_applies_network_and_llm_defaults(
     )
 
     assert response.status_code == 200
-    assert observed_env == LIVE_RESEARCH_PRESET_DEFAULTS
+    assert observed_env["INSIGHT_GRAPH_SEARCH_PROVIDER"] == "duckduckgo"
+    assert observed_env["INSIGHT_GRAPH_USE_WEB_SEARCH"] == "1"
+    assert observed_env["INSIGHT_GRAPH_ANALYST_PROVIDER"] == "llm"
+    assert observed_env["INSIGHT_GRAPH_REPORTER_PROVIDER"] == "llm"
+    assert observed_env["INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER"] == "llm"
+    assert observed_env["INSIGHT_GRAPH_MAX_RESEARCH_RETRIES"] == "2"
+    assert observed_env["INSIGHT_GRAPH_SEARCH_LIMIT"] == "30"
+    assert observed_env["INSIGHT_GRAPH_MAX_TOOL_CALLS"] == "320"
+    assert observed_env["INSIGHT_GRAPH_MAX_FETCHES"] == "140"
+    assert observed_env["INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN"] == "220"
     diagnostics = response.json()["runtime_diagnostics"]
     assert diagnostics["search_provider"] == "duckduckgo"
     assert diagnostics["use_web_search"] is True
-    assert diagnostics["max_tool_calls"] == 200
+    assert diagnostics["max_tool_calls"] == 320
     assert {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS} == {
         name: None for name in LIVE_RESEARCH_PRESET_DEFAULTS
     }
@@ -1632,18 +1653,28 @@ def test_research_job_result_keeps_preset_runtime_diagnostics(monkeypatch) -> No
 
     response = client.post(
         "/research/jobs",
-        json={"query": "Compare Cursor", "preset": "live-research"},
+        json={
+            "query": "Compare Cursor",
+            "preset": "live-research",
+            "single_entity_detail_mode": "on",
+            "search_provider": "serpapi",
+            "web_search_mode": "off",
+        },
     )
 
     assert response.status_code == 202
     detail = client.get(f"/research/jobs/{response.json()['job_id']}").json()
     diagnostics = detail["result"]["runtime_diagnostics"]
-    assert diagnostics["search_provider"] == "duckduckgo"
-    assert diagnostics["use_web_search"] is True
-    assert diagnostics["max_tool_calls"] == 200
+    assert diagnostics["search_provider"] == "serpapi"
+    assert diagnostics["use_web_search"] is False
+    assert diagnostics["max_tool_calls"] == 320
+    assert diagnostics["single_entity_detail_mode"] == "on"
     assert {name: os.getenv(name) for name in LIVE_RESEARCH_PRESET_DEFAULTS} == {
         name: None for name in LIVE_RESEARCH_PRESET_DEFAULTS
     }
+    assert os.getenv("INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE") is None
+    assert os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER") is None
+    assert os.getenv("INSIGHT_GRAPH_USE_WEB_SEARCH") is None
 
 
 def test_get_research_job_includes_progress_metadata_for_queued_job() -> None:

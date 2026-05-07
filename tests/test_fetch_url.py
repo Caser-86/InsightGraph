@@ -150,6 +150,30 @@ def test_fetch_url_chunks_long_html_with_section_metadata(monkeypatch) -> None:
     assert {item.verified for item in evidence} == {True}
 
 
+def test_fetch_url_uses_deeper_chunks_for_deep_plus(monkeypatch) -> None:
+    def fake_fetch_text(url: str):
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            content_type="text/html; charset=utf-8",
+            text=(
+                "<html><head><title>Very Long Report</title></head><body><main>"
+                + "<h1>Market</h1>"
+                + "xiaomi auto smartphone aiot smart home delivery revenue " * 500
+                + "</main></body></html>"
+            ),
+        )
+
+    fetch_url_module = importlib.import_module("insight_graph.tools.fetch_url")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_INTENSITY", "deep-plus")
+    monkeypatch.setattr(fetch_url_module, "fetch_text", fake_fetch_text)
+
+    evidence = fetch_url("https://example.com/very-long-report", "s1")
+
+    assert len(evidence) > 5
+    assert len(evidence[0].snippet) > 500
+
+
 def test_fetch_url_ranks_chunks_from_json_query(monkeypatch) -> None:
     def fake_fetch_text(url: str):
         assert url == "https://example.com/report"

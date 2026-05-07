@@ -11,6 +11,7 @@ from insight_graph.llm.observability import (
 )
 from insight_graph.llm.trace_writer import write_full_llm_trace_event
 from insight_graph.report_quality.budgeting import can_start_llm_call
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.report_quality.report_review import (
     append_report_quality_diagnostics,
     strip_report_quality_diagnostics,
@@ -44,6 +45,7 @@ SMART_PUNCTUATION_TRANSLATION = str.maketrans(
 )
 REPORTER_VALIDATE_URLS_ENV = "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS"
 REPORT_REVIEW_PROVIDER_ENV = "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER"
+REPORT_REVIEW_MAX_PASSES_ENV = "INSIGHT_GRAPH_REPORT_REVIEW_MAX_PASSES"
 REQUIRED_REPORT_SECTIONS = (
     "摘要",
     "背景",
@@ -634,9 +636,6 @@ def _report_review_provider() -> str:
 def _maybe_review_report_with_llm(state: GraphState) -> GraphState:
     if _report_review_provider() != "llm":
         return state
-    if not can_start_llm_call(state):
-        state.llm_call_log.append(_budget_exhausted_record("report_review"))
-        return state
 
     verified_evidence = [item for item in state.evidence_pool if item.verified]
     reference_numbers = _build_reference_numbers(verified_evidence)
@@ -657,7 +656,49 @@ def _maybe_review_report_with_llm(state: GraphState) -> GraphState:
         )
         return state
 
-    messages = _build_report_review_messages(state, verified_evidence, reference_numbers)
+    target_words = get_report_intensity_config().target_words
+    max_passes = _report_review_max_passes()
+    for pass_index in range(max_passes):
+        body_without_refs = _strip_references_section(
+            strip_report_quality_diagnostics(state.report_markdown or "")
+        )
+        current_words = _estimate_report_word_count(body_without_refs)
+        if pass_index > 0 and current_words >= target_words:
+            break
+        if not can_start_llm_call(state):
+            state.llm_call_log.append(_budget_exhausted_record("report_review"))
+            break
+        if not _run_single_report_review_pass(
+            state,
+            verified_evidence=verified_evidence,
+            reference_numbers=reference_numbers,
+            config=config,
+            pass_index=pass_index,
+            current_words=current_words,
+            target_words=target_words,
+        ):
+            break
+    return state
+
+
+def _run_single_report_review_pass(
+    state: GraphState,
+    *,
+    verified_evidence: list[Evidence],
+    reference_numbers: dict[str, int],
+    config,
+    pass_index: int,
+    current_words: int,
+    target_words: int,
+) -> bool:
+    messages = _build_report_review_messages(
+        state,
+        verified_evidence,
+        reference_numbers,
+        pass_index=pass_index,
+        current_words=current_words,
+        target_words=target_words,
+    )
     llm_client = get_llm_client(config, purpose="report_review", messages=messages)
     wire_api = get_llm_wire_api(llm_client)
     started = time.perf_counter()
@@ -685,7 +726,7 @@ def _maybe_review_report_with_llm(state: GraphState) -> GraphState:
                 llm_client=llm_client,
             )
         )
-        return state
+        return False
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     state.llm_call_log.append(
@@ -717,13 +758,17 @@ def _maybe_review_report_with_llm(state: GraphState) -> GraphState:
         ).rstrip()
         + "\n"
     )
-    return state
+    return True
 
 
 def _build_report_review_messages(
     state: GraphState,
     verified_evidence: list[Evidence],
     reference_numbers: dict[str, int],
+    *,
+    pass_index: int = 0,
+    current_words: int | None = None,
+    target_words: int | None = None,
 ) -> list[ChatMessage]:
     evidence_lines = []
     for item in verified_evidence:
@@ -741,6 +786,12 @@ def _build_report_review_messages(
     report_body = _strip_references_section(
         strip_report_quality_diagnostics(state.report_markdown or "")
     )
+    expected_words = target_words if target_words is not None else get_report_intensity_config().target_words
+    words_now = (
+        current_words
+        if current_words is not None
+        else _estimate_report_word_count(report_body)
+    )
     prompt = "\n\n".join(
         [
             f"User request: {state.user_request}",
@@ -748,7 +799,13 @@ def _build_report_review_messages(
             report_body,
             "Verified evidence and allowed citations:",
             "\n".join(evidence_lines),
+            f"Review pass: {pass_index + 1}",
+            f"Current estimated words: {words_now}",
+            f"Target minimum words: {expected_words}",
             (
+                "If current report is shorter than the target, expand each major section "
+                "with more evidence interpretation, business implications, caveats, and "
+                "transition paragraphs until it is materially closer to the target. "
                 "请对这份中文研究报告做一次审稿式润色和适度扩写："
                 "让行文更顺、段落更完整、证据解释更充分、风险边界更清楚。"
                 "只能使用上面 verified evidence 中已有事实；不要新增来源、数字或未经证实的判断。"
@@ -767,6 +824,21 @@ def _build_report_review_messages(
         ),
         ChatMessage(role="user", content=prompt),
     ]
+
+
+def _report_review_max_passes() -> int:
+    raw = os.getenv(REPORT_REVIEW_MAX_PASSES_ENV, "2")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 2
+    return max(value, 1)
+
+
+def _estimate_report_word_count(markdown: str) -> int:
+    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", markdown))
+    latin_words = len(re.findall(r"\b[a-zA-Z0-9]+\b", markdown))
+    return cjk_chars + latin_words
 
 
 def _url_validation_enabled() -> bool:

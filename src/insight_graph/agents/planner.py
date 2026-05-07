@@ -1,5 +1,6 @@
 import os
 import re
+from urllib.parse import urlparse
 
 from insight_graph.memory.embeddings import (
     embed_text,
@@ -12,6 +13,16 @@ from insight_graph.report_quality.entity_resolver import resolve_entities
 from insight_graph.report_quality.research_plan import build_section_research_plan
 from insight_graph.state import GraphState, Subtask
 from insight_graph.tools.sec_filings import has_sec_filing_target
+
+SOURCE_HINTS: dict[str, str] = {
+    'official_site': 'official site pricing enterprise security latest 2024 2025 2026',
+    'docs': 'documentation api guide latest release changelog 2024 2025 2026',
+    'github': 'github repository releases tags roadmap 2024 2025 2026',
+    'news': 'news launch announcement recent years 2024 2025 2026',
+    'blog': 'blog analysis recent update 2024 2025 2026',
+    'sec': 'sec filing investor relations recent annual quarterly 2024 2025 2026',
+    'unknown': '',
+}
 
 
 def plan_research(state: GraphState) -> GraphState:
@@ -72,7 +83,7 @@ def plan_research(state: GraphState) -> GraphState:
 
 def _research_focus_query(user_request: str) -> str:
     topic_match = re.search(
-        r"(?:主题|topic|subject)\s*[:：]\s*(?P<topic>[^\r\n。.;；]+)",
+        r"(?:主题|topic|subject)\s*[:：]\s*(?P<topic>[^\r\n。;；]+)",
         user_request,
         flags=re.IGNORECASE,
     )
@@ -93,20 +104,23 @@ def _research_focus_query(user_request: str) -> str:
 
 
 def _clean_query_text(value: str) -> str:
-    return " ".join(value.strip().strip("。.;；").split())
+    return " ".join(value.strip().strip("。.;；:：").split())
 
 
 def _is_instruction_line(line: str) -> bool:
     lowered = line.lower()
-    if re.match(r"^\d+[.)、．]\s*", line):
+    if re.match(r"^\d+[.)、:：]\s*", line):
+        return True
+    if re.match(r"^[-*•]\s+", line):
         return True
     instruction_markers = (
         "要求",
+        "重点分析",
         "输出 markdown",
         "输出markdown",
-        "生成一篇",
+        "生成一份",
         "文章包含",
-        "所有关键判断",
+        "关键判断",
         "不要空泛",
         "先搜索",
         "output markdown",
@@ -277,6 +291,119 @@ def _build_query_strategies(
                     "reason": "section_source_requirement",
                 }
             )
+    if round_index == 1 and len(entity_names) > 1:
+        strategies.extend(
+            _build_cross_entity_compare_strategies(
+                user_request,
+                section_plan,
+                collection_tools,
+                entity_names,
+                entity_aliases,
+                official_domains,
+            )
+        )
+    if round_index == 1 and len(entity_names) == 1:
+        strategies.extend(
+            _build_single_entity_deep_dive_strategies(
+                user_request,
+                section_plan,
+                collection_tools,
+                entity_names,
+                entity_aliases,
+                official_domains,
+            )
+        )
+    return strategies
+
+
+def _build_cross_entity_compare_strategies(
+    user_request: str,
+    section_plan: list[dict[str, object]],
+    collection_tools: list[str],
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> list[dict[str, object]]:
+    strategies: list[dict[str, object]] = []
+    if collection_tools == ["mock_search"]:
+        return strategies
+    for section in section_plan:
+        section_id = str(section.get("section_id", "")).strip()
+        source_types = _section_source_types(section)
+        source_type = source_types[0] if source_types else "unknown"
+        tool_name = _tool_for_source_type(source_type, collection_tools)
+        if tool_name is None:
+            continue
+        strategies.append(
+            {
+                "strategy_id": _strategy_id(
+                    2,
+                    section_id,
+                    source_type,
+                    len(strategies) + 1,
+                ),
+                "section_id": section_id,
+                "tool_name": tool_name,
+                "query": _cross_entity_compare_query(
+                    user_request,
+                    section,
+                    source_type,
+                    entity_names,
+                    entity_aliases,
+                    official_domains,
+                ),
+                "source_type": source_type,
+                "entity_names": entity_names,
+                "outline_questions": _section_questions(section),
+                "round": 2,
+                "reason": "cross_entity_compare",
+            }
+        )
+    return strategies
+
+
+def _build_single_entity_deep_dive_strategies(
+    user_request: str,
+    section_plan: list[dict[str, object]],
+    collection_tools: list[str],
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> list[dict[str, object]]:
+    strategies: list[dict[str, object]] = []
+    if collection_tools == ["mock_search"]:
+        return strategies
+    for section in section_plan:
+        section_id = str(section.get("section_id", "")).strip()
+        preferred_source = _single_entity_source_type(section)
+        tool_name = _tool_for_source_type(preferred_source, collection_tools)
+        if tool_name is None:
+            continue
+        strategies.append(
+            {
+                "strategy_id": _strategy_id(
+                    1,
+                    section_id,
+                    preferred_source,
+                    10_000 + len(strategies) + 1,
+                ),
+                "section_id": section_id,
+                "tool_name": tool_name,
+                "query": _single_entity_deep_dive_query(
+                    user_request,
+                    section,
+                    preferred_source,
+                    entity_names,
+                    entity_aliases,
+                    official_domains,
+                ),
+                "source_type": preferred_source,
+                "entity_names": entity_names,
+                "outline_questions": _section_questions(section),
+                "round": 1,
+                "reason": "single_entity_deep_dive",
+            }
+        )
     return strategies
 
 
@@ -351,6 +478,36 @@ def _build_replan_query_strategies(
                     "reason": "unsupported_claim",
                 }
             )
+        elif request_type == "missing_entity_evidence":
+            source_types = _string_values(request.get("missing_source_types", []))
+            for source_type in (source_types or ["official_site"]):
+                tool_name = _tool_for_source_type(source_type, collection_tools)
+                if tool_name is None:
+                    continue
+                strategies.append(
+                    {
+                        "strategy_id": _strategy_id(
+                            round_index,
+                            "missing-entity",
+                            source_type,
+                            len(strategies) + 1,
+                        ),
+                        "section_id": "missing-entity",
+                        "tool_name": tool_name,
+                        "query": _replan_missing_entity_query(
+                            user_request,
+                            request,
+                            source_type,
+                            entity_names,
+                            entity_aliases,
+                            official_domains,
+                        ),
+                        "source_type": source_type,
+                        "entity_names": entity_names,
+                        "round": round_index,
+                        "reason": "missing_entity_evidence",
+                    }
+                )
     return strategies
 
 
@@ -392,25 +549,98 @@ def _strategy_query(
     entity_aliases: list[str],
     official_domains: list[str],
 ) -> str:
-    parts = [user_request]
+    parts = [_compact_query_seed(user_request)]
     section_id = str(section.get("section_id", "")).strip()
     title = str(section.get("title", "")).strip()
-    if section_id:
-        parts.append(f"section: {section_id}")
     if title:
-        parts.append(f"title: {title}")
-    questions = _section_questions(section)
-    if questions:
-        parts.append(f"questions: {'; '.join(questions)}")
-    if source_type:
-        parts.append(f"source type: {source_type}")
-    if entity_names:
-        parts.append(f"entities: {', '.join(entity_names)}")
-    if entity_aliases:
-        parts.append(f"aliases: {', '.join(entity_aliases)}")
-    if official_domains:
-        parts.append(f"official domains: {', '.join(official_domains)}")
-    return " | ".join(parts)
+        parts.append(_collapse_terms(title))
+    elif section_id:
+        parts.append(_collapse_terms(section_id.replace("-", " ")))
+    source_hint = SOURCE_HINTS.get(source_type, "")
+    if source_hint:
+        parts.append(source_hint)
+    question = _first_query_question(section)
+    if question:
+        parts.append(_collapse_terms(question))
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    domain_hint = _domain_search_hint(official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
+
+
+def _cross_entity_compare_query(
+    user_request: str,
+    section: dict[str, object],
+    source_type: str,
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> str:
+    parts = [_compact_query_seed(user_request)]
+    parts.append("cross company comparison gap verification")
+    section_id = str(section.get("section_id", "")).strip()
+    title = str(section.get("title", "")).strip()
+    if title:
+        parts.append(_collapse_terms(title))
+    elif section_id:
+        parts.append(_collapse_terms(section_id.replace("-", " ")))
+    source_hint = SOURCE_HINTS.get(source_type, "")
+    if source_hint:
+        parts.append(source_hint)
+    question = _first_query_question(section)
+    if question:
+        parts.append(_collapse_terms(question))
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    domain_hint = _domain_search_hint(official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
+
+
+def _single_entity_deep_dive_query(
+    user_request: str,
+    section: dict[str, object],
+    source_type: str,
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> str:
+    parts = [_compact_query_seed(user_request)]
+    parts.append("single company deep dive evidence details")
+    section_id = str(section.get("section_id", "")).strip()
+    title = str(section.get("title", "")).strip()
+    if title:
+        parts.append(_collapse_terms(title))
+    elif section_id:
+        parts.append(_collapse_terms(section_id.replace("-", " ")))
+    source_hint = SOURCE_HINTS.get(source_type, "")
+    if source_hint:
+        parts.append(source_hint)
+    parts.append("pricing roadmap integration security enterprise")
+    question = _first_query_question(section)
+    if question:
+        parts.append(_collapse_terms(question))
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    domain_hint = _domain_search_hint(official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
+
+
+def _single_entity_source_type(section: dict[str, object]) -> str:
+    source_types = _section_source_types(section)
+    if "official_site" in source_types:
+        return "official_site"
+    if "docs" in source_types:
+        return "docs"
+    return source_types[0] if source_types else "unknown"
 
 
 def _replan_missing_evidence_query(
@@ -421,19 +651,21 @@ def _replan_missing_evidence_query(
     entity_aliases: list[str],
     official_domains: list[str],
 ) -> str:
-    parts = [user_request]
+    parts = [_compact_query_seed(user_request)]
     section_id = str(request.get("section_id", "")).strip()
     if section_id:
-        parts.append(f"section: {section_id}")
-    parts.append(f"source type: {source_type}")
-    missing_source_types = _string_values(request.get("missing_source_types", []))
-    if missing_source_types:
-        parts.append(f"missing source types: {', '.join(missing_source_types)}")
-    missing_evidence = request.get("missing_evidence")
-    if isinstance(missing_evidence, int):
-        parts.append(f"missing evidence: {missing_evidence}")
-    parts.extend(_entity_query_parts(entity_names, entity_aliases, official_domains))
-    return " | ".join(parts)
+        parts.append(_collapse_terms(section_id.replace("-", " ")))
+    source_hint = SOURCE_HINTS.get(source_type, "")
+    if source_hint:
+        parts.append(source_hint)
+    parts.append("evidence gap fill")
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    domain_hint = _domain_search_hint(official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
 
 
 def _replan_unsupported_claim_query(
@@ -443,30 +675,102 @@ def _replan_unsupported_claim_query(
     entity_aliases: list[str],
     official_domains: list[str],
 ) -> str:
-    parts = [user_request]
+    parts = [_compact_query_seed(user_request)]
     claim = request.get("claim")
     if isinstance(claim, str) and claim:
-        parts.append(f"unsupported claim: {claim}")
-    reason = request.get("reason")
-    if isinstance(reason, str) and reason:
-        parts.append(f"reason: {reason}")
-    parts.extend(_entity_query_parts(entity_names, entity_aliases, official_domains))
-    return " | ".join(parts)
+        parts.append(_collapse_terms(claim))
+    parts.append("evidence verification")
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    domain_hint = _domain_search_hint(official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
 
 
-def _entity_query_parts(
+def _replan_missing_entity_query(
+    user_request: str,
+    request: dict[str, object],
+    source_type: str,
     entity_names: list[str],
     entity_aliases: list[str],
     official_domains: list[str],
-) -> list[str]:
-    parts = []
-    if entity_names:
-        parts.append(f"entities: {', '.join(entity_names)}")
-    if entity_aliases:
-        parts.append(f"aliases: {', '.join(entity_aliases)}")
-    if official_domains:
-        parts.append(f"official domains: {', '.join(official_domains)}")
-    return parts
+) -> str:
+    parts = [_compact_query_seed(user_request)]
+    missing_entity = request.get("missing_entity")
+    if isinstance(missing_entity, str) and missing_entity:
+        parts.append(_collapse_terms(missing_entity))
+    source_hint = SOURCE_HINTS.get(source_type, "")
+    if source_hint:
+        parts.append(source_hint)
+    parts.append("product specific evidence")
+    entity_hint = _entity_search_hint(entity_names, entity_aliases)
+    if entity_hint:
+        parts.append(entity_hint)
+    preferred_domains = _string_values(request.get("preferred_domains", []))
+    domain_hint = _domain_search_hint(preferred_domains or official_domains)
+    if domain_hint:
+        parts.append(domain_hint)
+    return _join_query_parts(parts)
+
+
+def _first_query_question(section: dict[str, object]) -> str:
+    questions = _section_questions(section)
+    if not questions:
+        return ""
+    return questions[0]
+
+
+def _compact_query_seed(user_request: str) -> str:
+    seed = _collapse_terms(user_request)
+    tokens = seed.split()
+    if len(tokens) <= 22:
+        return seed
+    return " ".join(tokens[:22])
+
+
+def _entity_search_hint(entity_names: list[str], entity_aliases: list[str]) -> str:
+    names = [name for name in entity_names if name][:3]
+    aliases = [alias for alias in entity_aliases if alias and alias not in names][:2]
+    terms = names + aliases
+    return " ".join(_collapse_terms(term) for term in terms if term)
+
+
+def _domain_search_hint(official_domains: list[str]) -> str:
+    seen: list[str] = []
+    for domain in official_domains:
+        host = _normalize_domain_host(domain)
+        if host and host not in seen:
+            seen.append(host)
+        if len(seen) >= 4:
+            break
+    if not seen:
+        return ""
+    return " ".join(f"site:{domain}" for domain in seen)
+
+
+def _normalize_domain_host(value: str) -> str:
+    raw = value.strip().lower()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    host = parsed.netloc or parsed.path.split("/", maxsplit=1)[0]
+    host = host.split("@", maxsplit=1)[-1].split(":", maxsplit=1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _collapse_terms(value: str) -> str:
+    return " ".join(re.findall(r"[A-Za-z0-9_.:/+-]+|[\u4e00-\u9fff]+", value)).strip()
+
+
+def _join_query_parts(parts: list[str]) -> str:
+    cleaned = [part.strip() for part in parts if part and part.strip()]
+    return " ".join(cleaned)
 
 
 def _entity_names(resolved_entities: list[dict[str, object]]) -> list[str]:
@@ -513,3 +817,6 @@ def _strategy_id(
 
 def _is_truthy_env(name: str) -> bool:
     return os.getenv(name, "").lower() in {"1", "true", "yes"}
+
+
+

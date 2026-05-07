@@ -55,6 +55,31 @@ def test_validate_citation_support_marks_supported_claim() -> None:
     ]
 
 
+def test_validate_citation_support_marks_chinese_claim_supported() -> None:
+    evidence = [
+        Evidence(
+            id="xiaomi-source",
+            subtask_id="collect",
+            title="小米汽车交付",
+            source_url="https://example.com/xiaomi-auto",
+            snippet="小米汽车SU7在2025年继续推进交付，并带动智能手机和智能家居生态协同。",
+            verified=True,
+        )
+    ]
+    finding = Finding(
+        title="小米汽车与生态协同",
+        summary="小米汽车SU7在2025年推进交付，并带动手机和智能家居生态协同。",
+        evidence_ids=["xiaomi-source"],
+    )
+
+    result = validate_citation_support([finding], evidence)
+
+    assert result[0]["support_status"] == "supported"
+    assert result[0]["claim_supported"] is True
+    assert "小米汽车" in result[0]["matched_terms"]
+    assert result[0]["support_score"] >= 0.5
+
+
 def test_validate_citation_support_marks_missing_evidence() -> None:
     finding = Finding(title="Pricing", summary="Missing support.", evidence_ids=["missing"])
 

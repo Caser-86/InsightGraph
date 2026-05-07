@@ -116,6 +116,9 @@ def test_retry_research_job_clones_failed_job_as_new_queued_job() -> None:
         preset=ResearchPreset.offline,
         created_order=1,
         created_at="2026-04-28T10:00:00Z",
+        single_entity_detail_mode="off",
+        search_provider="serpapi",
+        web_search_mode="off",
         status="failed",
         finished_at="2026-04-28T10:00:01Z",
         error="Research workflow failed.",
@@ -133,6 +136,9 @@ def test_retry_research_job_clones_failed_job_as_new_queued_job() -> None:
     assert retry_record is not None
     assert retry_record.query == source.query
     assert retry_record.preset == source.preset
+    assert retry_record.single_entity_detail_mode == source.single_entity_detail_mode
+    assert retry_record.search_provider == source.search_provider
+    assert retry_record.web_search_mode == source.web_search_mode
     assert retry_record.created_order == 2
     assert jobs_module.get_research_job_record("failed-job") == source
 

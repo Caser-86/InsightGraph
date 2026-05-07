@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -52,21 +53,55 @@ class OpenAICompatibleChatClient:
     ) -> ChatCompletionResult:
         if not self.config.api_key:
             raise ValueError("LLM api_key is required")
+        return self._complete_with_retry_and_fallback(messages)
 
-        if self.config.wire_api == "responses":
-            return self._complete_json_with_responses(messages)
-        return self._complete_json_with_chat_completions(messages)
+    def _complete_with_retry_and_fallback(
+        self,
+        messages: list[ChatMessage],
+    ) -> ChatCompletionResult:
+        retries = max(int(self.config.max_retries), 0)
+        backoff = max(float(self.config.retry_backoff_seconds), 0.0)
+        last_error: Exception | None = None
+        for candidate in self._candidate_configs():
+            self.config = candidate
+            for attempt in range(retries + 1):
+                try:
+                    if candidate.wire_api == "responses":
+                        return self._complete_json_with_responses(messages)
+                    return self._complete_json_with_chat_completions(messages)
+                except Exception as exc:
+                    last_error = exc
+                    if attempt >= retries:
+                        break
+                    if backoff > 0:
+                        time.sleep(backoff * (attempt + 1))
+        if last_error is not None:
+            raise last_error
+        raise ValueError("LLM call failed.")
+
+    def _candidate_configs(self) -> list[LLMConfig]:
+        candidates = [self.config]
+        seen = {self.config.model}
+        for model in self.config.fallback_models:
+            if model in seen:
+                continue
+            seen.add(model)
+            candidates.append(self.config.model_copy(update={"model": model}))
+        return candidates
 
     def _complete_json_with_chat_completions(
         self,
         messages: list[ChatMessage],
     ) -> ChatCompletionResult:
-        response = self._get_client().chat.completions.create(
-            model=self.config.model,
-            messages=[message.model_dump() for message in messages],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
+        kwargs = {
+            "model": self.config.model,
+            "messages": [message.model_dump() for message in messages],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+        }
+        if self.config.max_output_tokens is not None:
+            kwargs["max_tokens"] = self.config.max_output_tokens
+        response = self._get_client().chat.completions.create(**kwargs)
         content = response.choices[0].message.content
         if content is None:
             raise ValueError("LLM response content is required")
@@ -82,12 +117,15 @@ class OpenAICompatibleChatClient:
         self,
         messages: list[ChatMessage],
     ) -> ChatCompletionResult:
-        response = self._get_client().responses.create(
-            model=self.config.model,
-            input=[message.model_dump() for message in messages],
-            text={"format": {"type": "json_object"}},
-            temperature=0,
-        )
+        kwargs = {
+            "model": self.config.model,
+            "input": [message.model_dump() for message in messages],
+            "text": {"format": {"type": "json_object"}},
+            "temperature": 0,
+        }
+        if self.config.max_output_tokens is not None:
+            kwargs["max_output_tokens"] = self.config.max_output_tokens
+        response = self._get_client().responses.create(**kwargs)
         content = _extract_responses_content(response)
         usage = getattr(response, "usage", None)
         return ChatCompletionResult(

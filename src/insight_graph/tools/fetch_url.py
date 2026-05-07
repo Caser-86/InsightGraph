@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence, SourceType
 from insight_graph.tools.content_extract import extract_page_content
@@ -72,7 +73,7 @@ def fetch_url(url: str, subtask_id: str = "collect") -> list[Evidence]:
             chunk_index=index + 1,
             section_heading=_section_for_start(chunk.start, headings),
         )
-        for index, chunk in enumerate(chunks[:MAX_FETCHED_EVIDENCE])
+        for index, chunk in enumerate(chunks[:_max_fetched_evidence()])
     ]
 
 
@@ -162,7 +163,7 @@ def _pdf_evidence(
             chunk_index=index + 1,
             document_page=chunk.page,
         )
-        for index, chunk in enumerate(chunks[:MAX_FETCHED_EVIDENCE])
+        for index, chunk in enumerate(chunks[:_max_fetched_evidence()])
     ]
 
 
@@ -212,18 +213,48 @@ def _chunk_text(
     *,
     page_starts: list[tuple[int, int]] | None = None,
 ) -> list[FetchedChunk]:
-    if len(text) <= MAX_SNIPPET_CHARS:
+    snippet_chars = _max_snippet_chars()
+    overlap_chars = _snippet_overlap_chars(snippet_chars)
+    if len(text) <= snippet_chars:
         return [FetchedChunk(text, 0, _page_for_start(0, page_starts or []))]
-    step = MAX_SNIPPET_CHARS - SNIPPET_OVERLAP_CHARS
+    step = snippet_chars - overlap_chars
     return [
         FetchedChunk(
-            text[start : start + MAX_SNIPPET_CHARS],
+            text[start : start + snippet_chars],
             start,
             _page_for_start(start, page_starts or []),
         )
         for start in range(0, len(text), step)
-        if text[start : start + MAX_SNIPPET_CHARS]
+        if text[start : start + snippet_chars]
     ]
+
+
+def _max_fetched_evidence() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 20
+    if intensity == "deep":
+        return 12
+    if intensity == "standard":
+        return 8
+    return MAX_FETCHED_EVIDENCE
+
+
+def _max_snippet_chars() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 2_500
+    if intensity == "deep":
+        return 1_800
+    if intensity == "standard":
+        return 1_200
+    return MAX_SNIPPET_CHARS
+
+
+def _snippet_overlap_chars(snippet_chars: int) -> int:
+    if snippet_chars <= MAX_SNIPPET_CHARS:
+        return SNIPPET_OVERLAP_CHARS
+    return min(300, max(SNIPPET_OVERLAP_CHARS, snippet_chars // 8))
 
 
 def _rank_chunks(

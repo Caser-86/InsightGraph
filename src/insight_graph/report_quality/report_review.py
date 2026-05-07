@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from insight_graph.report_quality.intensity import get_report_intensity_config
+from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.state import GraphState
 
 SECTION_PATTERN = re.compile(r"(?m)^##\s+(.+?)\s*$")
@@ -46,6 +47,8 @@ def build_report_quality_review(
     word_count = len(WORD_PATTERN.findall(report_markdown))
     empty_sections = _empty_sections(report_markdown)
     risk_present = "## 风险" in report_markdown and "风险" in report_markdown
+    fact_mapping = build_fact_conclusion_mapping(state)
+    citation_summary = _citation_support_summary(state)
 
     metrics = {
         "section_coverage_score": _percentage(len(present_sections), len(REQUIRED_SECTIONS)),
@@ -68,6 +71,15 @@ def build_report_quality_review(
         "word_count": word_count,
         "empty_sections": empty_sections,
         "missing_sections": missing_sections,
+        "citation_support_total": citation_summary["total"],
+        "citation_supported_count": citation_summary["supported_count"],
+        "citation_partial_count": citation_summary["partial_count"],
+        "citation_unsupported_count": citation_summary["unsupported_count"],
+        "citation_supported_ratio": citation_summary["supported_ratio"],
+        "conclusion_count": int(fact_mapping.get("conclusion_count", 0)),
+        "mapped_conclusion_count": int(fact_mapping.get("mapped_conclusion_count", 0)),
+        "weak_conclusion_count": int(fact_mapping.get("weak_conclusion_count", 0)),
+        "fact_mapping_score": int(fact_mapping.get("mapping_score", 0)),
     }
     score = round(
         metrics["section_coverage_score"] * 0.20
@@ -75,7 +87,8 @@ def build_report_quality_review(
         + metrics["source_diversity_score"] * 0.20
         + metrics["evidence_depth_score"] * 0.15
         + metrics["report_depth_score"] * 0.10
-        + metrics["risk_coverage_score"] * 0.10
+        + metrics["risk_coverage_score"] * 0.05
+        + metrics["fact_mapping_score"] * 0.05
     )
     gaps, actions = _quality_gaps(metrics, config.name)
     strengths = _quality_strengths(metrics)
@@ -194,6 +207,12 @@ def _quality_gaps(metrics: dict[str, Any], intensity: str) -> tuple[list[str], l
     if intensity in {"deep", "deep-plus"} and metrics["report_depth_score"] < 70:
         gaps.append("高强度报告篇幅仍偏短")
         actions.append("在保持引用约束的前提下扩写证据解释和业务影响")
+    if metrics.get("fact_mapping_score", 0) < 80:
+        gaps.append("结论到证据映射偏弱")
+        actions.append("补充结论到证据的逐条映射，删除无法支撑的判断")
+    if metrics.get("citation_supported_ratio", 100) < 80:
+        gaps.append("引用采纳率偏低")
+        actions.append("优先保留 supported 结论，并针对 unsupported 结论补证")
     return gaps, actions
 
 
@@ -220,3 +239,25 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str) and item]
+
+
+def _citation_support_summary(state: GraphState) -> dict[str, int]:
+    total = len(state.citation_support)
+    supported = 0
+    partial = 0
+    unsupported = 0
+    for item in state.citation_support:
+        status = item.get("support_status")
+        if status == "supported":
+            supported += 1
+        elif status == "partial":
+            partial += 1
+        else:
+            unsupported += 1
+    return {
+        "total": total,
+        "supported_count": supported,
+        "partial_count": partial,
+        "unsupported_count": unsupported,
+        "supported_ratio": 100 if total == 0 else round(supported / total * 100),
+    }

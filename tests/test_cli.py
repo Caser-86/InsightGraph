@@ -37,6 +37,7 @@ def clear_llm_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_MAX_FETCHES",
         "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
         "INSIGHT_GRAPH_MAX_TOKENS",
+        "INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS",
         "INSIGHT_GRAPH_REPORT_INTENSITY",
         "INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER",
         "INSIGHT_GRAPH_REPORTER_VALIDATE_URLS",
@@ -153,6 +154,7 @@ def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
         observed["query"] = query
         observed["intensity"] = os.environ["INSIGHT_GRAPH_REPORT_INTENSITY"]
         observed["tokens"] = os.environ["INSIGHT_GRAPH_MAX_TOKENS"]
+        observed["output_tokens"] = os.environ["INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS"]
         observed["tool_calls"] = os.environ["INSIGHT_GRAPH_MAX_TOOL_CALLS"]
         return GraphState(user_request=query, report_markdown="# Report\n")
 
@@ -174,7 +176,8 @@ def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
         "query": "Compare AI coding agents",
         "intensity": "deep",
         "tokens": "2000000",
-        "tool_calls": "320",
+        "output_tokens": "64000",
+        "tool_calls": "700",
     }
     payload = json.loads(result.output)
     assert payload["runtime_diagnostics"]["report_intensity"] == "deep"

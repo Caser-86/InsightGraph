@@ -422,7 +422,8 @@ def test_planner_builds_query_strategies_for_section_sources(monkeypatch) -> Non
     assert strategy["source_type"] == "official_site"
     assert strategy["entity_names"] == ["Cursor", "GitHub Copilot"]
     assert strategy["round"] == 1
-    assert "executive-summary" in strategy["query"]
+    assert "Cursor" in strategy["query"]
+    assert "site:cursor.com" in strategy["query"]
 
 
 def test_planner_query_strategy_uses_report_outline_questions(monkeypatch) -> None:
@@ -442,8 +443,8 @@ def test_planner_query_strategy_uses_report_outline_questions(monkeypatch) -> No
         if section["section_id"] == "pricing-and-packaging"
     )
     assert pricing_strategy["outline_questions"] == pricing_section["questions"]
-    assert "questions:" in pricing_strategy["query"]
-    assert str(pricing_section["questions"][0]) in pricing_strategy["query"]
+    assert "pricing" in pricing_strategy["query"].lower()
+    assert "official site" in pricing_strategy["query"]
 
 
 def test_planner_query_strategy_includes_entity_aliases(monkeypatch) -> None:
@@ -456,7 +457,7 @@ def test_planner_query_strategy_includes_entity_aliases(monkeypatch) -> None:
     assert "OpenCode AI" in query
     assert "opencode.ai" in query
     assert "Copilot" in query
-    assert "docs.github.com" in query
+    assert "site:opencode.ai" in query
 
 
 def test_planner_query_strategy_strips_article_instructions(monkeypatch) -> None:
@@ -498,6 +499,38 @@ def test_planner_query_strategy_uses_required_source_types(monkeypatch) -> None:
     assert ("official_site", "web_search") in source_tool_pairs
 
 
+def test_planner_adds_cross_entity_compare_round_for_multi_company(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Compare Cursor and GitHub Copilot pricing and strategy")
+
+    updated = plan_research(state)
+
+    compare_round = [
+        strategy
+        for strategy in updated.query_strategies
+        if strategy["reason"] == "cross_entity_compare"
+    ]
+    assert compare_round
+    assert all(strategy["round"] == 2 for strategy in compare_round)
+    assert all("cross company comparison gap verification" in strategy["query"] for strategy in compare_round)
+
+
+def test_planner_adds_single_entity_deep_dive_strategies(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    state = GraphState(user_request="Analyze Cursor product roadmap and pricing details")
+
+    updated = plan_research(state)
+
+    deep_dive = [
+        strategy
+        for strategy in updated.query_strategies
+        if strategy["reason"] == "single_entity_deep_dive"
+    ]
+    assert deep_dive
+    assert all(strategy["round"] == 1 for strategy in deep_dive)
+    assert all("single company deep dive evidence details" in strategy["query"] for strategy in deep_dive)
+
+
 def test_planner_replan_strategy_uses_missing_source_types(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
@@ -522,8 +555,8 @@ def test_planner_replan_strategy_uses_missing_source_types(monkeypatch) -> None:
     assert follow_up["section_id"] == "market-signals"
     assert follow_up["source_type"] == "news"
     assert follow_up["tool_name"] == "news_search"
-    assert "missing evidence: 2" in follow_up["query"]
-    assert "missing source types: news" in follow_up["query"]
+    assert "evidence gap fill" in follow_up["query"]
+    assert "news launch announcement" in follow_up["query"]
 
 
 def test_planner_replan_strategy_uses_unsupported_claim(monkeypatch) -> None:
@@ -545,9 +578,38 @@ def test_planner_replan_strategy_uses_unsupported_claim(monkeypatch) -> None:
     follow_up = updated.query_strategies[0]
     assert follow_up["strategy_id"].startswith("r2-unsupported-claim")
     assert follow_up["reason"] == "unsupported_claim"
-    assert "unsupported claim: Copilot enterprise security includes audit logging." in follow_up[
-        "query"
-    ]
+    assert "Copilot" in follow_up["query"]
+    assert "evidence verification" in follow_up["query"]
+
+
+def test_planner_replan_strategy_uses_missing_entity_evidence(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_GITHUB_SEARCH", "1")
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot pricing",
+        iterations=1,
+        replan_requests=[
+            {
+                "type": "missing_entity_evidence",
+                "missing_entity": "GitHub Copilot",
+                "entity_id": "github-copilot",
+                "missing_evidence": 1,
+                "missing_source_types": ["official_site", "docs"],
+                "preferred_domains": ["docs.github.com", "github.com/features/copilot"],
+                "strategy_key": "missing_entity_evidence:github-copilot:official_site_docs",
+            }
+        ],
+    )
+
+    updated = plan_research(state)
+
+    follow_up = updated.query_strategies[0]
+    assert follow_up["strategy_id"].startswith("r2-missing-entity")
+    assert follow_up["reason"] == "missing_entity_evidence"
+    assert "GitHub Copilot" in follow_up["query"]
+    assert "site:docs.github.com" in follow_up["query"]
+    assert "product specific evidence" in follow_up["query"]
 
 
 def test_planner_uses_web_search_when_enabled(monkeypatch) -> None:
@@ -1949,6 +2011,7 @@ def test_reporter_stores_report_quality_review(monkeypatch) -> None:
 def test_reporter_optional_llm_review_polishes_report(monkeypatch) -> None:
     clear_llm_env(monkeypatch)
     monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_MAX_PASSES", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL", "deepseek-reasoner")
     calls = []
@@ -1972,6 +2035,64 @@ def test_reporter_optional_llm_review_polishes_report(monkeypatch) -> None:
     assert "审稿后摘要更通顺 [1]." in updated.report_markdown
     assert "## 报告质量诊断" in updated.report_markdown
     assert updated.llm_call_log[-1].stage == "report_review"
+
+
+def test_report_review_prompt_includes_target_word_expansion(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_INTENSITY", "deep-plus")
+    client = UsageLLMClient(
+        content=(
+            '{"markdown":"# InsightGraph 娣卞害鐮旂┒鎶ュ憡\\n\\n## 鏍稿績鍙戠幇\\n\\n'
+            'Expanded supported finding [1]."}'
+        )
+    )
+
+    monkeypatch.setattr(
+        "insight_graph.agents.reporter.get_llm_client",
+        lambda config, *, purpose=None, messages=None: client,
+    )
+
+    write_report(make_reporter_state())
+
+    prompt = client.messages[0][1].content
+    assert "Target minimum words: 18000" in prompt
+    assert "If current report is shorter than the target" in prompt
+
+
+def test_report_review_runs_multiple_passes_when_report_is_too_short(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER", "llm")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORT_REVIEW_MAX_PASSES", "2")
+
+    class SequenceClient:
+        def __init__(self) -> None:
+            self.messages: list[list[ChatMessage]] = []
+            self._payloads = [
+                '{"markdown":"# InsightGraph 深度研究报告\\n\\n## 核心发现\\n\\n短结论 [1]."}',
+                '{"markdown":"# InsightGraph 深度研究报告\\n\\n## 核心发现\\n\\n'
+                'Expanded evidence interpretation and implications [1]."}',
+            ]
+
+        def complete_json_with_usage(self, messages: list[ChatMessage]) -> ChatCompletionResult:
+            self.messages.append(messages)
+            payload = self._payloads.pop(0)
+            return ChatCompletionResult(content=payload, input_tokens=10, output_tokens=20, total_tokens=30)
+
+    client = SequenceClient()
+    monkeypatch.setattr(
+        "insight_graph.agents.reporter.get_llm_client",
+        lambda config, *, purpose=None, messages=None: client,
+    )
+
+    updated = write_report(make_reporter_state())
+
+    review_calls = [record for record in updated.llm_call_log if record.stage == "report_review"]
+    assert len(review_calls) == 2
+    assert "Review pass: 1" in client.messages[0][1].content
+    assert "Review pass: 2" in client.messages[1][1].content
 
 
 def test_reporter_marks_sections_insufficient_without_supported_evidence(monkeypatch) -> None:
@@ -3239,6 +3360,178 @@ def test_critic_records_tried_strategies_for_replan_requests() -> None:
     assert updated.tried_strategies == ["missing_section_evidence:market-signals:news"]
 
 
+def test_critic_creates_missing_entity_evidence_replan_requests() -> None:
+    state = GraphState(
+        user_request="Compare Cursor and GitHub Copilot",
+        resolved_entities=[
+            {
+                "id": "cursor",
+                "name": "Cursor",
+                "aliases": ["Cursor"],
+                "official_domains": ["cursor.com"],
+            },
+            {
+                "id": "github-copilot",
+                "name": "GitHub Copilot",
+                "aliases": ["Copilot"],
+                "official_domains": ["docs.github.com"],
+            },
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing details.",
+                source_type="official_site",
+                verified=True,
+            )
+        ],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert "entity coverage" in updated.critique.missing_topics
+    assert updated.replan_requests[0] == {
+        "type": "missing_entity_evidence",
+        "missing_entity": "GitHub Copilot",
+        "entity_id": "github-copilot",
+        "missing_evidence": 1,
+        "missing_source_types": ["official_site", "docs"],
+        "preferred_domains": ["docs.github.com"],
+        "strategy_key": "missing_entity_evidence:github-copilot:official_site_docs",
+    }
+
+
+def test_critic_uses_higher_entity_threshold_for_single_company() -> None:
+    state = GraphState(
+        user_request="Analyze Cursor",
+        resolved_entities=[
+            {
+                "id": "cursor",
+                "name": "Cursor",
+                "aliases": ["Cursor"],
+                "official_domains": ["cursor.com"],
+            }
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing details.",
+                source_type="official_site",
+                verified=True,
+            )
+        ],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.entity_collection_status[0]["min_evidence"] == 2
+    assert updated.entity_collection_status[0]["missing_evidence"] == 1
+    assert updated.replan_requests[0]["type"] == "missing_entity_evidence"
+    assert updated.replan_requests[0]["entity_id"] == "cursor"
+
+
+def test_critic_single_company_no_entity_replan_when_threshold_met() -> None:
+    state = GraphState(
+        user_request="Analyze Cursor",
+        resolved_entities=[
+            {
+                "id": "cursor",
+                "name": "Cursor",
+                "aliases": ["Cursor"],
+                "official_domains": ["cursor.com"],
+            }
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing details.",
+                source_type="official_site",
+                verified=True,
+            ),
+            Evidence(
+                id="cursor-security",
+                subtask_id="collect",
+                title="Cursor Security",
+                source_url="https://cursor.com/security",
+                snippet="Cursor security details.",
+                source_type="official_site",
+                verified=True,
+            ),
+        ],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.entity_collection_status[0]["min_evidence"] == 2
+    assert updated.entity_collection_status[0]["sufficient"] is True
+    assert not any(
+        item.get("type") == "missing_entity_evidence" for item in updated.replan_requests
+    )
+
+
+def test_critic_single_entity_detail_mode_off_disables_bonus(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE", "off")
+    state = GraphState(
+        user_request="Analyze Cursor",
+        resolved_entities=[
+            {
+                "id": "cursor",
+                "name": "Cursor",
+                "aliases": ["Cursor"],
+                "official_domains": ["cursor.com"],
+            }
+        ],
+        evidence_pool=[],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.entity_collection_status[0]["min_evidence"] == 1
+
+
+def test_critic_single_entity_detail_mode_on_forces_bonus_for_multi_company(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE", "on")
+    state = GraphState(
+        user_request="Compare Cursor and Copilot",
+        resolved_entities=[
+            {
+                "id": "cursor",
+                "name": "Cursor",
+                "aliases": ["Cursor"],
+                "official_domains": ["cursor.com"],
+            },
+            {
+                "id": "github-copilot",
+                "name": "GitHub Copilot",
+                "aliases": ["Copilot"],
+                "official_domains": ["docs.github.com"],
+            },
+        ],
+        evidence_pool=[],
+        findings=[],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.entity_collection_status[0]["min_evidence"] == 2
+    assert updated.entity_collection_status[1]["min_evidence"] == 2
+
+
 def test_critic_skips_previously_tried_replan_strategy() -> None:
     state = GraphState(
         user_request="Compare AI coding agents",
@@ -3259,6 +3552,122 @@ def test_critic_skips_previously_tried_replan_strategy() -> None:
 
     assert updated.replan_requests == []
     assert updated.tried_strategies == ["missing_section_evidence:market-signals:news"]
+
+
+def test_critic_marks_topic_coverage_gap_when_section_ratio_is_low(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "1")
+    state = GraphState(
+        user_request="Analyze Cursor pricing",
+        section_collection_status=[
+            {"section_id": "executive-summary", "sufficient": True},
+            {"section_id": "product-positioning", "sufficient": False},
+            {"section_id": "pricing-and-packaging", "sufficient": False},
+        ],
+        evidence_pool=[
+            Evidence(
+                id="cursor-pricing-1",
+                subtask_id="collect",
+                title="Cursor Pricing",
+                source_url="https://cursor.com/pricing",
+                snippet="Cursor pricing includes team and enterprise plans.",
+                source_type="official_site",
+                verified=True,
+            ),
+            Evidence(
+                id="cursor-pricing-2",
+                subtask_id="collect",
+                title="Cursor Docs",
+                source_url="https://docs.cursor.com/pricing",
+                snippet="Cursor docs explain pricing model and seats.",
+                source_type="docs",
+                verified=True,
+            ),
+            Evidence(
+                id="cursor-pricing-3",
+                subtask_id="collect",
+                title="Cursor Blog",
+                source_url="https://cursor.com/blog/pricing",
+                snippet="Cursor announced updated pricing details.",
+                source_type="blog",
+                verified=True,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Cursor pricing includes enterprise plans",
+                summary="Cursor pricing includes team and enterprise plans.",
+                evidence_ids=[
+                    "cursor-pricing-1",
+                    "cursor-pricing-2",
+                ],
+            )
+        ],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.critique is not None
+    assert updated.critique.passed is False
+    assert "topic coverage" in updated.critique.missing_topics
+
+
+def test_critic_adds_replan_for_weak_fact_mapping_claims() -> None:
+    state = GraphState(
+        user_request="Analyze Cursor strategy",
+        evidence_pool=[
+            Evidence(
+                id="cursor-source-1",
+                subtask_id="collect",
+                title="Cursor Product",
+                source_url="https://cursor.com",
+                snippet="Cursor provides AI coding capabilities and pricing.",
+                source_type="official_site",
+                verified=True,
+            ),
+            Evidence(
+                id="cursor-source-2",
+                subtask_id="collect",
+                title="Cursor Docs",
+                source_url="https://docs.cursor.com",
+                snippet="Cursor docs describe product capabilities.",
+                source_type="docs",
+                verified=True,
+            ),
+            Evidence(
+                id="cursor-source-3",
+                subtask_id="collect",
+                title="Cursor News",
+                source_url="https://example.com/cursor-news",
+                snippet="News discusses Cursor adoption.",
+                source_type="news",
+                verified=True,
+            ),
+        ],
+        findings=[
+            Finding(
+                title="Cursor product baseline is documented",
+                summary="Official site and docs describe product baseline.",
+                evidence_ids=["cursor-source-1", "cursor-source-2"],
+            )
+        ],
+        grounded_claims=[
+            {"claim": "Cursor leads every segment", "evidence_ids": []},
+            {"claim": "Cursor has zero competitive risk", "evidence_ids": []},
+            {"claim": "Cursor dominates all enterprise budgets", "evidence_ids": []},
+        ],
+    )
+
+    updated = critique_analysis(state)
+
+    assert updated.critique is not None
+    assert "fact-conclusion mapping" in updated.critique.missing_topics
+    weak_mapping_requests = [
+        request
+        for request in updated.replan_requests
+        if request.get("reason") == "weak fact-conclusion mapping"
+    ]
+    assert weak_mapping_requests
+    assert weak_mapping_requests[0]["strategy_key"].startswith("weak_mapping:")
 
 
 def test_reporter_excludes_unverified_sources(monkeypatch) -> None:

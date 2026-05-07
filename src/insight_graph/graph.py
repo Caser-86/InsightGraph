@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -41,7 +42,7 @@ def build_graph():
 def _route_after_critic(state: GraphState) -> str:
     if state.critique is not None and state.critique.passed:
         return "reporter"
-    if state.iterations >= 1:
+    if state.iterations >= _max_research_retries():
         return "reporter"
     return "record_retry"
 
@@ -49,6 +50,15 @@ def _route_after_critic(state: GraphState) -> str:
 def _record_retry(state: GraphState) -> GraphState:
     state.iterations += 1
     return state
+
+
+def _max_research_retries() -> int:
+    raw = os.environ.get("INSIGHT_GRAPH_MAX_RESEARCH_RETRIES", "1").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return 1
+    return value if value >= 0 else 1
 
 
 def run_research(user_request: str) -> GraphState:
