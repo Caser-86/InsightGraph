@@ -250,11 +250,13 @@ INSIGHT_GRAPH_MAX_TOKENS=500000
 | 强度 | 适合场景 | 主要预算 |
 | --- | --- | --- |
 | `concise` | 快速精简报告 | `SEARCH_LIMIT=6`、`MAX_TOOL_CALLS=24`、`MAX_TOKENS=100000` |
-| `standard` | 默认标准深度报告 | `SEARCH_LIMIT=20`、`MAX_TOOL_CALLS=200`、`MAX_FETCHES=80`、`MAX_EVIDENCE_PER_RUN=120`、`MAX_TOKENS=500000` |
-| `deep` | 高强度长报告，明显高于标准版 | `SEARCH_LIMIT=30`、`MAX_TOOL_CALLS=320`、`MAX_FETCHES=140`、`MAX_EVIDENCE_PER_RUN=220`、`MAX_TOKENS=2000000` |
-| `deep-plus` | 极限高强度报告，适合慢速高成本长研报 | `SEARCH_LIMIT=45`、`MAX_TOOL_CALLS=500`、`MAX_FETCHES=220`、`MAX_EVIDENCE_PER_RUN=350`、`MAX_TOKENS=4000000` |
+| `standard` | 默认标准深度报告 | `SEARCH_LIMIT=30`、`MAX_TOOL_CALLS=320`、`MAX_FETCHES=140`、`MAX_EVIDENCE_PER_RUN=220`、`MAX_TOKENS=500000` |
+| `deep` | 高强度长报告，明显高于标准版 | `SEARCH_LIMIT=55`、`MAX_TOOL_CALLS=700`、`MAX_FETCHES=320`、`MAX_EVIDENCE_PER_RUN=520`、`MAX_TOKENS=2000000` |
+| `deep-plus` | 极限高强度报告，适合慢速高成本长研报 | `SEARCH_LIMIT=180`、`MAX_TOOL_CALLS=4000`、`MAX_FETCHES=1600`、`MAX_EVIDENCE_PER_RUN=2800`、`MAX_TOKENS=40000000` |
 
 这些值是单次研究的 LLM total token 上限，不等于每次都会用满；实际效果还取决于模型上下文窗口、供应商限额和调用费用。搜索、抓取和证据数量仍由对应预算单独控制，避免为了提高 token 上限而无界扩大外部请求。
+
+说明：当使用 `--preset live-research` 且不显式传 `--report-intensity` 时，会先应用 `live-research` 的基线预算（`SEARCH_LIMIT=20`、`MAX_TOOL_CALLS=200`、`MAX_FETCHES=80`、`MAX_EVIDENCE_PER_RUN=120`），以控制默认成本；显式传入 `--report-intensity deep` / `deep-plus` 时会覆盖为对应强度预算。
 
 CLI 可直接指定：
 
