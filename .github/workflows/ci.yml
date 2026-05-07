@@ -34,7 +34,13 @@ jobs:
       - name: Test
         run: python -m pytest
 
-      - name: Validate Deployment Smoke Script
+      - name: Coverage Report
+        if: always()
+        run: python -m coverage report --fail-under=85
+
+      - name: Generate Coverage Badge
+        if: always()
+        run: python -m coverage html
         run: insight-graph-smoke --help
 
       - name: Generate Eval Reports
@@ -62,3 +68,10 @@ jobs:
             reports/eval-summary.md
             reports/eval-history.json
             reports/eval-history.md
+
+      - name: Upload Coverage Reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-reports
+          path: htmlcov/

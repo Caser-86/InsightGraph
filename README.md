@@ -87,6 +87,246 @@ flowchart TB
 | Critic | 检查 citation support、missing evidence 和质量门槛 | 需要更多证据时触发 recollect/replan |
 | Reporter | 输出中文 Markdown，并重建 References | 引用只能来自当前 evidence pool |
 
+## 系统架构图
+
+### 高层系统架构
+
+```mermaid
+graph TB
+    subgraph UI["User Interfaces"]
+        CLI[CLI]
+        API[REST API]
+        WS[WebSocket]
+        Dashboard[Dashboard]
+    end
+    
+    subgraph Core["Core Engine"]
+        Graph[LangGraph StateGraph]
+        Planner[Planner Agent]
+        Collector[Collector Agent]
+        Executor[Executor Agent]
+        Analyst[Analyst Agent]
+        Critic[Critic Agent]
+        Reporter[Reporter Agent]
+    end
+    
+    subgraph Tools["Tool Layer"]
+        Search[Web Search]
+        Fetch[URL/PDF Fetch]
+        GitHub[GitHub Search]
+        SEC[SEC Data]
+        Docs[Document Reader]
+        Files[File Tools]
+    end
+    
+    subgraph External["External Services"]
+        DuckDuckGo["DuckDuckGo<br/>(Free)"]
+        SerpAPI["SerpAPI<br/>($10/mo)"]
+        LLM["LLM Provider<br/>(OpenAI/DeepSeek)"]
+        GitHub_API["GitHub API"]
+        SEC_API["SEC EDGAR"]
+    end
+    
+    subgraph Storage["Storage Layer"]
+        Memory[(In-Memory)]
+        SQLite[(SQLite)]
+        Postgres[(PostgreSQL)]
+        PGVector[(pgvector)]
+    end
+    
+    CLI --> Graph
+    API --> Graph
+    WS --> Graph
+    Dashboard --> API
+    
+    Graph --> Planner
+    Planner --> Collector
+    Collector --> Executor
+    Executor --> Tools
+    Executor --> Analyst
+    Analyst --> Critic
+    Critic -->|Needs more| Planner
+    Critic -->|Ready| Reporter
+    
+    Search --> DuckDuckGo
+    Search --> SerpAPI
+    Fetch --> LLM
+    GitHub --> GitHub_API
+    SEC --> SEC_API
+    
+    Graph -.-> Memory
+    Graph -.-> SQLite
+    Graph -.-> Postgres
+    Graph -.-> PGVector
+```
+
+### 数据流与证据管理
+
+```mermaid
+graph LR
+    Query["User Query"]
+    Plan["Research Plan"]
+    Tools["Tool Execution"]
+    Raw["Raw Evidence"]
+    Normalize["Normalize & Dedupe"]
+    Score["Score & Rank"]
+    Filter["Filter by Budget"]
+    Verified["Verified Evidence"]
+    Analysis["Analysis & Findings"]
+    Citations["Citation Check"]
+    Report["Markdown Report"]
+    References["References List"]
+    
+    Query -->|Planner| Plan
+    Plan -->|Collector| Tools
+    Tools --> Raw
+    Raw -->|Evidence scoring| Normalize
+    Normalize -->|Scoring| Score
+    Score -->|Budget limits| Filter
+    Filter --> Verified
+    Verified -->|Analyst| Analysis
+    Analysis -->|Critic| Citations
+    Citations -->|Approved| Report
+    Report -->|Reporter| References
+```
+
+### 多源证据采集流程
+
+```mermaid
+graph TB
+    Planner["Planner: 规划采集策略"]
+    
+    subgraph Collection["多源并行采集"]
+        WS["Web Search<br/>(DuckDuckGo/SerpAPI)"]
+        GH["GitHub Search<br/>(REST API)"]
+        SEC_Files["SEC Filings<br/>(EDGAR)"]
+        SEC_Facts["SEC Financials<br/>(companyfacts)"]
+        Docs["Document Reader<br/>(Local PDF/TXT)"]
+    end
+    
+    PreFetch["Pre-fetch: URL 抓取"]
+    Evidence["Evidence Extraction<br/>(标题、段落、元数据)"]
+    
+    Planner --> WS
+    Planner --> GH
+    Planner --> SEC_Files
+    Planner --> SEC_Facts
+    Planner --> Docs
+    
+    WS --> PreFetch
+    GH --> PreFetch
+    SEC_Files --> PreFetch
+    SEC_Facts --> Evidence
+    Docs --> Evidence
+    
+    PreFetch --> Evidence
+```
+
+### 智能体决策流程
+
+```mermaid
+graph TD
+    A["[Planner]<br/>分析查询、识别领域<br/>生成研究计划"] --> B["[Collector]<br/>多源并行采集<br/>证据规范化"]
+    B --> C["[Executor]<br/>执行工具循环<br/>处理失败隔离"]
+    C --> D["[Evidence Scorer]<br/>相关性评分<br/>去重和预算管理"]
+    D --> E["[Analyst]<br/>基于证据生成发现<br/>构建竞争矩阵"]
+    E --> F["[Critic]<br/>检查引用支撑"]
+    F -->|缺少证据| G["[Recollect]<br/>补充采集"]
+    G -->|新增证据| E
+    F -->|通过检验| H["[Reporter]<br/>生成中文报告<br/>重建 References"]
+    H --> I["[Output]<br/>报告 + 诊断 + 证据"]
+    G -.->|采集次数/证据预算耗尽| I
+```
+
+### 报告质量评估链路
+
+```mermaid
+graph LR
+    Report["初稿报告"]
+    URLCheck["URL Validation<br/>(检查可达性)"]
+    CitationCheck["Citation Support<br/>(引用校验)"]
+    Review["Optional Review<br/>(LLM 润色)"]
+    Final["最终报告"]
+    
+    Report --> URLCheck
+    URLCheck --> CitationCheck
+    CitationCheck -->|有失效 URL| Report
+    CitationCheck -->|引用完整| Review
+    Review --> Final
+```
+
+### API 与异步任务架构
+
+```mermaid
+graph TB
+    Client["Client<br/>(CLI/SDK/Web)"]
+    
+    subgraph APIGateway["API Gateway"]
+        Health["/health"]
+        Sync["/research<br/>(Sync)"]
+        Jobs["/research/jobs<br/>(Async)"]
+        Status["/research/jobs/{id}"]
+        Stream["/research/jobs/{id}/stream<br/>(WebSocket)"]
+    end
+    
+    subgraph JobQueue["Job Queue & Scheduler"]
+        Queue["Job Queue<br/>(queued/running)"]
+        Worker["Worker Pool<br/>(Lease-based)"]
+        Persistence["Job Storage<br/>(SQLite/Postgres)"]
+    end
+    
+    subgraph Execution["Execution Engine"]
+        StateGraph["LangGraph StateGraph"]
+        Agents["Multi-agent Orchestration"]
+    end
+    
+    Client -->|Health Check| Health
+    Client -->|Quick Research| Sync
+    Client -->|Long Research| Jobs
+    Client -->|Poll Status| Status
+    Client -->|Real-time Stream| Stream
+    
+    Jobs --> Queue
+    Queue --> Worker
+    Worker --> StateGraph
+    StateGraph --> Agents
+    
+    Queue -.-> Persistence
+    Status -.-> Persistence
+    Persistence -.-> Worker
+```
+
+### 存储与持久化架构
+
+```mermaid
+graph TB
+    Graph["GraphState<br/>(In-Memory)"]
+    
+    subgraph Storage["持久化后端（可选）"]
+        Jobs["Job Storage"]
+        Checkpoint["Checkpoint Storage"]
+        Memory["Memory Store"]
+        Index["Document Index"]
+    end
+    
+    subgraph Backends["存储实现"]
+        SQLiteJobs["SQLite<br/>(Jobs)"]
+        PostgresCP["PostgreSQL<br/>(Checkpoints)"]
+        PGVector["pgvector<br/>(Embeddings)"]
+        JSONIndex["JSON<br/>(Doc Index)"]
+    end
+    
+    Graph -.->|Optional| Jobs
+    Graph -.->|Optional| Checkpoint
+    Graph -.->|Optional| Memory
+    Graph -.->|Optional| Index
+    
+    Jobs --> SQLiteJobs
+    Checkpoint --> PostgresCP
+    Memory --> PGVector
+    Index --> JSONIndex
+```
+
 ## 数据流与证据链路
 
 ```mermaid

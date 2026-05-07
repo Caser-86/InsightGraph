@@ -228,6 +228,498 @@ JSON store behavior:
 - On restart, unfinished queued/running JSON jobs are restored as failed with `Research job did not complete before server restart.`
 - JSON persistence is not intended for multi-process coordination.
 
+## Docker Deployment
+
+### Dockerfile
+
+Create a `Dockerfile` for containerized deployment:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY . .
+
+# Install Python dependencies
+RUN python -m pip install --no-cache-dir -e ".[postgres]"
+RUN python -m pip install --no-cache-dir "uvicorn[standard]"
+
+# Create non-root user
+RUN useradd -m -u 1000 insightgraph
+RUN chown -R insightgraph:insightgraph /app
+
+USER insightgraph
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "insight_graph.api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Docker Compose
+
+Create a `docker-compose.yml` for local development or small deployments:
+
+```yaml
+version: '3.8'
+
+services:
+  insightgraph-api:
+    build: .
+    container_name: insightgraph-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND: sqlite
+      INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH: /data/jobs.sqlite3
+      INSIGHT_GRAPH_API_KEY: ${INSIGHT_GRAPH_API_KEY:-change-me}
+      INSIGHT_GRAPH_LLM_BASE_URL: ${INSIGHT_GRAPH_LLM_BASE_URL}
+      INSIGHT_GRAPH_LLM_API_KEY: ${INSIGHT_GRAPH_LLM_API_KEY}
+      INSIGHT_GRAPH_LLM_MODEL: ${INSIGHT_GRAPH_LLM_MODEL:-gpt-4-turbo}
+    volumes:
+      - insightgraph-data:/data
+    restart: unless-stopped
+    networks:
+      - insightgraph
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: insightgraph-postgres
+    environment:
+      POSTGRES_DB: insightgraph
+      POSTGRES_USER: insightgraph
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - insightgraph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insightgraph"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: pgvector extension for PostgreSQL
+  postgres-pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: insightgraph-pgvector
+    environment:
+      POSTGRES_DB: insightgraph
+      POSTGRES_USER: insightgraph
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - insightgraph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insightgraph"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  insightgraph-data:
+  postgres-data:
+  pgvector-data:
+
+networks:
+  insightgraph:
+    driver: bridge
+```
+
+#### Running Docker Compose
+
+```bash
+# Copy .env template
+cp .env.example .env
+# Edit .env with your provider keys
+nano .env
+
+# Build and start
+docker-compose up -d
+
+# Check logs
+docker-compose logs -f insightgraph-api
+
+# Stop
+docker-compose down
+
+# Clean up volumes (WARNING: deletes data)
+docker-compose down -v
+```
+
+#### Docker Compose with PostgreSQL Backend
+
+To use PostgreSQL for jobs and checkpoints:
+
+```bash
+# Update .env
+export INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=postgres
+export INSIGHT_GRAPH_DATABASE_URL=postgresql://insightgraph:change-me@postgres:5432/insightgraph
+export INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres
+export INSIGHT_GRAPH_CHECKPOINT_RESUME=1
+
+# Start
+docker-compose up -d
+
+# Run migrations (if needed)
+docker-compose exec insightgraph-api python -m alembic upgrade head
+```
+
+## Kubernetes Deployment
+
+### Prerequisites
+
+- Kubernetes cluster (1.24+)
+- `kubectl` configured
+- Image registry (Docker Hub, ECR, etc.)
+
+### Build and Push Image
+
+```bash
+# Build image
+docker build -t your-registry/insightgraph:latest .
+
+# Push to registry
+docker push your-registry/insightgraph:latest
+```
+
+### Kubernetes Namespace
+
+```yaml
+# k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: insightgraph
+```
+
+Apply:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+```
+
+### Kubernetes Secrets
+
+Store API keys and provider credentials:
+
+```bash
+# Create API key secret
+kubectl -n insightgraph create secret generic insightgraph-api-key \
+  --from-literal=api-key=your-shared-api-key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create LLM provider secret
+kubectl -n insightgraph create secret generic insightgraph-llm-secrets \
+  --from-literal=api-key=your-llm-api-key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create PostgreSQL secret
+kubectl -n insightgraph create secret generic insightgraph-postgres \
+  --from-literal=password=your-postgres-password \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### PostgreSQL Deployment
+
+```yaml
+# k8s/postgres-deployment.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: insightgraph
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: insightgraph
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: pgvector/pgvector:pg16
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: insightgraph
+        - name: POSTGRES_USER
+          value: insightgraph
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: insightgraph-postgres
+              key: password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U insightgraph
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U insightgraph
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: insightgraph
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  clusterIP: None
+```
+
+### InsightGraph Deployment
+
+```yaml
+# k8s/insightgraph-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insightgraph-api
+  namespace: insightgraph
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insightgraph-api
+  template:
+    metadata:
+      labels:
+        app: insightgraph-api
+    spec:
+      containers:
+      - name: insightgraph-api
+        image: your-registry/insightgraph:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: INSIGHT_GRAPH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: insightgraph-api-key
+              key: api-key
+        - name: INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND
+          value: postgres
+        - name: INSIGHT_GRAPH_DATABASE_URL
+          value: postgresql://insightgraph:$(POSTGRES_PASSWORD)@postgres:5432/insightgraph
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: insightgraph-postgres
+              key: password
+        - name: INSIGHT_GRAPH_LLM_BASE_URL
+          value: https://api.deepseek.com/v1
+        - name: INSIGHT_GRAPH_LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: insightgraph-llm-secrets
+              key: api-key
+        - name: INSIGHT_GRAPH_LLM_MODEL
+          value: deepseek-reasoner
+        - name: INSIGHT_GRAPH_CHECKPOINT_BACKEND
+          value: postgres
+        - name: INSIGHT_GRAPH_CHECKPOINT_RESUME
+          value: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: insightgraph-api
+  namespace: insightgraph
+spec:
+  selector:
+    app: insightgraph-api
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: insightgraph-api-hpa
+  namespace: insightgraph
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: insightgraph-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+### Kubernetes Ingress
+
+```yaml
+# k8s/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: insightgraph-ingress
+  namespace: insightgraph
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "30"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - insightgraph.example.com
+    secretName: insightgraph-tls
+  rules:
+  - host: insightgraph.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: insightgraph-api
+            port:
+              number: 8000
+```
+
+### Deploying to Kubernetes
+
+```bash
+# Create namespace
+kubectl apply -f k8s/namespace.yaml
+
+# Create secrets
+kubectl -n insightgraph create secret generic insightgraph-api-key \
+  --from-literal=api-key=your-api-key
+
+# Deploy PostgreSQL
+kubectl apply -f k8s/postgres-deployment.yaml
+
+# Wait for PostgreSQL to be ready
+kubectl -n insightgraph wait --for=condition=ready pod -l app=postgres --timeout=300s
+
+# Deploy InsightGraph
+kubectl apply -f k8s/insightgraph-deployment.yaml
+
+# Deploy Ingress
+kubectl apply -f k8s/ingress.yaml
+
+# Check status
+kubectl -n insightgraph get pods
+kubectl -n insightgraph get svc
+kubectl -n insightgraph get ingress
+
+# View logs
+kubectl -n insightgraph logs -f deployment/insightgraph-api
+
+# Port forward for local testing
+kubectl -n insightgraph port-forward svc/insightgraph-api 8000:8000
+```
+
+### Kubernetes Monitoring
+
+```yaml
+# k8s/prometheus-servicemonitor.yaml (if using Prometheus)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: insightgraph-api
+  namespace: insightgraph
+spec:
+  selector:
+    matchLabels:
+      app: insightgraph-api
+  endpoints:
+  - port: http
+    interval: 30s
+```
+
 ## systemd Example
 
 Create `/etc/systemd/system/insightgraph.service`:
