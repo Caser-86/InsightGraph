@@ -85,10 +85,11 @@ class OpenAICompatibleRelevanceJudge:
         client_factory: Callable[..., object] | None = None,
         llm_call_log: list[LLMCallRecord] | None = None,
     ) -> None:
+        relevance_model = model or os.getenv("INSIGHT_GRAPH_RELEVANCE_MODEL")
         config = resolve_llm_config(
             api_key=api_key,
             base_url=base_url,
-            model=model,
+            model=relevance_model,
         )
         self._config = config
         self._client = client or OpenAICompatibleChatClient(

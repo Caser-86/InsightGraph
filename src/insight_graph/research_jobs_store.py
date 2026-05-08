@@ -15,6 +15,7 @@ _REQUIRED_JOB_FIELDS = {
     "preset",
     "report_intensity",
     "single_entity_detail_mode",
+    "relevance_judge",
     "search_provider",
     "web_search_mode",
     "created_order",
@@ -30,6 +31,7 @@ _LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {
     "events",
     "report_intensity",
     "single_entity_detail_mode",
+    "relevance_judge",
     "search_provider",
     "web_search_mode",
 }
@@ -37,6 +39,7 @@ _RESEARCH_JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled
 _RESEARCH_PRESETS = {"offline", "live-llm", "live-research"}
 _REPORT_INTENSITIES = {"concise", "standard", "deep", "deep-plus"}
 _SINGLE_ENTITY_DETAIL_MODES = {"auto", "on", "off"}
+_RELEVANCE_JUDGES = {"deterministic", "openai_compatible"}
 _SEARCH_PROVIDER_MODES = {"auto", "all", "mock", "duckduckgo", "google", "serpapi"}
 _WEB_SEARCH_MODES = {"auto", "on", "off"}
 
@@ -83,6 +86,7 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
         else raw_report_intensity
     )
     single_entity_detail_mode = getattr(job, "single_entity_detail_mode", "auto")
+    relevance_judge = getattr(job, "relevance_judge", "deterministic")
     search_provider = getattr(job, "search_provider", "auto")
     web_search_mode = getattr(job, "web_search_mode", "auto")
     return {
@@ -91,6 +95,7 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
         "preset": preset,
         "report_intensity": report_intensity,
         "single_entity_detail_mode": single_entity_detail_mode,
+        "relevance_judge": relevance_judge,
         "search_provider": search_provider,
         "web_search_mode": web_search_mode,
         "created_order": job.created_order,
@@ -147,6 +152,7 @@ def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
     job.setdefault("events", [])
     job.setdefault("report_intensity", "standard")
     job.setdefault("single_entity_detail_mode", "auto")
+    job.setdefault("relevance_judge", "deterministic")
     job.setdefault("search_provider", "auto")
     job.setdefault("web_search_mode", "auto")
     _validate_job_values(job)
@@ -174,6 +180,11 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         or job["single_entity_detail_mode"] not in _SINGLE_ENTITY_DETAIL_MODES
     ):
         raise ResearchJobsStoreError("Research jobs store job detail mode is invalid.")
+    if (
+        not isinstance(job["relevance_judge"], str)
+        or job["relevance_judge"] not in _RELEVANCE_JUDGES
+    ):
+        raise ResearchJobsStoreError("Research jobs store job relevance judge is invalid.")
     if not isinstance(job["search_provider"], str):
         raise ResearchJobsStoreError("Research jobs store job search provider is invalid.")
     provider_expr = job["search_provider"].strip().lower()

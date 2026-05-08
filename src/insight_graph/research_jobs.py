@@ -79,6 +79,7 @@ class ResearchJob:
     created_at: str
     report_intensity: ReportIntensity = ReportIntensity.standard
     single_entity_detail_mode: SingleEntityDetailMode = "auto"
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic"
     search_provider: SearchProviderMode = "auto"
     web_search_mode: WebSearchMode = "auto"
     status: str = RESEARCH_JOB_STATUS_QUEUED
@@ -482,6 +483,7 @@ def create_research_job(
     created_at: str,
     report_intensity: ReportIntensity = ReportIntensity.standard,
     single_entity_detail_mode: SingleEntityDetailMode = "auto",
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic",
     search_provider: SearchProviderMode = "auto",
     web_search_mode: WebSearchMode = "auto",
 ) -> dict[str, str]:
@@ -496,6 +498,7 @@ def create_research_job(
                     preset=preset,
                     report_intensity=report_intensity,
                     single_entity_detail_mode=single_entity_detail_mode,
+                    relevance_judge=relevance_judge,
                     search_provider=search_provider,
                     web_search_mode=web_search_mode,
                     created_at=created_at,
@@ -521,6 +524,7 @@ def create_research_job(
             preset=preset,
             report_intensity=report_intensity,
             single_entity_detail_mode=single_entity_detail_mode,
+            relevance_judge=relevance_judge,
             search_provider=search_provider,
             web_search_mode=web_search_mode,
             created_order=_NEXT_JOB_SEQUENCE,

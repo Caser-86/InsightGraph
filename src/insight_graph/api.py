@@ -135,6 +135,7 @@ class ResearchRequest(BaseModel):
     preset: ResearchPreset = ResearchPreset.offline
     report_intensity: ReportIntensity | None = None
     single_entity_detail_mode: Literal["auto", "on", "off"] = "auto"
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic"
     search_provider: str = "auto"
     web_search_mode: Literal["auto", "on", "off"] = "auto"
 
@@ -370,6 +371,7 @@ def _research_preset_environment(
     preset: ResearchPreset,
     report_intensity: ReportIntensity | None = None,
     single_entity_detail_mode: Literal["auto", "on", "off"] = "auto",
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic",
     search_provider: str = "auto",
     web_search_mode: Literal["auto", "on", "off"] = "auto",
 ) -> Iterator[None]:
@@ -395,6 +397,7 @@ def _research_preset_environment(
         }
     mode_env = {
         "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
+        "INSIGHT_GRAPH_RELEVANCE_JUDGE",
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
         "INSIGHT_GRAPH_SEARCH_PROVIDERS",
         "INSIGHT_GRAPH_USE_WEB_SEARCH",
@@ -409,6 +412,7 @@ def _research_preset_environment(
         if report_intensity is not None:
             apply_report_intensity_defaults(report_intensity, overwrite=True)
         os.environ["INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE"] = single_entity_detail_mode
+        os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] = relevance_judge
         if search_provider != "auto":
             normalized = search_provider.strip().lower()
             providers = [part.strip() for part in normalized.split(",") if part.strip()]
@@ -894,6 +898,7 @@ def research(request: ResearchRequest) -> dict[str, Any]:
                 request.preset,
                 request.report_intensity or ReportIntensity.standard,
                 request.single_entity_detail_mode,
+                request.relevance_judge,
                 request.search_provider,
                 request.web_search_mode,
             ):
@@ -983,6 +988,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         preset=request.preset,
         report_intensity=request.report_intensity or ReportIntensity.standard,
         single_entity_detail_mode=request.single_entity_detail_mode,
+        relevance_judge=request.relevance_judge,
         search_provider=request.search_provider,
         web_search_mode=request.web_search_mode,
         created_at=_current_utc_timestamp(),
@@ -1380,6 +1386,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                     job.preset,
                     job.report_intensity,
                     job.single_entity_detail_mode,
+                    job.relevance_judge,
                     job.search_provider,
                     job.web_search_mode,
                 ):
