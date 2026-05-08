@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     preset TEXT NOT NULL,
     report_intensity TEXT NOT NULL DEFAULT 'standard',
     single_entity_detail_mode TEXT NOT NULL DEFAULT 'auto',
+    relevance_judge TEXT NOT NULL DEFAULT 'deterministic',
     search_provider TEXT NOT NULL DEFAULT 'auto',
     web_search_mode TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL CHECK (
@@ -63,6 +64,7 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "preset": job.preset.value,
         "report_intensity": job.report_intensity.value,
         "single_entity_detail_mode": job.single_entity_detail_mode,
+        "relevance_judge": job.relevance_judge,
         "search_provider": job.search_provider,
         "web_search_mode": job.web_search_mode,
         "status": job.status,
@@ -88,6 +90,7 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         preset=ResearchPreset(row["preset"]),
         report_intensity=ReportIntensity(row["report_intensity"]),
         single_entity_detail_mode=row["single_entity_detail_mode"] or "auto",
+        relevance_judge=row["relevance_judge"] if "relevance_judge" in row.keys() else "deterministic",
         search_provider=row["search_provider"] or "auto",
         web_search_mode=row["web_search_mode"] or "auto",
         created_order=row["created_order"],
@@ -114,6 +117,10 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
         "single_entity_detail_mode": (
             "ALTER TABLE research_jobs "
             "ADD COLUMN single_entity_detail_mode TEXT NOT NULL DEFAULT 'auto'"
+        ),
+        "relevance_judge": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN relevance_judge TEXT NOT NULL DEFAULT 'deterministic'"
         ),
         "search_provider": (
             "ALTER TABLE research_jobs "
@@ -189,13 +196,13 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT INTO research_jobs (
                     id, query, preset, report_intensity, single_entity_detail_mode,
-                    search_provider, web_search_mode,
+                    relevance_judge, search_provider, web_search_mode,
                     status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
-                    :search_provider, :web_search_mode,
+                    :relevance_judge, :search_provider, :web_search_mode,
                     :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
@@ -223,7 +230,7 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT OR REPLACE INTO research_jobs (
                     id, query, preset, report_intensity, single_entity_detail_mode,
-                    search_provider, web_search_mode,
+                    relevance_judge, search_provider, web_search_mode,
                     status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
@@ -435,13 +442,13 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT INTO research_jobs (
                     id, query, preset, report_intensity, single_entity_detail_mode,
-                    search_provider, web_search_mode,
+                    relevance_judge, search_provider, web_search_mode,
                     status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
-                    :search_provider, :web_search_mode,
+                    :relevance_judge, :search_provider, :web_search_mode,
                     :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
