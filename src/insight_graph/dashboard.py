@@ -599,7 +599,62 @@ _DASHBOARD_HTML = r"""<!doctype html>
       .progress-timeline { grid-template-columns: 1fr; }
       .panel { border-radius: 18px; }
     }
-  </style>
+  
+    .zoom-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .zoom-btn {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 10, 16, 0.72);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .zoom-btn:hover {
+      background: rgba(99, 242, 227, 0.15);
+      border-color: var(--line-hot);
+    }
+    .zoom-slider {
+      width: 80px;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(117, 229, 232, 0.2);
+      border-radius: 2px;
+      outline: none;
+    }
+    .zoom-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(99, 242, 227, 0.4);
+    }
+    .zoom-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      min-width: 42px;
+      text-align: center;
+    }
+    #dashboard-root {
+      transform-origin: top center;
+      transition: transform 0.2s ease-out;
+    }
+</style>
 </head>
 <body data-insightgraph-dashboard>
   <div id="dashboard-root" class="shell">
@@ -613,6 +668,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="status-row">
+        <div class="zoom-control">
+          <button id="zoom-out" class="zoom-btn" type="button" title="缩小">&#8722;</button>
+          <input id="zoom-slider" class="zoom-slider" type="range" min="50" max="150" value="100" step="5">
+          <button id="zoom-in" class="zoom-btn" type="button" title="放大">+</button>
+          <span id="zoom-label" class="zoom-label">100%</span>
+        </div>
+
         <label class="language-switch"><span data-i18n="languageLabel">语言</span>
           <select id="language-input" aria-label="Language">
             <option value="zh">中文</option>
@@ -1212,6 +1274,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
     };
 
     const els = {
+      zoomIn: document.getElementById('zoom-in'),
+      zoomOut: document.getElementById('zoom-out'),
+      zoomSlider: document.getElementById('zoom-slider'),
+      zoomLabel: document.getElementById('zoom-label'),
       language: document.getElementById('language-input'),
       apiKey: document.getElementById('api-key'),
       preset: document.getElementById('preset-input'),
@@ -2011,6 +2077,42 @@ _DASHBOARD_HTML = r"""<!doctype html>
       localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language);
       applyLanguage();
     });
+
+    // Zoom functionality
+    const ZOOM_STORAGE_KEY = 'insightgraph.dashboard.zoom';
+    
+    function initZoom() {
+      const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
+      const value = saved ? parseInt(saved, 10) : 100;
+      applyZoom(value);
+      els.zoomSlider.value = value;
+      els.zoomLabel.textContent = value + '%';
+    }
+    
+    function applyZoom(value) {
+      const clamped = Math.max(50, Math.min(150, value));
+      const scale = clamped / 100;
+      const root = document.getElementById('dashboard-root');
+      if (root) root.style.transform = 'scale(' + scale + ')';
+      localStorage.setItem(ZOOM_STORAGE_KEY, clamped.toString());
+      els.zoomLabel.textContent = clamped + '%';
+      els.zoomSlider.value = clamped;
+    }
+    
+    function zoomIn() {
+      applyZoom(parseInt(els.zoomSlider.value, 10) + 5);
+    }
+    
+    function zoomOut() {
+      applyZoom(parseInt(els.zoomSlider.value, 10) - 5);
+    }
+    
+    els.zoomIn.addEventListener('click', zoomIn);
+    els.zoomOut.addEventListener('click', zoomOut);
+    els.zoomSlider.addEventListener('input', function() { applyZoom(parseInt(els.zoomSlider.value, 10)); });
+    
+    initZoom();
+
     els.searchProviderAll.addEventListener('change', () => {
       const checked = els.searchProviderAll.checked;
       els.searchProviderBoxes.forEach((box) => {
