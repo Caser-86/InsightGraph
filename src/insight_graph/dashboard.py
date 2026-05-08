@@ -352,15 +352,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
     }
     .recent-panel {
       width: 100%;
-      max-width: 260px;
+      max-width: 360px;
       justify-self: start;
     }
     .recent-panel.collapsed .panel-body {
       display: none;
     }
 
-    .job-list { display: grid; gap: 8px; max-height: 240px; overflow: auto; }
-    .job-list.expanded { max-height: 640px; }
+    .job-list { display: grid; gap: 8px; max-height: 400px; overflow: auto; }
+    .job-list.expanded { max-height: 800px; }
 
     .job-card {
       width: 100%;
