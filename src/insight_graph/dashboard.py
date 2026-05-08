@@ -415,8 +415,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .tabs {
       display: flex;
-      gap: 8px;
-      padding: 12px;
+      gap: 6px;
+      padding: 10px;
       border-bottom: 1px solid var(--line);
       overflow-x: auto;
     }
@@ -427,10 +427,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
       border-radius: 999px;
       background: transparent;
       color: var(--muted);
-      padding: 8px 12px;
-      font-size: 0.78rem;
+      padding: 6px 10px;
+      font-size: 0.72rem;
       font-weight: 900;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
     }
 
