@@ -436,23 +436,23 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .tab.active { border-color: var(--line-hot); color: var(--cyan); background: var(--cyan-soft); }
 
-    .tab-panel { min-height: 640px; }
+    .tab-panel { min-height: 480px; }
 
     .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 
     .progress-timeline {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 10px;
-      margin: 0 0 14px;
+      gap: 8px;
+      margin: 0 0 10px;
     }
 
     .progress-step {
       border: 1px solid rgba(117, 229, 232, 0.14);
       border-radius: 16px;
       background: rgba(2, 10, 16, 0.42);
-      padding: 12px;
-      min-height: 86px;
+      padding: 10px;
+      min-height: 72px;
     }
 
     .progress-step.completed { border-color: rgba(116, 246, 167, 0.45); }
@@ -468,7 +468,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       text-transform: uppercase;
     }
 
-    .progress-step strong { display: block; margin-top: 8px; }
+    .progress-step strong { display: block; margin-top: 6px; }
 
     .progress-bar {
       height: 8px;
@@ -489,15 +489,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .overview-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      gap: 8px;
     }
 
     .info-card {
       border: 1px solid rgba(117, 229, 232, 0.14);
       border-radius: 18px;
       background: rgba(2, 10, 16, 0.42);
-      padding: 14px;
-      min-height: 86px;
+      padding: 12px;
+      min-height: 72px;
     }
 
     .info-card span {
@@ -509,7 +509,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       text-transform: uppercase;
     }
 
-    .info-card strong { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+    .info-card strong { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 
     .markdown, .data-list, pre { color: #dff8fb; line-height: 1.62; }
 
@@ -533,13 +533,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .live-event p { color: var(--muted); margin-top: 6px; }
 
     .markdown { overflow-wrap: anywhere; }
-    .markdown h1, .markdown h2, .markdown h3 { margin: 0.9em 0 0.45em; }
-    .markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote { margin: 0.7em 0; }
+    .markdown h1, .markdown h2, .markdown h3 { margin: 0.7em 0 0.35em; }
+    .markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote { margin: 0.5em 0; }
     .markdown ul, .markdown ol { padding-left: 1.2em; }
     .markdown table {
       width: 100%;
       border-collapse: collapse;
-      margin: 0.85em 0;
+      margin: 0.6em 0;
       display: block;
       overflow-x: auto;
       white-space: nowrap;
