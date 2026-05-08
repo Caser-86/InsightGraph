@@ -93,7 +93,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
     .eyebrow {
       color: var(--cyan);
-      font-size: 0.72rem;
+      font-size: 0.80rem;
       font-weight: 700;
       letter-spacing: 0.16em;
       text-transform: uppercase;
@@ -257,7 +257,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       color: var(--muted);
       font-size: 0.68rem;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
 
@@ -427,10 +427,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
       border-radius: 999px;
       background: transparent;
       color: var(--muted);
-      padding: 6px 10px;
-      font-size: 0.72rem;
+      padding: 7px 11px;
+      font-size: 0.80rem;
       font-weight: 900;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
 
