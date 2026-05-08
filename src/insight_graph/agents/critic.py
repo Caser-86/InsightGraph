@@ -1,14 +1,32 @@
 import os
 from urllib.parse import urlparse
 
+from insight_graph.llm import get_llm_client, resolve_llm_config
 from insight_graph.report_quality.citation_support import validate_citation_support
 from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.state import Critique, Evidence, GraphState
 
 
+def _citation_judge_provider() -> str:
+    provider = os.getenv("INSIGHT_GRAPH_CITATION_JUDGE_PROVIDER", "lexical").strip().lower()
+    return provider if provider in {"lexical", "llm"} else "lexical"
+
+
 def critique_analysis(state: GraphState) -> GraphState:
-    state.citation_support = validate_citation_support(state.findings, state.evidence_pool)
+    citation_judge = _citation_judge_provider()
+    llm_client = None
+    if citation_judge == "llm":
+        config = resolve_llm_config()
+        if config.api_key:
+            llm_client = get_llm_client(config, purpose="citation_judge")
+    
+    state.citation_support = validate_citation_support(
+        state.findings,
+        state.evidence_pool,
+        citation_judge_provider=citation_judge,
+        llm_client=llm_client,
+    )
     fact_mapping = build_fact_conclusion_mapping(state)
     strict_quality_gate = _strict_quality_gate_enabled()
     state.entity_collection_status = _build_entity_collection_status(
