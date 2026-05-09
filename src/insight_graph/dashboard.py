@@ -1400,6 +1400,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
         .replaceAll("'", '&#39;');
     }
 
+    function formatLocalTime(isoString) {
+      if (!isoString) return '';
+      const date = new Date(isoString);
+      if (isNaN(date.getTime())) return isoString;
+      return date.toLocaleString();
+    }
+
     function headers(json = false) {
       const result = {};
       const key = els.apiKey.value.trim();
@@ -1468,7 +1475,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
             <h3>${escapeHtml(job.query || job.job_id)}</h3>
             <div class="job-meta">
               <span>${escapeHtml(queue)}</span>
-              <span>${escapeHtml(job.created_at || '')}</span>
+              <span>${escapeHtml(formatLocalTime(job.created_at))}</span>
             </div>
             ${deleteBtn}
           </div>`;
@@ -1789,9 +1796,9 @@ _DASHBOARD_HTML = r"""<!doctype html>
           <div class="info-card"><span>${escapeHtml(t('statusLabel'))}</span><strong>${escapeHtml(statusText(detail.status))}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('stageLabel'))}</span><strong>${escapeHtml(stageText(detail.progress_stage))}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('jobIdLabel'))}</span><strong>${escapeHtml(detail.job_id)}</strong></div>
-          <div class="info-card"><span>${escapeHtml(t('createdLabel'))}</span><strong>${escapeHtml(detail.created_at)}</strong></div>
-          <div class="info-card"><span>${escapeHtml(t('startedLabel'))}</span><strong>${escapeHtml(detail.started_at || t('notStarted'))}</strong></div>
-          <div class="info-card"><span>${escapeHtml(t('finishedLabel'))}</span><strong>${escapeHtml(detail.finished_at || t('notFinished'))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('createdLabel'))}</span><strong>${escapeHtml(formatLocalTime(detail.created_at))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('startedLabel'))}</span><strong>${escapeHtml(formatLocalTime(detail.started_at) || t('notStarted'))}</strong></div>
+          <div class="info-card"><span>${escapeHtml(t('finishedLabel'))}</span><strong>${escapeHtml(formatLocalTime(detail.finished_at) || t('notFinished'))}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('runtimeLabel'))}</span><strong>${escapeHtml(t('seconds', { value: detail.runtime_seconds || 0 }))}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('toolsLabel'))}</span><strong>${escapeHtml(detail.tool_call_count || 0)}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('llmCallsLabel'))}</span><strong>${escapeHtml(detail.llm_call_count || 0)}</strong></div>
