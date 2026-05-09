@@ -18,4 +18,5 @@ reports/ai-coding-agents-technical-review.md
 
 .env
 debug.log
+*.db
 memory/CLAUDE.md.original.md

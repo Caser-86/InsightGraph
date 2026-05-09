@@ -1358,11 +1358,13 @@ def _run_research_job(job_id: str) -> None:
                         job_id=job.id,
                     )
                     result = _build_research_json_payload(state)
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             mark_research_job_failed(
                 job,
                 finished_at=_current_utc_timestamp(),
-                error="Research workflow failed.",
+                error=f"Research workflow failed: {e}",
                 worker_id=worker_id,
             )
             return
@@ -1397,11 +1399,13 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                         job_id=job.id,
                     )
                     result = _build_research_json_payload(state)
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             mark_research_job_failed(
                 job,
                 finished_at=_current_utc_timestamp(),
-                error="Research workflow failed.",
+                error=f"Research workflow failed: {e}",
                 worker_id=worker_id,
             )
             return
