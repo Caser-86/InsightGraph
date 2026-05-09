@@ -433,9 +433,7 @@ python -m insight_graph.cli research "OpenAI 2026 product strategy official news
 
 ```env
 INSIGHT_GRAPH_USE_WEB_SEARCH=1
-INSIGHT_GRAPH_SEARCH_PROVIDER=serpapi
-INSIGHT_GRAPH_SERPAPI_KEY=your-serpapi-key
-INSIGHT_GRAPH_SERPAPI_ENGINE=google
+INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo
 ```
 
 SerpAPI key 支持三种变量名，任选其一：
@@ -445,6 +443,8 @@ INSIGHT_GRAPH_SERPAPI_KEY=your-serpapi-key
 INSIGHT_GRAPH_SERPAPI_API_KEY=your-serpapi-key
 SERPAPI_API_KEY=your-serpapi-key
 ```
+
+Note: Dashboard defaults to DuckDuckGo to protect SerpAPI quota. Enable SerpAPI manually only for demo or high-coverage runs.
 
 切换到 DuckDuckGo：
 

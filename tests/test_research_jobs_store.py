@@ -53,6 +53,7 @@ def test_serialize_research_job_uses_public_fields() -> None:
         "preset": "offline",
         "report_intensity": "standard",
         "single_entity_detail_mode": "auto",
+        "relevance_judge": "deterministic",
         "search_provider": "auto",
         "web_search_mode": "auto",
         "created_order": 7,

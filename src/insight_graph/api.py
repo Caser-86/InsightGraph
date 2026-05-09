@@ -745,6 +745,64 @@ def _run_research_job_workflow(
     return run_research_with_events(query, emit_event)
 
 
+def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | None:
+    if job.preset != ResearchPreset.live_research:
+        return None
+    if os.getenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return None
+
+    diagnostics = result.get("runtime_diagnostics")
+    if not isinstance(diagnostics, dict):
+        diagnostics = {}
+
+    checks = [
+        (
+            "evidence_count",
+            _int_value(diagnostics.get("evidence_count")),
+            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE", 0),
+        ),
+        (
+            "verified_evidence_count",
+            _int_value(diagnostics.get("verified_evidence_count")),
+            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE", 0),
+        ),
+        (
+            "successful_llm_call_count",
+            _int_value(diagnostics.get("successful_llm_call_count")),
+            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESSFUL_LLM_CALLS", 0),
+        ),
+        (
+            "report_chars",
+            len(str(result.get("report_markdown") or "").strip()),
+            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_REPORT_CHARS", 0),
+        ),
+    ]
+    failed = [
+        f"{name}={actual} < {minimum}"
+        for name, actual, minimum in checks
+        if minimum > 0 and actual < minimum
+    ]
+    if not failed:
+        return None
+    return "Research quality gate failed: " + "; ".join(failed)
+
+
+def _int_value(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 def _checkpoint_resume_enabled() -> bool:
     return os.environ.get(_CHECKPOINT_RESUME_ENV_VAR, "").strip().lower() in {
         "1",
@@ -1346,11 +1404,12 @@ def _run_research_job(job_id: str) -> None:
         try:
             with _RESEARCH_ENV_LOCK:
                 with _research_preset_environment(
-                    job.preset,
-                    job.report_intensity,
-                    job.single_entity_detail_mode,
-                    job.search_provider,
-                    job.web_search_mode,
+                    preset=job.preset,
+                    report_intensity=job.report_intensity,
+                    single_entity_detail_mode=job.single_entity_detail_mode,
+                    relevance_judge=job.relevance_judge,
+                    search_provider=job.search_provider,
+                    web_search_mode=job.web_search_mode,
                 ):
                     state = _run_research_job_workflow(
                         job.query,
@@ -1358,6 +1417,15 @@ def _run_research_job(job_id: str) -> None:
                         job_id=job.id,
                     )
                     result = _build_research_json_payload(state)
+                    quality_failure = _research_job_quality_failure(job, result)
+                    if quality_failure is not None:
+                        mark_research_job_failed(
+                            job,
+                            finished_at=_current_utc_timestamp(),
+                            error=quality_failure,
+                            worker_id=worker_id,
+                        )
+                        return
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1386,12 +1454,12 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
         try:
             with _RESEARCH_ENV_LOCK:
                 with _research_preset_environment(
-                    job.preset,
-                    job.report_intensity,
-                    job.single_entity_detail_mode,
-                    job.relevance_judge,
-                    job.search_provider,
-                    job.web_search_mode,
+                    preset=job.preset,
+                    report_intensity=job.report_intensity,
+                    single_entity_detail_mode=job.single_entity_detail_mode,
+                    relevance_judge=job.relevance_judge,
+                    search_provider=job.search_provider,
+                    web_search_mode=job.web_search_mode,
                 ):
                     state = _run_research_job_workflow(
                         job.query,
@@ -1399,6 +1467,15 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                         job_id=job.id,
                     )
                     result = _build_research_json_payload(state)
+                    quality_failure = _research_job_quality_failure(job, result)
+                    if quality_failure is not None:
+                        mark_research_job_failed(
+                            job,
+                            finished_at=_current_utc_timestamp(),
+                            error=quality_failure,
+                            worker_id=worker_id,
+                        )
+                        return
         except Exception as e:
             import traceback
             traceback.print_exc()

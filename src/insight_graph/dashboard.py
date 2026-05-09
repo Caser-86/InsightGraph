@@ -819,6 +819,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
 
   <script>
     const LANGUAGE_STORAGE_KEY = 'insightgraph.dashboard.language';
+    const SETTINGS_VERSION_STORAGE_KEY = 'insightgraph.dashboard.settingsVersion';
+    const CURRENT_SETTINGS_VERSION = '2026-05-09-quota-safe-defaults';
     const I18N = {
       zh: {
         pageTitle: 'InsightGraph 仪表盘',
@@ -1314,12 +1316,23 @@ _DASHBOARD_HTML = r"""<!doctype html>
       },
     };
 
+    if (localStorage.getItem(SETTINGS_VERSION_STORAGE_KEY) !== CURRENT_SETTINGS_VERSION) {
+      [
+        'insightgraph.dashboard.preset',
+        'insightgraph.dashboard.intensity',
+        'insightgraph.dashboard.relevanceJudge',
+        'insightgraph.dashboard.searchProviders',
+        'insightgraph.dashboard.webSearchMode',
+      ].forEach((key) => localStorage.removeItem(key));
+      localStorage.setItem(SETTINGS_VERSION_STORAGE_KEY, CURRENT_SETTINGS_VERSION);
+    }
+
     els.language.value = state.language;
     const savedQuery = localStorage.getItem('insightgraph.dashboard.query');
     els.apiKey.value = localStorage.getItem('insightgraph.dashboard.apiKey') || '';
     els.query.value = savedQuery || t('defaultQuery');
-    els.preset.value = localStorage.getItem('insightgraph.dashboard.preset') || 'offline';
-    els.intensity.value = localStorage.getItem('insightgraph.dashboard.intensity') || 'standard';
+    els.preset.value = localStorage.getItem('insightgraph.dashboard.preset') || 'live-research';
+    els.intensity.value = localStorage.getItem('insightgraph.dashboard.intensity') || 'deep';
     els.singleEntityDetailMode.value =
       localStorage.getItem('insightgraph.dashboard.singleEntityDetailMode') || 'auto';
     els.relevanceJudge.value =
@@ -1337,7 +1350,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     }
     els.searchProviderAll.checked = els.searchProviderBoxes.every((box) => box.checked);
     els.webSearchMode.value =
-      localStorage.getItem('insightgraph.dashboard.webSearchMode') || 'auto';
+      localStorage.getItem('insightgraph.dashboard.webSearchMode') || 'on';
 
     function selectedSearchProviders() {
       return els.searchProviderBoxes

@@ -231,11 +231,24 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         text=True,
     )
     temp_path = Path(temp_name)
+    def _cleanup_temp_file() -> None:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except PermissionError:
+            pass
+
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
             json.dump(payload, file, indent=2, sort_keys=True)
             file.write("\n")
         os.replace(temp_path, path)
+    except PermissionError:
+        # Some Windows setups block os.replace on recently created temp files.
+        # Fall back to direct write to keep job submission available.
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(payload, file, indent=2, sort_keys=True)
+            file.write("\n")
+        _cleanup_temp_file()
     except OSError:
-        temp_path.unlink(missing_ok=True)
+        _cleanup_temp_file()
         raise

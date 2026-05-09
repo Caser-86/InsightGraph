@@ -258,6 +258,7 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
         preset=ResearchPreset(item["preset"]),
         report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
         single_entity_detail_mode=item.get("single_entity_detail_mode", "auto"),
+        relevance_judge=item.get("relevance_judge", "deterministic"),
         search_provider=item.get("search_provider", "auto"),
         web_search_mode=item.get("web_search_mode", "auto"),
         created_order=item["created_order"],
