@@ -29,6 +29,13 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
+# Load .env before any insight_graph imports that depend on env vars
+def _load_local_dotenv() -> None:
+    if "pytest" in sys.modules:
+        return
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+_load_local_dotenv()
+
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
     LIVE_RESEARCH_PRESET_DEFAULTS,
@@ -84,13 +91,7 @@ from insight_graph.research_jobs import (
 from insight_graph.state import GraphState
 
 
-def _load_local_dotenv() -> None:
-    if "pytest" in sys.modules:
-        return
-    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
-
-_load_local_dotenv()
 
 router = APIRouter()
 
