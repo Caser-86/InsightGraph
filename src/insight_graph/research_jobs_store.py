@@ -16,6 +16,7 @@ _REQUIRED_JOB_FIELDS = {
     "report_intensity",
     "single_entity_detail_mode",
     "relevance_judge",
+    "fetch_rendered",
     "search_provider",
     "web_search_mode",
     "created_order",
@@ -32,6 +33,7 @@ _LEGACY_JOB_FIELDS = _REQUIRED_JOB_FIELDS - {
     "report_intensity",
     "single_entity_detail_mode",
     "relevance_judge",
+    "fetch_rendered",
     "search_provider",
     "web_search_mode",
 }
@@ -40,6 +42,7 @@ _RESEARCH_PRESETS = {"offline", "live-llm", "live-research"}
 _REPORT_INTENSITIES = {"concise", "standard", "deep", "deep-plus"}
 _SINGLE_ENTITY_DETAIL_MODES = {"auto", "on", "off"}
 _RELEVANCE_JUDGES = {"deterministic", "openai_compatible"}
+_FETCH_RENDERED_MODES = {"auto", "on", "off"}
 _SEARCH_PROVIDER_MODES = {"auto", "all", "mock", "duckduckgo", "google", "serpapi"}
 _WEB_SEARCH_MODES = {"auto", "on", "off"}
 
@@ -87,6 +90,7 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
     )
     single_entity_detail_mode = getattr(job, "single_entity_detail_mode", "auto")
     relevance_judge = getattr(job, "relevance_judge", "deterministic")
+    fetch_rendered = getattr(job, "fetch_rendered", "auto")
     search_provider = getattr(job, "search_provider", "auto")
     web_search_mode = getattr(job, "web_search_mode", "auto")
     return {
@@ -96,6 +100,7 @@ def serialize_research_job(job: Any) -> dict[str, Any]:
         "report_intensity": report_intensity,
         "single_entity_detail_mode": single_entity_detail_mode,
         "relevance_judge": relevance_judge,
+        "fetch_rendered": fetch_rendered,
         "search_provider": search_provider,
         "web_search_mode": web_search_mode,
         "created_order": job.created_order,
@@ -146,13 +151,14 @@ def _load_job(item: object, restart_timestamp: str) -> dict[str, Any]:
     if not isinstance(item, dict):
         raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
     fields = set(item)
-    if fields != _REQUIRED_JOB_FIELDS and fields != _LEGACY_JOB_FIELDS:
+    if fields != _REQUIRED_JOB_FIELDS and not fields.issubset(_REQUIRED_JOB_FIELDS):
         raise ResearchJobsStoreError("Research jobs store job schema is invalid.")
     job = dict(item)
     job.setdefault("events", [])
     job.setdefault("report_intensity", "standard")
     job.setdefault("single_entity_detail_mode", "auto")
     job.setdefault("relevance_judge", "deterministic")
+    job.setdefault("fetch_rendered", "auto")
     job.setdefault("search_provider", "auto")
     job.setdefault("web_search_mode", "auto")
     _validate_job_values(job)
@@ -185,6 +191,11 @@ def _validate_job_values(job: dict[str, Any]) -> None:
         or job["relevance_judge"] not in _RELEVANCE_JUDGES
     ):
         raise ResearchJobsStoreError("Research jobs store job relevance judge is invalid.")
+    if (
+        not isinstance(job["fetch_rendered"], str)
+        or job["fetch_rendered"] not in _FETCH_RENDERED_MODES
+    ):
+        raise ResearchJobsStoreError("Research jobs store job fetch rendered mode is invalid.")
     if not isinstance(job["search_provider"], str):
         raise ResearchJobsStoreError("Research jobs store job search provider is invalid.")
     provider_expr = job["search_provider"].strip().lower()

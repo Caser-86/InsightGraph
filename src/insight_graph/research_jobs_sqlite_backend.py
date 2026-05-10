@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS research_jobs (
     report_intensity TEXT NOT NULL DEFAULT 'standard',
     single_entity_detail_mode TEXT NOT NULL DEFAULT 'auto',
     relevance_judge TEXT NOT NULL DEFAULT 'deterministic',
+    fetch_rendered TEXT NOT NULL DEFAULT 'auto',
     search_provider TEXT NOT NULL DEFAULT 'auto',
     web_search_mode TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL CHECK (
@@ -65,6 +66,7 @@ def job_to_row(job: ResearchJob) -> dict[str, Any]:
         "report_intensity": job.report_intensity.value,
         "single_entity_detail_mode": job.single_entity_detail_mode,
         "relevance_judge": job.relevance_judge,
+        "fetch_rendered": job.fetch_rendered,
         "search_provider": job.search_provider,
         "web_search_mode": job.web_search_mode,
         "status": job.status,
@@ -91,6 +93,7 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         report_intensity=ReportIntensity(row["report_intensity"]),
         single_entity_detail_mode=row["single_entity_detail_mode"] or "auto",
         relevance_judge=row["relevance_judge"] if "relevance_judge" in row.keys() else "deterministic",
+        fetch_rendered=row["fetch_rendered"] if "fetch_rendered" in row.keys() else "auto",
         search_provider=row["search_provider"] or "auto",
         web_search_mode=row["web_search_mode"] or "auto",
         created_order=row["created_order"],
@@ -121,6 +124,10 @@ def ensure_lease_columns(connection: sqlite3.Connection) -> None:
         "relevance_judge": (
             "ALTER TABLE research_jobs "
             "ADD COLUMN relevance_judge TEXT NOT NULL DEFAULT 'deterministic'"
+        ),
+        "fetch_rendered": (
+            "ALTER TABLE research_jobs "
+            "ADD COLUMN fetch_rendered TEXT NOT NULL DEFAULT 'auto'"
         ),
         "search_provider": (
             "ALTER TABLE research_jobs "
@@ -406,6 +413,7 @@ class SQLiteResearchJobsBackend:
         report_intensity: ReportIntensity = ReportIntensity.standard,
         single_entity_detail_mode: str = "auto",
         relevance_judge: str = "deterministic",
+        fetch_rendered: str = "auto",
         search_provider: str = "auto",
         web_search_mode: str = "auto",
         created_at: str,
@@ -435,6 +443,7 @@ class SQLiteResearchJobsBackend:
                 report_intensity=report_intensity,
                 single_entity_detail_mode=single_entity_detail_mode,
                 relevance_judge=relevance_judge,
+                fetch_rendered=fetch_rendered,
                 search_provider=search_provider,
                 web_search_mode=web_search_mode,
                 created_order=next_sequence,
@@ -444,13 +453,13 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT INTO research_jobs (
                     id, query, preset, report_intensity, single_entity_detail_mode,
-                    relevance_judge, search_provider, web_search_mode,
+                    relevance_judge, fetch_rendered, search_provider, web_search_mode,
                     status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
-                    :relevance_judge, :search_provider, :web_search_mode,
+                    :relevance_judge, :fetch_rendered, :search_provider, :web_search_mode,
                     :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count

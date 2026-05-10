@@ -80,6 +80,7 @@ class ResearchJob:
     report_intensity: ReportIntensity = ReportIntensity.standard
     single_entity_detail_mode: SingleEntityDetailMode = "auto"
     relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic"
+    fetch_rendered: Literal["auto", "on", "off"] = "auto"
     search_provider: SearchProviderMode = "auto"
     web_search_mode: WebSearchMode = "auto"
     status: str = RESEARCH_JOB_STATUS_QUEUED
@@ -259,6 +260,7 @@ def _research_job_from_store(item: dict[str, Any]) -> ResearchJob:
         report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
         single_entity_detail_mode=item.get("single_entity_detail_mode", "auto"),
         relevance_judge=item.get("relevance_judge", "deterministic"),
+        fetch_rendered=item.get("fetch_rendered", "auto"),
         search_provider=item.get("search_provider", "auto"),
         web_search_mode=item.get("web_search_mode", "auto"),
         created_order=item["created_order"],
@@ -485,6 +487,7 @@ def create_research_job(
     report_intensity: ReportIntensity = ReportIntensity.standard,
     single_entity_detail_mode: SingleEntityDetailMode = "auto",
     relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic",
+    fetch_rendered: Literal["auto", "on", "off"] = "auto",
     search_provider: SearchProviderMode = "auto",
     web_search_mode: WebSearchMode = "auto",
 ) -> dict[str, str]:
@@ -500,6 +503,7 @@ def create_research_job(
                     report_intensity=report_intensity,
                     single_entity_detail_mode=single_entity_detail_mode,
                     relevance_judge=relevance_judge,
+                    fetch_rendered=fetch_rendered,
                     search_provider=search_provider,
                     web_search_mode=web_search_mode,
                     created_at=created_at,
@@ -526,6 +530,7 @@ def create_research_job(
             report_intensity=report_intensity,
             single_entity_detail_mode=single_entity_detail_mode,
             relevance_judge=relevance_judge,
+            fetch_rendered=fetch_rendered,
             search_provider=search_provider,
             web_search_mode=web_search_mode,
             created_order=_NEXT_JOB_SEQUENCE,

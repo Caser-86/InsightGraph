@@ -455,6 +455,23 @@ INSIGHT_GRAPH_SEARCH_PROXY=http://127.0.0.1:7890
 
 `INSIGHT_GRAPH_SEARCH_PROXY` 可选，也支持 `DDGS_PROXY`。没有代理时会直接调用 `ddgs.DDGS().text(...)`。
 
+### 网页渲染模式
+
+部分网站使用 JavaScript 动态渲染内容，普通 HTTP 抓取会失败。启用渲染模式后，系统使用 Chromium 浏览器抓取完整页面：
+
+```env
+INSIGHT_GRAPH_FETCH_RENDERED=1
+```
+
+**依赖安装：**
+
+```bash
+pip install playwright
+python -m playwright install chromium
+```
+
+**注意：** 渲染模式会增加抓取时间（每页约 10 秒），建议仅在普通抓取成功率低时启用。
+
 ### 数量与预算控制
 
 搜索结果数量、网页抓取数量、工具调用数量是不同的预算层：

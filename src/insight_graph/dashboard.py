@@ -731,6 +731,13 @@ _DASHBOARD_HTML = r"""<!doctype html>
                 <option value="openai_compatible" data-i18n="relevanceJudgeLLM">LLM判断（准确但慢）</option>
               </select>
             </label>
+            <label class="setting-card"><span class="setting-head"><span class="setting-icon">F</span><span data-i18n="fetchRenderedLabel">网页渲染模式</span></span>
+              <select id="fetch-rendered-input">
+                <option value="auto" data-i18n="fetchRenderedAuto">自动（跟随预设）</option>
+                <option value="on" data-i18n="fetchRenderedOn">开启（浏览器抓取）</option>
+                <option value="off" data-i18n="fetchRenderedOff">关闭（普通抓取）</option>
+              </select>
+            </label>
             <div class="setting-card">
               <div class="collapsible-group" id="search-providers-group">
                 <button id="search-providers-toggle" class="collapsible-toggle" type="button" aria-expanded="false" data-i18n="searchProviderModeLabel">搜索引擎（可多选）</button>
@@ -846,6 +853,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         relevanceJudgeLabel: '证据相关性判断',
         relevanceJudgeDeterministic: '快速模式（仅格式检查）',
         relevanceJudgeLLM: 'LLM判断（准确但慢）',
+        fetchRenderedLabel: '网页渲染模式',
+        fetchRenderedAuto: '自动（跟随预设）',
+        fetchRenderedOn: '开启（浏览器抓取）',
+        fetchRenderedOff: '关闭（普通抓取）',
         searchProviderModeLabel: '搜索引擎（可多选）',
         searchProviderAll: '全选',
         webSearchModeLabel: '网页搜索开关',
@@ -1038,6 +1049,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
         relevanceJudgeLabel: 'Evidence relevance judge',
         relevanceJudgeDeterministic: 'Fast mode (format check only)',
         relevanceJudgeLLM: 'LLM judge (accurate but slow)',
+        fetchRenderedLabel: 'Page render mode',
+        fetchRenderedAuto: 'Auto (follow preset)',
+        fetchRenderedOn: 'On (browser fetch)',
+        fetchRenderedOff: 'Off (plain fetch)',
         searchProviderModeLabel: 'Search providers (multi-select)',
         searchProviderAll: 'Select all',
         webSearchModeLabel: 'Web search mode',
@@ -1286,6 +1301,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
       intensity: document.getElementById('intensity-input'),
       singleEntityDetailMode: document.getElementById('single-entity-detail-mode-input'),
       relevanceJudge: document.getElementById('relevance-judge-input'),
+      fetchRendered: document.getElementById('fetch-rendered-input'),
       searchProvidersGroup: document.getElementById('search-providers-group'),
       searchProvidersToggle: document.getElementById('search-providers-toggle'),
       searchProvidersBody: document.getElementById('search-providers-body'),
@@ -1337,6 +1353,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
       localStorage.getItem('insightgraph.dashboard.singleEntityDetailMode') || 'auto';
     els.relevanceJudge.value =
       localStorage.getItem('insightgraph.dashboard.relevanceJudge') || 'deterministic';
+    els.fetchRendered.value =
+      localStorage.getItem('insightgraph.dashboard.fetchRendered') || 'auto';
     const savedProvidersRaw = localStorage.getItem('insightgraph.dashboard.searchProviders');
     const savedProviders = savedProvidersRaw
       ? savedProvidersRaw.split(',').map((item) => item.trim()).filter(Boolean)
@@ -1982,6 +2000,10 @@ _DASHBOARD_HTML = r"""<!doctype html>
           els.relevanceJudge.value
         );
         localStorage.setItem(
+          'insightgraph.dashboard.fetchRendered',
+          els.fetchRendered.value
+        );
+        localStorage.setItem(
           'insightgraph.dashboard.searchProviders',
           selectedSearchProviders().join(',')
         );
@@ -2034,6 +2056,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
             report_intensity: els.intensity.value,
             single_entity_detail_mode: els.singleEntityDetailMode.value,
             relevance_judge: els.relevanceJudge.value,
+            fetch_rendered: els.fetchRendered.value,
             search_provider: selectedSearchProviders().length === els.searchProviderBoxes.length
               ? 'all'
               : selectedSearchProviders().join(','),

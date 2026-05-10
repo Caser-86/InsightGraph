@@ -137,6 +137,7 @@ class ResearchRequest(BaseModel):
     report_intensity: ReportIntensity | None = None
     single_entity_detail_mode: Literal["auto", "on", "off"] = "auto"
     relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic"
+    fetch_rendered: Literal["auto", "on", "off"] = "auto"
     search_provider: str = "auto"
     web_search_mode: Literal["auto", "on", "off"] = "auto"
 
@@ -373,6 +374,7 @@ def _research_preset_environment(
     report_intensity: ReportIntensity | None = None,
     single_entity_detail_mode: Literal["auto", "on", "off"] = "auto",
     relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic",
+    fetch_rendered: Literal["auto", "on", "off"] = "auto",
     search_provider: str = "auto",
     web_search_mode: Literal["auto", "on", "off"] = "auto",
 ) -> Iterator[None]:
@@ -399,6 +401,7 @@ def _research_preset_environment(
     mode_env = {
         "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
         "INSIGHT_GRAPH_RELEVANCE_JUDGE",
+        "INSIGHT_GRAPH_FETCH_RENDERED",
         "INSIGHT_GRAPH_SEARCH_PROVIDER",
         "INSIGHT_GRAPH_SEARCH_PROVIDERS",
         "INSIGHT_GRAPH_USE_WEB_SEARCH",
@@ -414,6 +417,10 @@ def _research_preset_environment(
             apply_report_intensity_defaults(report_intensity, overwrite=True)
         os.environ["INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE"] = single_entity_detail_mode
         os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] = relevance_judge
+        if fetch_rendered == "on":
+            os.environ["INSIGHT_GRAPH_FETCH_RENDERED"] = "1"
+        elif fetch_rendered == "off":
+            os.environ["INSIGHT_GRAPH_FETCH_RENDERED"] = "0"
         if search_provider != "auto":
             normalized = search_provider.strip().lower()
             providers = [part.strip() for part in normalized.split(",") if part.strip()]
@@ -958,6 +965,7 @@ def research(request: ResearchRequest) -> dict[str, Any]:
                 request.report_intensity or ReportIntensity.standard,
                 request.single_entity_detail_mode,
                 request.relevance_judge,
+                request.fetch_rendered,
                 request.search_provider,
                 request.web_search_mode,
             ):
@@ -1048,6 +1056,7 @@ def create_research_job(request: ResearchRequest) -> dict[str, str]:
         report_intensity=request.report_intensity or ReportIntensity.standard,
         single_entity_detail_mode=request.single_entity_detail_mode,
         relevance_judge=request.relevance_judge,
+        fetch_rendered=request.fetch_rendered,
         search_provider=request.search_provider,
         web_search_mode=request.web_search_mode,
         created_at=_current_utc_timestamp(),
@@ -1408,6 +1417,7 @@ def _run_research_job(job_id: str) -> None:
                     report_intensity=job.report_intensity,
                     single_entity_detail_mode=job.single_entity_detail_mode,
                     relevance_judge=job.relevance_judge,
+                    fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
                     search_provider=job.search_provider,
                     web_search_mode=job.web_search_mode,
                 ):
