@@ -767,11 +767,14 @@ def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | Non
     if not isinstance(diagnostics, dict):
         diagnostics = {}
 
+    serpapi_enabled = bool(os.getenv("INSIGHT_GRAPH_SERPAPI_KEY", "").strip())
+    default_evidence_threshold = 12 if serpapi_enabled else 10
+
     checks = [
         (
             "evidence_count",
             _int_value(diagnostics.get("evidence_count")),
-            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE", 0),
+            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE", default_evidence_threshold),
         ),
         (
             "verified_evidence_count",
