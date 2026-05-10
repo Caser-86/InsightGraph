@@ -61,6 +61,7 @@ from insight_graph.research_jobs import (
     configure_research_jobs_backend_from_env,
     heartbeat_research_job,
     initialize_research_jobs,
+    is_research_job_cancelled,
     mark_research_job_failed,
     mark_research_job_running,
     mark_research_job_succeeded,
@@ -77,9 +78,7 @@ from insight_graph.research_jobs import (
     delete_research_job as delete_research_job_record,
 )
 from insight_graph.research_jobs import (
-    is_research_job_cancelled,
-    research_jobs_worker_id,
-    using_sqlite_research_jobs_backend,
+    get_research_job as get_research_job_record,
 )
 from insight_graph.research_jobs import (
     list_research_jobs as list_research_job_records,
