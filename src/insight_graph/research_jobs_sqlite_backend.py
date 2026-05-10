@@ -481,19 +481,27 @@ class SQLiteResearchJobsBackend:
             if current is None:
                 connection.rollback()
                 return None
-            if current["status"] != "queued":
+            if current["status"] not in ("queued", "running"):
                 connection.rollback()
-                raise ValueError("Only queued research jobs can be cancelled")
+                raise ValueError("Only queued or running research jobs can be cancelled")
             connection.execute(
                 """
                 UPDATE research_jobs
                 SET status = 'cancelled', finished_at = ?
-                WHERE id = ? AND status = 'queued'
+                WHERE id = ? AND status IN ('queued', 'running')
                 """,
                 (finished_at, job_id),
             )
             connection.commit()
         return self.get(job_id)
+
+    def is_cancelled(self, job_id: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT status FROM research_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            return row is not None and row["status"] == "cancelled"
 
     def _requeue_expired_running(
         self,

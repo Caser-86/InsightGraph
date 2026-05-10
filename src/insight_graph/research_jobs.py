@@ -591,7 +591,7 @@ def cancel_research_job(job_id: str, finished_at: str) -> dict[str, Any]:
             except ValueError as exc:
                 raise HTTPException(
                     status_code=409,
-                    detail="Only queued research jobs can be cancelled.",
+                    detail="Only queued or running research jobs can be cancelled.",
                 ) from exc
             if job is None:
                 raise HTTPException(status_code=404, detail="Research job not found.")
@@ -599,10 +599,10 @@ def cancel_research_job(job_id: str, finished_at: str) -> dict[str, Any]:
         job = _JOBS.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Research job not found.")
-        if job.status != RESEARCH_JOB_STATUS_QUEUED:
+        if job.status not in (RESEARCH_JOB_STATUS_QUEUED, RESEARCH_JOB_STATUS_RUNNING):
             raise HTTPException(
                 status_code=409,
-                detail="Only queued research jobs can be cancelled.",
+                detail="Only queued or running research jobs can be cancelled.",
             )
         snapshot = _research_jobs_state_snapshot_locked()
         previous_status = job.status
@@ -618,6 +618,14 @@ def cancel_research_job(job_id: str, finished_at: str) -> dict[str, Any]:
             _restore_research_jobs_state_locked(snapshot)
             raise
         return _job_detail(job, _queued_job_positions_locked())
+
+
+def is_research_job_cancelled(job_id: str) -> bool:
+    with _JOBS_LOCK:
+        if _using_sqlite_research_jobs_backend():
+            return _RESEARCH_JOBS_BACKEND.is_cancelled(job_id)
+        job = _JOBS.get(job_id)
+        return job is not None and job.status == RESEARCH_JOB_STATUS_CANCELLED
 
 
 def get_research_job(job_id: str) -> dict[str, Any]:

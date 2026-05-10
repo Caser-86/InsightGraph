@@ -911,7 +911,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         streamFailed: '事件流失败。',
         streamFallback: '事件流不可用，正在使用轮询回退。',
         selectJob: '选择一个任务查看详情。',
-        cancelQueuedJob: '取消排队任务',
+        cancelQueuedJob: '取消任务',
+        cancelRunningJob: '取消运行中任务',
         retryJob: '重试失败/已取消任务',
         progressLabel: '任务进度',
         statusLabel: '状态',
@@ -1107,7 +1108,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         streamFailed: 'Stream failed.',
         streamFallback: 'Stream unavailable; using polling fallback.',
         selectJob: 'Select a job to inspect.',
-        cancelQueuedJob: 'Cancel queued job',
+        cancelQueuedJob: 'Cancel job',
+        cancelRunningJob: 'Cancel running job',
         retryJob: 'Retry failed/cancelled',
         progressLabel: 'Job progress',
         statusLabel: 'Status',
@@ -1804,10 +1806,14 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (!detail) return `<div class="empty">${escapeHtml(t('selectJob'))}</div>`;
       const result = detail.result || {};
       const critique = result.critique || {};
+      const isTerminal = ['succeeded', 'failed', 'cancelled'].includes(detail.status);
+      const canCancel = ['queued', 'running'].includes(detail.status);
+      const cancelBtn = canCancel ? `<button id="cancel-job" class="btn danger" type="button">${escapeHtml(t('cancelQueuedJob'))}</button>` : '';
+      const retryBtn = isTerminal ? `<button id="retry-job" class="btn ghost" type="button">${escapeHtml(t('retryJob'))}</button>` : '';
       return `
         <div class="detail-actions">
-          <button id="cancel-job" class="btn danger" type="button">${escapeHtml(t('cancelQueuedJob'))}</button>
-          <button id="retry-job" class="btn ghost" type="button">${escapeHtml(t('retryJob'))}</button>
+          ${cancelBtn}
+          ${retryBtn}
         </div>
         ${renderProgressTimeline(detail)}
         <div class="overview-grid">

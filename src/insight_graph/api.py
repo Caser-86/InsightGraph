@@ -77,7 +77,9 @@ from insight_graph.research_jobs import (
     delete_research_job as delete_research_job_record,
 )
 from insight_graph.research_jobs import (
-    get_research_job as get_research_job_record,
+    is_research_job_cancelled,
+    research_jobs_worker_id,
+    using_sqlite_research_jobs_backend,
 )
 from insight_graph.research_jobs import (
     list_research_jobs as list_research_job_records,
@@ -1439,6 +1441,8 @@ def _run_research_job(job_id: str) -> None:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            if is_research_job_cancelled(job.id):
+                return
             mark_research_job_failed(
                 job,
                 finished_at=_current_utc_timestamp(),
@@ -1447,6 +1451,8 @@ def _run_research_job(job_id: str) -> None:
             )
             return
 
+        if is_research_job_cancelled(job.id):
+            return
         mark_research_job_succeeded(
             job,
             finished_at=_current_utc_timestamp(),
@@ -1489,6 +1495,8 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            if is_research_job_cancelled(job.id):
+                return
             mark_research_job_failed(
                 job,
                 finished_at=_current_utc_timestamp(),
@@ -1497,6 +1505,8 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
             )
             return
 
+        if is_research_job_cancelled(job.id):
+            return
         mark_research_job_succeeded(
             job,
             finished_at=_current_utc_timestamp(),
