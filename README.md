@@ -570,6 +570,25 @@ curl -X POST http://127.0.0.1:8001/research/jobs \
 
 Dashboard 支持任务列表、实时事件、报告查看、证据池、引用支持、URL validation、LLM 日志、运行诊断和 Markdown/HTML 下载。
 
+Memory API 也已可用，适合查看、检索和删除长期记忆记录：
+
+```bash
+curl http://127.0.0.1:8001/memory
+curl -X POST http://127.0.0.1:8001/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Xiaomi EV supply chain", "limit": 5}'
+curl -X DELETE http://127.0.0.1:8001/memory/<memory_id>
+```
+
+如果你希望 API 进程重启后自动继续处理 SQLite 中排队/过期租约任务，可额外开启：
+
+```bash
+set INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite
+set INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=data/research_jobs.db
+set INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1
+set INSIGHT_GRAPH_CHECKPOINT_RESUME=1
+```
+
 ## 运行诊断
 
 `--output-json` 和 Dashboard 会暴露安全的运行诊断字段，包括：

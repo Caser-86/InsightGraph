@@ -2,6 +2,9 @@
 
 InsightGraph 提供 REST API 用于远程研究任务管理和实时进度监控。所有端点支持 JSON 请求/响应。
 
+> Note
+> `docs/research-jobs-api.md` is the canonical reference for current async job lifecycle, cancel/retry semantics, restart/resume behavior, and memory endpoints. If examples in this file differ, prefer `docs/research-jobs-api.md`.
+
 ## OpenAPI / Swagger
 
 实时 API 文档可在运行时访问：

@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 .pytest-tmp*/
+.pytest_tmp*/
 .ruff_cache/
 .coverage
 htmlcov/
@@ -19,4 +20,6 @@ reports/ai-coding-agents-technical-review.md
 .env
 debug.log
 *.db
+data/research_jobs.json
+data/.research_jobs.json.*.tmp
 memory/CLAUDE.md.original.md

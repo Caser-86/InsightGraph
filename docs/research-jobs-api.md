@@ -13,8 +13,11 @@ If `INSIGHT_GRAPH_API_KEY` is configured, all research job endpoints require `Au
 - `WS /research/jobs/{job_id}/stream` streams safe job snapshots for dashboard updates.
 - `GET /research/jobs/{job_id}/report.md` downloads a completed Markdown report.
 - `GET /research/jobs/{job_id}/report.html` downloads an escaped HTML report.
-- `POST /research/jobs/{job_id}/cancel` cancels a queued job.
+- `POST /research/jobs/{job_id}/cancel` cancels a queued or running job.
 - `POST /research/jobs/{job_id}/retry` creates a new queued job from a failed or cancelled job.
+- `GET /memory` lists retained memory records.
+- `POST /memory/search` searches memory records.
+- `DELETE /memory/{memory_id}` deletes one memory record.
 
 ## Create job
 
@@ -239,11 +242,13 @@ content only. Jobs without an available report return `409`:
 curl -X POST http://127.0.0.1:8000/research/jobs/job-123/cancel
 ```
 
-Only queued jobs are cancellable. Running or terminal jobs return `409`:
+Queued and running jobs are cancellable. Terminal jobs return `409`:
 
 ```json
-{"detail":"Only queued research jobs can be cancelled."}
+{"detail":"Only queued or running research jobs can be cancelled."}
 ```
+
+Successful cancel returns the normal job detail payload with `status: "cancelled"`.
 
 ## Retry
 
@@ -303,3 +308,29 @@ If configured storage fails while creating the retry job, retry returns `500`:
 - `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`: use SQLite storage.
 - `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`: required when backend is `sqlite`.
 - `INSIGHT_GRAPH_RESEARCH_JOBS_PATH=/path/jobs.json`: existing JSON metadata path. With SQLite selected, this is only used as an optional import source during startup initialization.
+
+## Memory API
+
+Memory management respects the same API key rules as other non-`/health` endpoints.
+
+List memory records:
+
+```bash
+curl http://127.0.0.1:8000/memory
+```
+
+Search memory records:
+
+```bash
+curl -X POST http://127.0.0.1:8000/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Xiaomi SU7 deliveries", "limit": 5}'
+```
+
+Delete one memory record:
+
+```bash
+curl -X DELETE http://127.0.0.1:8000/memory/memory-123
+```
+
+When `INSIGHT_GRAPH_MEMORY_WRITEBACK=1`, successful reports can write summary, entity, supported-claim, reference, and source-reliability memory records into the configured memory backend.
