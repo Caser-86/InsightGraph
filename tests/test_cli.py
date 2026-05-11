@@ -181,6 +181,13 @@ def test_cli_report_intensity_overrides_runtime_budget(monkeypatch) -> None:
     }
     payload = json.loads(result.output)
     assert payload["runtime_diagnostics"]["report_intensity"] == "deep"
+    assert payload["runtime_diagnostics"]["search_provider_expression"] == "mock"
+    assert payload["runtime_diagnostics"]["resolved_search_providers"] == ["mock"]
+    assert payload["runtime_diagnostics"]["serpapi_enabled"] is False
+    assert payload["runtime_diagnostics"]["research_jobs_backend"] == "memory"
+    assert payload["runtime_diagnostics"]["research_jobs_json_path"] is None
+    assert payload["runtime_diagnostics"]["research_jobs_sqlite_path"] is None
+    assert payload["runtime_diagnostics"]["event_retention_limit"] is None
     assert "INSIGHT_GRAPH_SEARCH_PROVIDER" not in os.environ
     assert "INSIGHT_GRAPH_RELEVANCE_FILTER" not in os.environ
     assert "INSIGHT_GRAPH_RELEVANCE_JUDGE" not in os.environ

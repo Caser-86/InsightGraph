@@ -12,6 +12,12 @@ from dotenv import load_dotenv
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.llm.config import resolve_llm_config
+from insight_graph.research_jobs_store import (
+    ResearchJobsStoreError,
+    research_jobs_backend_from_env,
+    research_jobs_path_from_env,
+    research_jobs_sqlite_path_from_env,
+)
 from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.report_quality.intensity import (
     ReportIntensity,
@@ -19,7 +25,10 @@ from insight_graph.report_quality.intensity import (
     get_report_intensity,
 )
 from insight_graph.state import GraphState, LLMCallRecord
-from insight_graph.tools.search_providers import get_search_quota_snapshot
+from insight_graph.tools.search_providers import (
+    get_search_quota_snapshot,
+    resolve_search_providers,
+)
 
 app = typer.Typer(help="InsightGraph research workflow CLI")
 
@@ -257,9 +266,14 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
     citation_summary = _citation_support_summary(state)
     fact_mapping = build_fact_conclusion_mapping(state)
     topic_coverage_ratio = _topic_coverage_ratio(state.section_collection_status)
+    search_provider_expression = _search_provider_expression()
+    resolved_search_providers = _safe_resolved_search_providers(search_provider_expression)
     return {
         "search_provider": os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock"),
+        "search_provider_expression": search_provider_expression,
         "search_providers": os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDERS"),
+        "resolved_search_providers": resolved_search_providers,
+        "serpapi_enabled": "serpapi" in resolved_search_providers,
         "search_limit": _int_env("INSIGHT_GRAPH_SEARCH_LIMIT"),
         "use_web_search": _truthy_env("INSIGHT_GRAPH_USE_WEB_SEARCH"),
         "use_github_search": _truthy_env("INSIGHT_GRAPH_USE_GITHUB_SEARCH"),
@@ -316,6 +330,10 @@ def _build_runtime_diagnostics(state: GraphState) -> dict[str, object]:
         "conclusion_count": fact_mapping.get("conclusion_count", 0),
         "collection_rounds": state.collection_rounds,
         "search_quota": get_search_quota_snapshot(),
+        "research_jobs_backend": _safe_research_jobs_backend(),
+        "research_jobs_json_path": _safe_research_jobs_json_path(),
+        "research_jobs_sqlite_path": _safe_research_jobs_sqlite_path(),
+        "event_retention_limit": _int_env("INSIGHT_GRAPH_RESEARCH_JOB_EVENT_LIMIT"),
     }
 
 
@@ -339,6 +357,49 @@ def _safe_llm_config() -> dict[str, object]:
 
 def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _search_provider_expression() -> str:
+    providers = os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDERS", "").strip().lower()
+    if providers:
+        return providers
+    provider = os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock").strip().lower()
+    return provider or "mock"
+
+
+def _safe_resolved_search_providers(expression: str) -> list[str]:
+    try:
+        return resolve_search_providers(expression)
+    except ValueError:
+        valid = {"mock", "duckduckgo", "google", "serpapi"}
+        providers: list[str] = []
+        for part in expression.split(","):
+            name = part.strip().lower()
+            if name in valid and name not in providers:
+                providers.append(name)
+        return providers or ["mock"]
+
+
+def _safe_research_jobs_backend() -> str:
+    try:
+        return research_jobs_backend_from_env()
+    except ResearchJobsStoreError:
+        return "unknown"
+
+
+def _safe_research_jobs_json_path() -> str | None:
+    path = research_jobs_path_from_env()
+    if path is None:
+        return None
+    return str(path)
+
+
+def _safe_research_jobs_sqlite_path() -> str | None:
+    try:
+        path = research_jobs_sqlite_path_from_env()
+    except ResearchJobsStoreError:
+        return None
+    return str(path)
 
 
 def _int_env(name: str) -> int | None:

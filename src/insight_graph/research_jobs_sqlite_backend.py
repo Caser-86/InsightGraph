@@ -159,7 +159,11 @@ class SQLiteResearchJobsBackend:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self._path)
+        connection = sqlite3.connect(self._path, timeout=30)
+        # Some Windows environments reject journal deletion during commit.
+        # PERSIST keeps atomic rollback behavior without unlinking the journal.
+        connection.execute("PRAGMA journal_mode=PERSIST")
+        connection.execute("PRAGMA busy_timeout=30000")
         connection.row_factory = sqlite3.Row
         try:
             yield connection

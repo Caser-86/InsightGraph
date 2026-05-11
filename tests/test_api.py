@@ -418,6 +418,110 @@ def make_api_state(query: str) -> GraphState:
     )
 
 
+def test_research_job_quality_gate_uses_multi_provider_serpapi_threshold(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "1")
+    job = jobs_module.ResearchJob(
+        id="quality-serpapi",
+        query="Quality",
+        preset=api_module.ResearchPreset.live_research,
+        created_order=1,
+        created_at="2026-05-01T00:00:00Z",
+        report_intensity=api_module.ReportIntensity.standard,
+        search_provider="duckduckgo,serpapi",
+    )
+    result = {
+        "runtime_diagnostics": {
+            "evidence_count": 19,
+            "verified_evidence_count": 12,
+            "successful_llm_call_count": 4,
+        },
+        "report_markdown": "x" * 9000,
+    }
+
+    failure = api_module._research_job_quality_failure(job, result)
+
+    assert failure is not None
+    assert "evidence_count=19 < 20" in failure
+
+
+def test_publish_research_job_event_uses_dynamic_retention_by_intensity() -> None:
+    jobs_module.reset_research_jobs_state()
+    concise_job = jobs_module.ResearchJob(
+        id="concise-retention",
+        query="Concise retention",
+        preset=api_module.ResearchPreset.offline,
+        report_intensity=api_module.ReportIntensity.concise,
+        created_order=1,
+        created_at="2026-05-01T00:00:00Z",
+    )
+    deep_job = jobs_module.ResearchJob(
+        id="deep-retention",
+        query="Deep retention",
+        preset=api_module.ResearchPreset.offline,
+        report_intensity=api_module.ReportIntensity.deep,
+        created_order=2,
+        created_at="2026-05-01T00:00:01Z",
+    )
+    jobs_module.seed_research_jobs([concise_job, deep_job], next_job_sequence=2)
+    api_module._clear_research_job_events(concise_job.id)
+    api_module._clear_research_job_events(deep_job.id)
+
+    for index in range(150):
+        api_module._publish_research_job_event(
+            concise_job.id,
+            {"type": "tool_call", "stage": "collector", "trace_id": f"c-{index}"},
+        )
+        api_module._publish_research_job_event(
+            deep_job.id,
+            {"type": "tool_call", "stage": "collector", "trace_id": f"d-{index}"},
+        )
+
+    assert len(api_module._cached_research_job_events(concise_job.id)) == 100
+    assert len(api_module._cached_research_job_events(deep_job.id)) == 150
+
+
+def test_run_research_job_emits_structured_failure_event_without_raw_error(
+    monkeypatch,
+) -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="structured-failure",
+        query="Structured failure",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-05-01T00:00:00Z",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    monkeypatch.setattr(
+        api_module,
+        "_current_utc_timestamp",
+        timestamp_sequence("2026-05-01T00:00:01Z", "2026-05-01T00:00:02Z"),
+    )
+
+    def fail_run_research_with_events(query: str, emit_event, **kwargs) -> GraphState:
+        emit_event({"type": "stage_started", "stage": "planner"})
+        raise RuntimeError("secret provider payload")
+
+    monkeypatch.setattr(
+        api_module,
+        "run_research_with_events",
+        fail_run_research_with_events,
+    )
+
+    api_module._run_research_job(job.id)
+
+    detail = jobs_module.get_research_job(job.id)
+    assert detail["status"] == "failed"
+    assert detail["error"] == "Research workflow failed."
+    events = detail["events"]
+    assert any(event.get("type") == "job_failed" for event in events)
+    failure_event = next(event for event in events if event.get("type") == "job_failed")
+    assert failure_event["error_kind"] == "workflow_exception"
+    assert failure_event["error_code"] == "RuntimeError"
+    assert failure_event["stage"] == "planner"
+    assert "secret provider payload" not in str(events)
+
+
 def timestamp_sequence(*values: str):
     iterator = iter(values)
     return lambda: next(iterator)

@@ -69,6 +69,7 @@ def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
 ) -> None:
     db_path = tmp_path / "jobs.sqlite3"
     with sqlite3.connect(db_path) as connection:
+        connection.execute("PRAGMA journal_mode=PERSIST")
         connection.executescript(
             """
             CREATE TABLE research_jobs (

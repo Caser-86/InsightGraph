@@ -50,6 +50,7 @@ from insight_graph.persistence.checkpoints import get_checkpoint_store
 from insight_graph.report_quality.intensity import (
     ReportIntensity,
     apply_report_intensity_defaults,
+    get_report_intensity_config,
 )
 from insight_graph.research_jobs import (
     RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
@@ -81,6 +82,9 @@ from insight_graph.research_jobs import (
     get_research_job as get_research_job_record,
 )
 from insight_graph.research_jobs import (
+    get_research_job_record as lookup_research_job_record,
+)
+from insight_graph.research_jobs import (
     list_research_jobs as list_research_job_records,
 )
 from insight_graph.research_jobs import (
@@ -90,6 +94,7 @@ from insight_graph.research_jobs import (
     summarize_research_jobs as summarize_research_jobs_state,
 )
 from insight_graph.state import GraphState
+from insight_graph.tools.search_providers import resolve_search_providers
 
 
 
@@ -626,19 +631,43 @@ def _clear_research_job_events(job_id: str) -> None:
 
 
 def _publish_research_job_event(job_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    event_limit = _research_job_event_limit(job_id)
     with _RESEARCH_JOB_EVENT_LOCK:
         events = _RESEARCH_JOB_EVENTS.setdefault(job_id, [])
         event_with_sequence = {**event, "sequence": _next_research_job_event_sequence(job_id)}
         events.append(event_with_sequence)
-        del events[:-_RESEARCH_JOB_EVENT_LIMIT]
+        del events[:-event_limit]
         for subscriber in _RESEARCH_JOB_EVENT_SUBSCRIBERS.get(job_id, []):
             subscriber.put(event_with_sequence)
     append_research_job_event(
         job_id,
         event_with_sequence,
-        limit=_RESEARCH_JOB_EVENT_LIMIT,
+        limit=event_limit,
     )
     return event_with_sequence
+
+
+def _research_job_event_limit(job_id: str) -> int:
+    override = os.getenv("INSIGHT_GRAPH_RESEARCH_JOB_EVENT_LIMIT", "").strip()
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    job = lookup_research_job_record(job_id)
+    intensity = ReportIntensity.standard
+    if job is not None:
+        intensity = getattr(job, "report_intensity", ReportIntensity.standard)
+    return _research_job_event_limit_for_intensity(intensity)
+
+
+def _research_job_event_limit_for_intensity(
+    intensity: ReportIntensity | str | None,
+) -> int:
+    config = get_report_intensity_config(intensity)
+    return max(_RESEARCH_JOB_EVENT_LIMIT, min(config.max_tool_calls, 2_000))
 
 
 def _next_research_job_event_sequence(job_id: str) -> int:
@@ -767,31 +796,44 @@ def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | Non
     if not isinstance(diagnostics, dict):
         diagnostics = {}
 
-    serpapi_enabled = (
-        os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "").strip().lower() == "serpapi"
+    serpapi_enabled = _is_serpapi_enabled(job.search_provider)
+    default_thresholds = _quality_gate_defaults(
+        job.report_intensity,
+        serpapi_enabled=serpapi_enabled,
     )
-    default_evidence_threshold = 12 if serpapi_enabled else 10
 
     checks = [
         (
             "evidence_count",
             _int_value(diagnostics.get("evidence_count")),
-            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE", default_evidence_threshold),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE",
+                default_thresholds["evidence_count"],
+            ),
         ),
         (
             "verified_evidence_count",
             _int_value(diagnostics.get("verified_evidence_count")),
-            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE", 0),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE",
+                default_thresholds["verified_evidence_count"],
+            ),
         ),
         (
             "successful_llm_call_count",
             _int_value(diagnostics.get("successful_llm_call_count")),
-            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESSFUL_LLM_CALLS", 0),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESSFUL_LLM_CALLS",
+                default_thresholds["successful_llm_call_count"],
+            ),
         ),
         (
             "report_chars",
             len(str(result.get("report_markdown") or "").strip()),
-            _positive_int_env("INSIGHT_GRAPH_MIN_SUCCESS_REPORT_CHARS", 0),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_REPORT_CHARS",
+                default_thresholds["report_chars"],
+            ),
         ),
     ]
     failed = [
@@ -806,6 +848,110 @@ def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | Non
 
 def _int_value(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _quality_gate_defaults(
+    intensity: ReportIntensity | str | None,
+    *,
+    serpapi_enabled: bool,
+) -> dict[str, int]:
+    mode = get_report_intensity_config(intensity).name
+    defaults: dict[str, tuple[int, int, int, int]] = {
+        "concise": (10, 5, 2, 3_000),
+        "standard": (18, 12, 4, 9_000),
+        "deep": (26, 18, 6, 12_000),
+        "deep-plus": (40, 28, 10, 18_000),
+    }
+    evidence, verified, llm_calls, report_chars = defaults.get(mode, defaults["standard"])
+    if serpapi_enabled:
+        evidence += 2
+    return {
+        "evidence_count": evidence,
+        "verified_evidence_count": verified,
+        "successful_llm_call_count": llm_calls,
+        "report_chars": report_chars,
+    }
+
+
+def _is_serpapi_enabled(search_provider: str | None) -> bool:
+    expression = _effective_search_provider_expression(search_provider)
+    providers = _safe_resolve_search_providers(expression)
+    return "serpapi" in providers
+
+
+def _effective_search_provider_expression(search_provider: str | None) -> str:
+    if isinstance(search_provider, str):
+        normalized = search_provider.strip().lower()
+        if normalized and normalized != "auto":
+            return normalized
+    providers_env = os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDERS", "").strip().lower()
+    if providers_env:
+        return providers_env
+    return os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock").strip().lower() or "mock"
+
+
+def _safe_resolve_search_providers(expression: str) -> list[str]:
+    try:
+        return resolve_search_providers(expression)
+    except ValueError:
+        valid = {"mock", "duckduckgo", "google", "serpapi"}
+        providers: list[str] = []
+        for part in expression.split(","):
+            provider = part.strip().lower()
+            if provider in valid and provider not in providers:
+                providers.append(provider)
+        return providers or ["mock"]
+
+
+def _failed_stage_from_events(job_id: str) -> str | None:
+    active_stage: str | None = None
+    last_started_stage: str | None = None
+    for event in _cached_research_job_events(job_id):
+        stage = event.get("stage")
+        if stage not in _PROGRESS_STEP_IDS:
+            continue
+        if event.get("type") == "stage_started":
+            active_stage = stage
+            last_started_stage = stage
+        elif event.get("type") == "stage_finished" and active_stage == stage:
+            active_stage = None
+    return active_stage or last_started_stage
+
+
+def _failure_error_kind(error: Exception) -> str:
+    kind_name = error.__class__.__name__.lower()
+    message = str(error).lower()
+    if isinstance(error, TimeoutError) or "timeout" in kind_name:
+        return "timeout"
+    if isinstance(error, ConnectionError) or "connection" in kind_name:
+        return "network_error"
+    if "rate" in message and "limit" in message:
+        return "rate_limited"
+    if "llm" in message:
+        return "llm_call_failed"
+    return "workflow_exception"
+
+
+def _publish_failure_event(
+    job_id: str,
+    *,
+    error_kind: str,
+    error_code: str | None = None,
+    failed_stage: str | None = None,
+) -> None:
+    # Preserve legacy behavior: do not create an extra persisted failure event
+    # when no workflow events exist yet (for example, immediate startup failures).
+    existing_events = _cached_research_job_events(job_id)
+    if not existing_events and error_kind != "quality_gate":
+        return
+    payload: dict[str, Any] = {
+        "type": "job_failed",
+        "error_kind": error_kind,
+    }
+    if error_code:
+        payload["error_code"] = error_code
+    payload["stage"] = failed_stage or "planner"
+    _publish_research_job_event(job_id, payload)
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -1434,6 +1580,12 @@ def _run_research_job(job_id: str) -> None:
                 result = _build_research_json_payload(state)
                 quality_failure = _research_job_quality_failure(job, result)
                 if quality_failure is not None:
+                    _publish_failure_event(
+                        job.id,
+                        error_kind="quality_gate",
+                        error_code="QUALITY_GATE_FAILED",
+                        failed_stage=_failed_stage_from_events(job.id) or "reporter",
+                    )
                     mark_research_job_failed(
                         job,
                         finished_at=_current_utc_timestamp(),
@@ -1446,14 +1598,20 @@ def _run_research_job(job_id: str) -> None:
         traceback.print_exc()
         if is_research_job_cancelled(job.id):
             return
+        _publish_failure_event(
+            job.id,
+            error_kind=_failure_error_kind(e),
+            error_code=e.__class__.__name__,
+            failed_stage=_failed_stage_from_events(job.id),
+        )
         mark_research_job_failed(
             job,
             finished_at=_current_utc_timestamp(),
-            error=f"Research workflow failed: {e}",
+            error="Research workflow failed.",
             worker_id=worker_id,
         )
         return
-
+    else:
         if is_research_job_cancelled(job.id):
             return
         mark_research_job_succeeded(
@@ -1489,6 +1647,12 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                     result = _build_research_json_payload(state)
                     quality_failure = _research_job_quality_failure(job, result)
                     if quality_failure is not None:
+                        _publish_failure_event(
+                            job.id,
+                            error_kind="quality_gate",
+                            error_code="QUALITY_GATE_FAILED",
+                            failed_stage=_failed_stage_from_events(job.id) or "reporter",
+                        )
                         mark_research_job_failed(
                             job,
                             finished_at=_current_utc_timestamp(),
@@ -1501,10 +1665,16 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
             traceback.print_exc()
             if is_research_job_cancelled(job.id):
                 return
+            _publish_failure_event(
+                job.id,
+                error_kind=_failure_error_kind(e),
+                error_code=e.__class__.__name__,
+                failed_stage=_failed_stage_from_events(job.id),
+            )
             mark_research_job_failed(
                 job,
                 finished_at=_current_utc_timestamp(),
-                error=f"Research workflow failed: {e}",
+                error="Research workflow failed.",
                 worker_id=worker_id,
             )
             return
