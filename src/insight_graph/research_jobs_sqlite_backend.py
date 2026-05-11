@@ -237,19 +237,19 @@ class SQLiteResearchJobsBackend:
                 """
                 INSERT OR REPLACE INTO research_jobs (
                     id, query, preset, report_intensity, single_entity_detail_mode,
-                    relevance_judge, search_provider, web_search_mode,
+                    relevance_judge, fetch_rendered, search_provider, web_search_mode,
                     status, created_order, created_at,
                     started_at, finished_at, result_json, error,
                     events_json, worker_id, lease_expires_at, heartbeat_at, attempt_count
                 ) VALUES (
                     :id, :query, :preset, :report_intensity, :single_entity_detail_mode,
-                    :search_provider, :web_search_mode,
+                    :relevance_judge, :fetch_rendered, :search_provider, :web_search_mode,
                     :status, :created_order, :created_at,
                     :started_at, :finished_at, :result_json, :error,
                     :events_json, :worker_id, :lease_expires_at, :heartbeat_at, :attempt_count
                 )
                 """,
-                [job_to_row(job) for job in jobs],
+[job_to_row(job) for job in jobs],
             )
             connection.commit()
 
@@ -702,12 +702,14 @@ class SQLiteResearchJobsBackend:
     def import_json_store(self, path: Path, *, restart_timestamp: str) -> None:
         loaded = load_research_jobs(path=path, restart_timestamp=restart_timestamp)
         jobs = [
-            ResearchJob(
+ResearchJob(
                 id=item["id"],
                 query=item["query"],
                 preset=ResearchPreset(item["preset"]),
                 report_intensity=ReportIntensity(item.get("report_intensity", "standard")),
                 single_entity_detail_mode=item.get("single_entity_detail_mode", "auto"),
+                relevance_judge=item.get("relevance_judge", "deterministic"),
+                fetch_rendered=item.get("fetch_rendered", "auto"),
                 search_provider=item.get("search_provider", "auto"),
                 web_search_mode=item.get("web_search_mode", "auto"),
                 created_order=item["created_order"],

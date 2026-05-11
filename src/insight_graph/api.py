@@ -767,7 +767,9 @@ def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | Non
     if not isinstance(diagnostics, dict):
         diagnostics = {}
 
-    serpapi_enabled = bool(os.getenv("INSIGHT_GRAPH_SERPAPI_KEY", "").strip())
+    serpapi_enabled = (
+        os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "").strip().lower() == "serpapi"
+    )
     default_evidence_threshold = 12 if serpapi_enabled else 10
 
     checks = [
@@ -1119,7 +1121,7 @@ def summarize_research_jobs() -> dict[str, Any]:
     tags=[_RESEARCH_JOBS_TAG],
     summary="Cancel queued research job",
     description=(
-        "Cancel a queued research job. Running and terminal jobs are not cancellable."
+        "Cancel a queued or running research job. Terminal jobs are not cancellable."
     ),
     responses={
         200: {"content": {"application/json": {"example": _RESEARCH_JOB_CANCEL_EXAMPLE}}},
@@ -1414,44 +1416,43 @@ def _run_research_job(job_id: str) -> None:
 
     stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
     try:
-        try:
-            with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(
-                    preset=job.preset,
-                    report_intensity=job.report_intensity,
-                    single_entity_detail_mode=job.single_entity_detail_mode,
-                    relevance_judge=job.relevance_judge,
-                    fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
-                    search_provider=job.search_provider,
-                    web_search_mode=job.web_search_mode,
-                ):
-                    state = _run_research_job_workflow(
-                        job.query,
-                        lambda event: _publish_research_job_event(job.id, event),
-                        job_id=job.id,
+        with _RESEARCH_ENV_LOCK:
+            with _research_preset_environment(
+                preset=job.preset,
+                report_intensity=job.report_intensity,
+                single_entity_detail_mode=job.single_entity_detail_mode,
+                relevance_judge=job.relevance_judge,
+                fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
+                search_provider=job.search_provider,
+                web_search_mode=job.web_search_mode,
+            ):
+                state = _run_research_job_workflow(
+                    job.query,
+                    lambda event: _publish_research_job_event(job.id, event),
+                    job_id=job.id,
+                )
+                result = _build_research_json_payload(state)
+                quality_failure = _research_job_quality_failure(job, result)
+                if quality_failure is not None:
+                    mark_research_job_failed(
+                        job,
+                        finished_at=_current_utc_timestamp(),
+                        error=quality_failure,
+                        worker_id=worker_id,
                     )
-                    result = _build_research_json_payload(state)
-                    quality_failure = _research_job_quality_failure(job, result)
-                    if quality_failure is not None:
-                        mark_research_job_failed(
-                            job,
-                            finished_at=_current_utc_timestamp(),
-                            error=quality_failure,
-                            worker_id=worker_id,
-                        )
-                        return
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            if is_research_job_cancelled(job.id):
-                return
-            mark_research_job_failed(
-                job,
-                finished_at=_current_utc_timestamp(),
-                error=f"Research workflow failed: {e}",
-                worker_id=worker_id,
-            )
+                    return
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        if is_research_job_cancelled(job.id):
             return
+        mark_research_job_failed(
+            job,
+            finished_at=_current_utc_timestamp(),
+            error=f"Research workflow failed: {e}",
+            worker_id=worker_id,
+        )
+        return
 
         if is_research_job_cancelled(job.id):
             return
@@ -1476,6 +1477,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                     report_intensity=job.report_intensity,
                     single_entity_detail_mode=job.single_entity_detail_mode,
                     relevance_judge=job.relevance_judge,
+                    fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
                     search_provider=job.search_provider,
                     web_search_mode=job.web_search_mode,
                 ):
