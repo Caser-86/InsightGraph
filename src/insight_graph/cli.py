@@ -12,17 +12,17 @@ from dotenv import load_dotenv
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.llm.config import resolve_llm_config
-from insight_graph.research_jobs_store import (
-    ResearchJobsStoreError,
-    research_jobs_backend_from_env,
-    research_jobs_path_from_env,
-    research_jobs_sqlite_path_from_env,
-)
 from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
 from insight_graph.report_quality.intensity import (
     ReportIntensity,
     apply_report_intensity_defaults,
     get_report_intensity,
+)
+from insight_graph.research_jobs_store import (
+    ResearchJobsStoreError,
+    research_jobs_backend_from_env,
+    research_jobs_path_from_env,
+    research_jobs_sqlite_path_from_env,
 )
 from insight_graph.state import GraphState, LLMCallRecord
 from insight_graph.tools.search_providers import (

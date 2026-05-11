@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.report_quality.fact_mapping import build_fact_conclusion_mapping
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.state import GraphState
 
 SECTION_PATTERN = re.compile(r"(?m)^##\s+(.+?)\s*$")

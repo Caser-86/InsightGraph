@@ -1,3 +1,4 @@
+# ruff: noqa: E402,I001
 import asyncio
 import hmac
 import os
@@ -258,10 +259,12 @@ _TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE = {
     },
 }
 _RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE = {
-    "description": "Only queued research jobs can be cancelled.",
+    "description": "Only queued or running research jobs can be cancelled.",
     "content": {
         "application/json": {
-            "example": {"detail": "Only queued research jobs can be cancelled."}
+            "example": {
+                "detail": "Only queued or running research jobs can be cancelled."
+            }
         }
     },
 }
@@ -383,6 +386,8 @@ def _research_preset_environment(
     fetch_rendered: Literal["auto", "on", "off"] = "auto",
     search_provider: str = "auto",
     web_search_mode: Literal["auto", "on", "off"] = "auto",
+    *,
+    relevance_judge_explicit: bool = True,
 ) -> Iterator[None]:
     if preset == ResearchPreset.offline:
         defaults: dict[str, str] = {}
@@ -422,7 +427,8 @@ def _research_preset_environment(
         if report_intensity is not None:
             apply_report_intensity_defaults(report_intensity, overwrite=True)
         os.environ["INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE"] = single_entity_detail_mode
-        os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] = relevance_judge
+        if relevance_judge_explicit:
+            os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] = relevance_judge
         if fetch_rendered == "on":
             os.environ["INSIGHT_GRAPH_FETCH_RENDERED"] = "1"
         elif fetch_rendered == "off":
@@ -446,6 +452,10 @@ def _research_preset_environment(
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+
+
+def _request_field_was_set(request: BaseModel, field_name: str) -> bool:
+    return field_name in getattr(request, "model_fields_set", set())
 
 
 @router.get("/health")
@@ -1120,6 +1130,10 @@ def research(request: ResearchRequest) -> dict[str, Any]:
                 request.fetch_rendered,
                 request.search_provider,
                 request.web_search_mode,
+                relevance_judge_explicit=_request_field_was_set(
+                    request,
+                    "relevance_judge",
+                ),
             ):
                 state = run_research(request.query)
                 return _build_research_json_payload(state)
@@ -1571,6 +1585,7 @@ def _run_research_job(job_id: str) -> None:
                 fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
                 search_provider=job.search_provider,
                 web_search_mode=job.web_search_mode,
+                relevance_judge_explicit=True,
             ):
                 state = _run_research_job_workflow(
                     job.query,
@@ -1638,6 +1653,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                     fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
                     search_provider=job.search_provider,
                     web_search_mode=job.web_search_mode,
+                    relevance_judge_explicit=True,
                 ):
                     state = _run_research_job_workflow(
                         job.query,

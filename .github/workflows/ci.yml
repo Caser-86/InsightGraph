@@ -41,6 +41,8 @@ jobs:
       - name: Generate Coverage Badge
         if: always()
         run: python -m coverage html
+
+      - name: Validate Deployment Smoke Script
         run: insight-graph-smoke --help
 
       - name: Generate Eval Reports

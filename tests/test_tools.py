@@ -318,7 +318,10 @@ def test_github_search_live_provider_returns_empty_on_unexpected_json_shape(
     assert github_search("InsightGraph", "s1") == []
 
 
-def test_news_search_returns_deterministic_verified_news_evidence() -> None:
+def test_news_search_returns_deterministic_verified_news_evidence(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDERS", raising=False)
+
     evidence = news_search("AI coding agent funding", "s1")
 
     assert len(evidence) == 3
@@ -1939,7 +1942,10 @@ def test_registry_runs_github_search_tool(monkeypatch) -> None:
     assert all(item.source_type == "github" for item in evidence)
 
 
-def test_registry_runs_news_search_tool() -> None:
+def test_registry_runs_news_search_tool(monkeypatch) -> None:
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("INSIGHT_GRAPH_SEARCH_PROVIDERS", raising=False)
+
     evidence = ToolRegistry().run("news_search", "AI coding agent funding", "s1")
 
     assert len(evidence) == 3

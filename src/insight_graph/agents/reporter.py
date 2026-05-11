@@ -786,7 +786,11 @@ def _build_report_review_messages(
     report_body = _strip_references_section(
         strip_report_quality_diagnostics(state.report_markdown or "")
     )
-    expected_words = target_words if target_words is not None else get_report_intensity_config().target_words
+    expected_words = (
+        target_words
+        if target_words is not None
+        else get_report_intensity_config().target_words
+    )
     words_now = (
         current_words
         if current_words is not None

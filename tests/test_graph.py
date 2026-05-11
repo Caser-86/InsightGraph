@@ -25,6 +25,7 @@ def clear_planner_tool_env(monkeypatch) -> None:
         "INSIGHT_GRAPH_USE_READ_FILE",
         "INSIGHT_GRAPH_USE_LIST_DIRECTORY",
         "INSIGHT_GRAPH_USE_WRITE_FILE",
+        "INSIGHT_GRAPH_MAX_RESEARCH_RETRIES",
     ]:
         monkeypatch.delenv(name, raising=False)
 

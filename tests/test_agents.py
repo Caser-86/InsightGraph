@@ -512,7 +512,10 @@ def test_planner_adds_cross_entity_compare_round_for_multi_company(monkeypatch) 
     ]
     assert compare_round
     assert all(strategy["round"] == 2 for strategy in compare_round)
-    assert all("cross company comparison gap verification" in strategy["query"] for strategy in compare_round)
+    assert all(
+        "cross company comparison gap verification" in strategy["query"]
+        for strategy in compare_round
+    )
 
 
 def test_planner_adds_single_entity_deep_dive_strategies(monkeypatch) -> None:
@@ -528,7 +531,10 @@ def test_planner_adds_single_entity_deep_dive_strategies(monkeypatch) -> None:
     ]
     assert deep_dive
     assert all(strategy["round"] == 1 for strategy in deep_dive)
-    assert all("single company deep dive evidence details" in strategy["query"] for strategy in deep_dive)
+    assert all(
+        "single company deep dive evidence details" in strategy["query"]
+        for strategy in deep_dive
+    )
 
 
 def test_planner_replan_strategy_uses_missing_source_types(monkeypatch) -> None:
@@ -2079,7 +2085,12 @@ def test_report_review_runs_multiple_passes_when_report_is_too_short(monkeypatch
         def complete_json_with_usage(self, messages: list[ChatMessage]) -> ChatCompletionResult:
             self.messages.append(messages)
             payload = self._payloads.pop(0)
-            return ChatCompletionResult(content=payload, input_tokens=10, output_tokens=20, total_tokens=30)
+            return ChatCompletionResult(
+                content=payload,
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=30,
+            )
 
     client = SequenceClient()
     monkeypatch.setattr(

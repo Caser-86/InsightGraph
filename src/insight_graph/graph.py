@@ -48,7 +48,7 @@ def _route_after_critic(state: GraphState) -> str:
 
 
 def _record_retry(state: GraphState) -> GraphState:
-    state.iterations += 1
+    state.iterations = min(state.iterations + 1, _max_research_retries())
     return state
 
 

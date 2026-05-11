@@ -92,7 +92,11 @@ def job_from_row(row: sqlite3.Row) -> ResearchJob:
         preset=ResearchPreset(row["preset"]),
         report_intensity=ReportIntensity(row["report_intensity"]),
         single_entity_detail_mode=row["single_entity_detail_mode"] or "auto",
-        relevance_judge=row["relevance_judge"] if "relevance_judge" in row.keys() else "deterministic",
+        relevance_judge=(
+            row["relevance_judge"]
+            if "relevance_judge" in row.keys()
+            else "deterministic"
+        ),
         fetch_rendered=row["fetch_rendered"] if "fetch_rendered" in row.keys() else "auto",
         search_provider=row["search_provider"] or "auto",
         web_search_mode=row["web_search_mode"] or "auto",

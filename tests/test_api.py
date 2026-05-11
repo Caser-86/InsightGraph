@@ -1053,7 +1053,7 @@ def test_research_job_routes_document_response_models_in_openapi() -> None:
     ] == {"detail": "Research job not found."}
     assert cancel_operation["responses"]["409"]["content"]["application/json"][
         "example"
-    ] == {"detail": "Only queued research jobs can be cancelled."}
+    ] == {"detail": "Only queued or running research jobs can be cancelled."}
     assert cancel_operation["responses"]["500"]["content"]["application/json"][
         "example"
     ] == {"detail": "Research job store failed."}
@@ -2625,7 +2625,9 @@ def test_cancel_research_job_returns_404_for_unknown_job() -> None:
     assert response.json() == {"detail": "Research job not found."}
 
 
-def test_cancel_research_job_rejects_running_or_finished_jobs(monkeypatch) -> None:
+def test_cancel_research_job_cancels_running_and_rejects_finished_jobs(
+    monkeypatch,
+) -> None:
     def fake_run_research(query: str) -> GraphState:
         return make_api_state(query)
 
@@ -2640,23 +2642,21 @@ def test_cancel_research_job_rejects_running_or_finished_jobs(monkeypatch) -> No
 
     jobs_module.update_research_job_record(job_id, status="running")
     running_response = client.post(f"/research/jobs/{job_id}/cancel")
-    assert running_response.status_code == 409
-    assert running_response.json() == {
-        "detail": "Only queued research jobs can be cancelled."
-    }
+    assert running_response.status_code == 200
+    assert running_response.json()["status"] == "cancelled"
 
     jobs_module.update_research_job_record(job_id, status="succeeded")
     succeeded_response = client.post(f"/research/jobs/{job_id}/cancel")
     assert succeeded_response.status_code == 409
     assert succeeded_response.json() == {
-        "detail": "Only queued research jobs can be cancelled."
+        "detail": "Only queued or running research jobs can be cancelled."
     }
 
     jobs_module.update_research_job_record(job_id, status="failed")
     failed_response = client.post(f"/research/jobs/{job_id}/cancel")
     assert failed_response.status_code == 409
     assert failed_response.json() == {
-        "detail": "Only queued research jobs can be cancelled."
+        "detail": "Only queued or running research jobs can be cancelled."
     }
 
 
