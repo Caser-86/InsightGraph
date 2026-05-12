@@ -1,22 +1,16 @@
 # InsightGraph Deployment Guide
 
-This guide describes a minimal MVP deployment for the InsightGraph API. It is suitable for a private demo server or internal tool, not a public multi-tenant SaaS deployment.
+This guide describes the supported deployment shape for the finished project.
+It targets private demos, internal tools, and operator-controlled environments.
 
-## Deployment Shape
+## Recommended Deployment Shape
 
-Recommended MVP setup:
-
-- Python 3.11+ virtual environment.
-- `uvicorn` serving `insight_graph.api:app`.
-- SQLite research job metadata storage.
-- Explicit live search/LLM opt-in environment variables when needed.
-- A reverse proxy or private network boundary in front of the API.
-
-Current security boundary:
-- Set `INSIGHT_GRAPH_API_KEY` to require a shared API key for `/research` and `/research/jobs/*`.
-- `/health` remains public for health checks.
-- Keep reverse proxy, private network, VPN, or API gateway controls for any public demo server.
-- Do not pass provider API keys in request bodies or query strings. Configure providers through environment variables.
+- Python 3.11+ virtual environment
+- `uvicorn` serving `insight_graph.api:app`
+- SQLite for durable job metadata
+- optional PostgreSQL checkpoints
+- optional pgvector memory
+- reverse proxy, VPN, or API gateway in front of the service
 
 ## Install
 
@@ -30,951 +24,95 @@ python -m pip install -e ".[dev]"
 python -m pip install "uvicorn[standard]"
 ```
 
-On Windows PowerShell:
+## API Key
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m pip install "uvicorn[standard]"
-```
-
-## Optional API Key Auth
-
-Set `INSIGHT_GRAPH_API_KEY` to protect all API endpoints except `/health`:
+Protect the API with:
 
 ```bash
 export INSIGHT_GRAPH_API_KEY="replace-with-shared-demo-key"
 ```
 
-Clients can authenticate with either header:
+When this variable is set, all non-`/health` endpoints require either:
 
-```bash
-curl -X POST http://127.0.0.1:8000/research \
-  -H "Authorization: Bearer replace-with-shared-demo-key" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
-```
+- `Authorization: Bearer <key>`
+- `X-API-Key: <key>`
 
-```bash
-curl -X POST http://127.0.0.1:8000/research/jobs \
-  -H "X-API-Key: replace-with-shared-demo-key" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot","preset":"offline"}'
-```
-
-When `INSIGHT_GRAPH_API_KEY` is unset or blank, local development remains unauthenticated.
-
-## Offline API Smoke Test
-
-Start the API:
+## Start The Service
 
 ```bash
 uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 ```
-
-Check health:
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-Run a synchronous offline research request:
-
-```bash
-curl -X POST http://127.0.0.1:8000/research \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
-```
-
-Create an async job:
-
-```bash
-curl -X POST http://127.0.0.1:8000/research/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot","preset":"offline"}'
-```
-
-Then poll:
-
-```bash
-curl http://127.0.0.1:8000/research/jobs/summary
-curl http://127.0.0.1:8000/research/jobs/<job_id>
-```
-
-## SQLite Job Storage
-
-Use SQLite when you want job metadata to survive process restarts and coordinate multiple API processes with internal worker leases.
-
-```bash
-export INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite
-export INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/var/lib/insightgraph/jobs.sqlite3
-uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
-```
-
-Create the parent directory before startup and make it writable by the API process:
-
-```bash
-sudo mkdir -p /var/lib/insightgraph
-sudo chown "$USER":"$USER" /var/lib/insightgraph
-```
-
-SQLite behavior:
-- Queued jobs remain queued across restarts.
-- Expired running jobs are requeued through internal worker lease claim.
-- Lease metadata is internal and never appears in API responses.
-- Workflow execution is not resumed in-place; a later worker claim starts a fresh workflow attempt.
-
-For restart recovery, enable the startup worker and optional checkpoint resume:
-
-```bash
-export INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1
-export INSIGHT_GRAPH_CHECKPOINT_RESUME=1
-export INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS=14
-```
-
-`INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` deletes only terminal jobs (`succeeded`, `failed`, `cancelled`) whose `finished_at` is older than the cutoff. Queued/running jobs are never deleted by cleanup.
 
 ## Storage Matrix
 
-| Surface | Env vars | Notes |
-|---|---|---|
-| API auth | `INSIGHT_GRAPH_API_KEY` | Shared-secret gate for API endpoints except `/health` and `/dashboard`. |
-| SQLite jobs | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`, `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH`, `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER`, `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` | Durable job metadata, worker leases, restart claim, terminal cleanup. |
-| PostgreSQL checkpoints | `INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres`, `INSIGHT_GRAPH_POSTGRES_DSN`, `INSIGHT_GRAPH_CHECKPOINT_RESUME` | Optional latest-state checkpoint resume keyed by job ID. |
-| pgvector memory | `INSIGHT_GRAPH_MEMORY_BACKEND=pgvector`, `INSIGHT_GRAPH_POSTGRES_DSN` | Optional long-term memory store; keep memory retrieval quality controls enabled. |
-| pgvector document index | `INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND=pgvector`, `INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN` | Optional document chunk retrieval backend; JSON index remains default. |
+| Surface | Variables | Purpose |
+| --- | --- | --- |
+| Jobs in memory | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=memory` | Local single-process demos and tests |
+| SQLite jobs | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`, `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH`, `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER`, `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS` | Durable job metadata, worker leases, restart claim, terminal cleanup |
+| PostgreSQL checkpoints | `INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres`, `INSIGHT_GRAPH_POSTGRES_DSN`, `INSIGHT_GRAPH_CHECKPOINT_RESUME` | Durable latest-state checkpoint resume keyed by job ID |
+| pgvector memory | `INSIGHT_GRAPH_MEMORY_BACKEND=pgvector`, `INSIGHT_GRAPH_POSTGRES_DSN` | Long-term memory store and retrieval |
+| pgvector document retrieval | `INSIGHT_GRAPH_DOCUMENT_INDEX_BACKEND=pgvector`, `INSIGHT_GRAPH_DOCUMENT_PGVECTOR_DSN` | Optional document retrieval backend |
 
-## Live Providers And Benchmark Cost
+## Restart And Resume
 
-`live-research` uses network/LLM surfaces only when explicitly selected. Typical live provider settings:
-
-```bash
-export INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo
-export INSIGHT_GRAPH_GITHUB_PROVIDER=live
-export INSIGHT_GRAPH_USE_SEC_FILINGS=1
-export INSIGHT_GRAPH_USE_SEC_FINANCIALS=1
-export INSIGHT_GRAPH_LLM_API_KEY="replace-with-your-api-key"
-export INSIGHT_GRAPH_LLM_BASE_URL="https://your-provider.example/v1"
-export INSIGHT_GRAPH_LLM_MODEL="your-model"
-```
-
-Manual live benchmark runs require explicit cost acknowledgment:
+To enable restart-safe async execution:
 
 ```bash
-export INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1
-python scripts/benchmark_live_research.py --allow-live --case-file docs/benchmarks/live-research-cases.json --output reports/live-benchmark.json
+export INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite
+export INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/data/jobs.sqlite3
+export INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1
+export INSIGHT_GRAPH_CHECKPOINT_RESUME=1
 ```
 
-Live benchmark runs may incur network/LLM cost. Do not commit generated live benchmark reports.
+Behavior:
+
+- queued jobs are claimed on startup
+- expired running jobs are requeued before the next worker claim
+- checkpoint resume can continue from the latest stored state
+- worker claim ownership protects terminal writes
+
+## Live Providers
+
+### Search
+
+- `INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo`
+- `INSIGHT_GRAPH_SEARCH_PROVIDER=serpapi`
+- `INSIGHT_GRAPH_SEARCH_PROVIDER=google`
+
+### GitHub
+
+- `INSIGHT_GRAPH_GITHUB_PROVIDER=live`
+
+### SEC
+
+- `INSIGHT_GRAPH_USE_SEC_FILINGS=1`
+- `INSIGHT_GRAPH_USE_SEC_FINANCIALS=1`
+
+### LLM
+
+- `INSIGHT_GRAPH_LLM_BASE_URL`
+- `INSIGHT_GRAPH_LLM_API_KEY`
+- `INSIGHT_GRAPH_LLM_MODEL`
+- `INSIGHT_GRAPH_ANALYST_PROVIDER=llm`
+- `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`
 
 ## Trace Redaction
 
-Default API/job observability is metadata-only: trace IDs, stage events, tool names, LLM model names, token counts, durations, and success/error flags. It does not store prompt/completion payloads, provider raw responses, headers, request bodies, or API keys.
+InsightGraph supports safe metadata tracing and optional full trace export.
 
-Full diagnostic trace logging is opt-in:
+Key variables:
 
-```bash
-export INSIGHT_GRAPH_LLM_TRACE=1
-export INSIGHT_GRAPH_LLM_TRACE_PATH=/var/log/insightgraph/llm-trace.jsonl
-```
+- `INSIGHT_GRAPH_LLM_TRACE`
+- `INSIGHT_GRAPH_LLM_TRACE_PATH`
+- `INSIGHT_GRAPH_LLM_TRACE_FULL=1`
 
-Full trace mode can persist prompt/completion payload data. Use it only in controlled environments, rotate logs, and avoid proxy logging of request bodies, query strings, and provider headers.
+Guidance:
 
-## Live LLM Demo Runtime
+- metadata-only traces are safer for most deployments
+- prompt/completion traces should be enabled only for local diagnostics
+- API keys and sensitive tokens still go through redaction
 
-The API defaults to deterministic/offline behavior. To enable live LLM paths, configure an OpenAI-compatible provider and use the `live-llm` preset in requests.
-
-```bash
-export INSIGHT_GRAPH_LLM_API_KEY="replace-with-your-api-key"
-export INSIGHT_GRAPH_LLM_BASE_URL="https://your-provider.example/v1"
-export INSIGHT_GRAPH_LLM_MODEL="your-model"
-```
-
-Optional rules router:
-
-```bash
-export INSIGHT_GRAPH_LLM_ROUTER=rules
-export INSIGHT_GRAPH_LLM_MODEL_FAST="cheap-model-alias"
-export INSIGHT_GRAPH_LLM_MODEL_DEFAULT="default-model-alias"
-export INSIGHT_GRAPH_LLM_MODEL_STRONG="strong-model-alias"
-```
-
-Run a live async job:
-
-```bash
-curl -X POST http://127.0.0.1:8000/research/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"query":"Technical review of AI coding agents for an engineering team","preset":"live-llm"}'
-```
-
-Live runtime notes:
-- `live-llm` applies missing defaults for DuckDuckGo search, relevance filtering, LLM Analyst, and LLM Reporter.
-- Provider failures are sanitized in job/API responses.
-- LLM call logs store metadata only, not prompts, completions, raw responses, or API keys.
-
-## Optional JSON Metadata Store
-
-For a single-process demo that only needs simple metadata persistence, use the JSON store instead of SQLite:
-
-```bash
-export INSIGHT_GRAPH_RESEARCH_JOBS_PATH=/var/lib/insightgraph/jobs.json
-uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
-```
-
-JSON store behavior:
-- Metadata writes use atomic replace semantics.
-- On restart, unfinished queued/running JSON jobs are restored as failed with `Research job did not complete before server restart.`
-- JSON persistence is not intended for multi-process coordination.
-
-## Docker Deployment
-
-### Dockerfile
-
-Create a `Dockerfile` for containerized deployment:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy project files
-COPY . .
-
-# Install Python dependencies
-RUN python -m pip install --no-cache-dir -e ".[postgres]"
-RUN python -m pip install --no-cache-dir "uvicorn[standard]"
-
-# Create non-root user
-RUN useradd -m -u 1000 insightgraph
-RUN chown -R insightgraph:insightgraph /app
-
-USER insightgraph
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-EXPOSE 8000
-
-CMD ["uvicorn", "insight_graph.api:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Docker Compose
-
-Create a `docker-compose.yml` for local development or small deployments:
-
-```yaml
-version: '3.8'
-
-services:
-  insightgraph-api:
-    build: .
-    container_name: insightgraph-api
-    ports:
-      - "127.0.0.1:8000:8000"
-    environment:
-      INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND: sqlite
-      INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH: /data/jobs.sqlite3
-      INSIGHT_GRAPH_API_KEY: ${INSIGHT_GRAPH_API_KEY:-change-me}
-      INSIGHT_GRAPH_LLM_BASE_URL: ${INSIGHT_GRAPH_LLM_BASE_URL}
-      INSIGHT_GRAPH_LLM_API_KEY: ${INSIGHT_GRAPH_LLM_API_KEY}
-      INSIGHT_GRAPH_LLM_MODEL: ${INSIGHT_GRAPH_LLM_MODEL:-gpt-4-turbo}
-    volumes:
-      - insightgraph-data:/data
-    restart: unless-stopped
-    networks:
-      - insightgraph
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: insightgraph-postgres
-    environment:
-      POSTGRES_DB: insightgraph
-      POSTGRES_USER: insightgraph
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - insightgraph
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U insightgraph"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Optional: pgvector extension for PostgreSQL
-  postgres-pgvector:
-    image: pgvector/pgvector:pg16
-    container_name: insightgraph-pgvector
-    environment:
-      POSTGRES_DB: insightgraph
-      POSTGRES_USER: insightgraph
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-    volumes:
-      - pgvector-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - insightgraph
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U insightgraph"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  insightgraph-data:
-  postgres-data:
-  pgvector-data:
-
-networks:
-  insightgraph:
-    driver: bridge
-```
-
-#### Running Docker Compose
-
-```bash
-# Copy .env template
-cp .env.example .env
-# Edit .env with your provider keys
-nano .env
-
-# Build and start
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f insightgraph-api
-
-# Stop
-docker-compose down
-
-# Clean up volumes (WARNING: deletes data)
-docker-compose down -v
-```
-
-#### Docker Compose with PostgreSQL Backend
-
-To use PostgreSQL for jobs and checkpoints:
-
-```bash
-# Update .env
-export INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=postgres
-export INSIGHT_GRAPH_DATABASE_URL=postgresql://insightgraph:change-me@postgres:5432/insightgraph
-export INSIGHT_GRAPH_CHECKPOINT_BACKEND=postgres
-export INSIGHT_GRAPH_CHECKPOINT_RESUME=1
-
-# Start
-docker-compose up -d
-
-# Run migrations (if needed)
-docker-compose exec insightgraph-api python -m alembic upgrade head
-```
-
-## Kubernetes Deployment
-
-### Prerequisites
-
-- Kubernetes cluster (1.24+)
-- `kubectl` configured
-- Image registry (Docker Hub, ECR, etc.)
-
-### Build and Push Image
-
-```bash
-# Build image
-docker build -t your-registry/insightgraph:latest .
-
-# Push to registry
-docker push your-registry/insightgraph:latest
-```
-
-### Kubernetes Namespace
-
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: insightgraph
-```
-
-Apply:
-
-```bash
-kubectl apply -f k8s/namespace.yaml
-```
-
-### Kubernetes Secrets
-
-Store API keys and provider credentials:
-
-```bash
-# Create API key secret
-kubectl -n insightgraph create secret generic insightgraph-api-key \
-  --from-literal=api-key=your-shared-api-key \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Create LLM provider secret
-kubectl -n insightgraph create secret generic insightgraph-llm-secrets \
-  --from-literal=api-key=your-llm-api-key \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Create PostgreSQL secret
-kubectl -n insightgraph create secret generic insightgraph-postgres \
-  --from-literal=password=your-postgres-password \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### PostgreSQL Deployment
-
-```yaml
-# k8s/postgres-deployment.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-pvc
-  namespace: insightgraph
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 20Gi
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: postgres
-  namespace: insightgraph
-spec:
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-      - name: postgres
-        image: pgvector/pgvector:pg16
-        ports:
-        - containerPort: 5432
-        env:
-        - name: POSTGRES_DB
-          value: insightgraph
-        - name: POSTGRES_USER
-          value: insightgraph
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: insightgraph-postgres
-              key: password
-        volumeMounts:
-        - name: postgres-storage
-          mountPath: /var/lib/postgresql/data
-        livenessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - pg_isready -U insightgraph
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - pg_isready -U insightgraph
-          initialDelaySeconds: 5
-          periodSeconds: 10
-      volumes:
-      - name: postgres-storage
-        persistentVolumeClaim:
-          claimName: postgres-pvc
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-  namespace: insightgraph
-spec:
-  selector:
-    app: postgres
-  ports:
-  - port: 5432
-    targetPort: 5432
-  clusterIP: None
-```
-
-### InsightGraph Deployment
-
-```yaml
-# k8s/insightgraph-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: insightgraph-api
-  namespace: insightgraph
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: insightgraph-api
-  template:
-    metadata:
-      labels:
-        app: insightgraph-api
-    spec:
-      containers:
-      - name: insightgraph-api
-        image: your-registry/insightgraph:latest
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8000
-          name: http
-        env:
-        - name: INSIGHT_GRAPH_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: insightgraph-api-key
-              key: api-key
-        - name: INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND
-          value: postgres
-        - name: INSIGHT_GRAPH_DATABASE_URL
-          value: postgresql://insightgraph:$(POSTGRES_PASSWORD)@postgres:5432/insightgraph
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: insightgraph-postgres
-              key: password
-        - name: INSIGHT_GRAPH_LLM_BASE_URL
-          value: https://api.deepseek.com/v1
-        - name: INSIGHT_GRAPH_LLM_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: insightgraph-llm-secrets
-              key: api-key
-        - name: INSIGHT_GRAPH_LLM_MODEL
-          value: deepseek-reasoner
-        - name: INSIGHT_GRAPH_CHECKPOINT_BACKEND
-          value: postgres
-        - name: INSIGHT_GRAPH_CHECKPOINT_RESUME
-          value: "1"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: insightgraph-api
-  namespace: insightgraph
-spec:
-  selector:
-    app: insightgraph-api
-  type: ClusterIP
-  ports:
-  - port: 8000
-    targetPort: 8000
-    protocol: TCP
-    name: http
-
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: insightgraph-api-hpa
-  namespace: insightgraph
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: insightgraph-api
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
-### Kubernetes Ingress
-
-```yaml
-# k8s/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: insightgraph-ingress
-  namespace: insightgraph
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/rate-limit: "30"
-    nginx.ingress.kubernetes.io/limit-rps: "10"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - insightgraph.example.com
-    secretName: insightgraph-tls
-  rules:
-  - host: insightgraph.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: insightgraph-api
-            port:
-              number: 8000
-```
-
-### Deploying to Kubernetes
-
-```bash
-# Create namespace
-kubectl apply -f k8s/namespace.yaml
-
-# Create secrets
-kubectl -n insightgraph create secret generic insightgraph-api-key \
-  --from-literal=api-key=your-api-key
-
-# Deploy PostgreSQL
-kubectl apply -f k8s/postgres-deployment.yaml
-
-# Wait for PostgreSQL to be ready
-kubectl -n insightgraph wait --for=condition=ready pod -l app=postgres --timeout=300s
-
-# Deploy InsightGraph
-kubectl apply -f k8s/insightgraph-deployment.yaml
-
-# Deploy Ingress
-kubectl apply -f k8s/ingress.yaml
-
-# Check status
-kubectl -n insightgraph get pods
-kubectl -n insightgraph get svc
-kubectl -n insightgraph get ingress
-
-# View logs
-kubectl -n insightgraph logs -f deployment/insightgraph-api
-
-# Port forward for local testing
-kubectl -n insightgraph port-forward svc/insightgraph-api 8000:8000
-```
-
-### Kubernetes Monitoring
-
-```yaml
-# k8s/prometheus-servicemonitor.yaml (if using Prometheus)
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: insightgraph-api
-  namespace: insightgraph
-spec:
-  selector:
-    matchLabels:
-      app: insightgraph-api
-  endpoints:
-  - port: http
-    interval: 30s
-```
-
-## systemd Example
-
-Create `/etc/systemd/system/insightgraph.service`:
-
-```ini
-[Unit]
-Description=InsightGraph API
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/InsightGraph
-Environment=INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite
-Environment=INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/var/lib/insightgraph/jobs.sqlite3
-Environment=INSIGHT_GRAPH_LLM_BASE_URL=https://your-provider.example/v1
-Environment=INSIGHT_GRAPH_LLM_MODEL=your-model
-EnvironmentFile=-/etc/insightgraph/auth.env
-EnvironmentFile=-/etc/insightgraph/secrets.env
-ExecStart=/opt/InsightGraph/.venv/bin/uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Place secrets in `/etc/insightgraph/secrets.env` with restrictive permissions:
-
-```bash
-sudo mkdir -p /etc/insightgraph
-sudo install -m 600 /dev/null /etc/insightgraph/secrets.env
-```
-
-Example `secrets.env`:
-
-```ini
-INSIGHT_GRAPH_LLM_API_KEY=replace-with-your-api-key
-```
-
-Example `/etc/insightgraph/auth.env`:
-
-```ini
-INSIGHT_GRAPH_API_KEY=replace-with-shared-demo-key
-```
-
-Enable and start:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable insightgraph
-sudo systemctl start insightgraph
-sudo systemctl status insightgraph
-```
-
-## Reverse Proxy Boundary
-
-Built-in API key auth is a minimal shared-secret gate. For public demos, still expose the service through a protected boundary. Minimum options:
-
-- Bind uvicorn to `127.0.0.1` and access through SSH tunnel or VPN.
-- Put Nginx/Caddy in front with basic auth or gateway auth.
-- Restrict inbound firewall rules to trusted client IPs.
-
-Do not bind the MVP API directly to `0.0.0.0` on a public host without an external auth layer.
-
-## Public Demo Hardening Checklist
-
-Before exposing a demo beyond a private machine or VPN, verify:
-
-- `uvicorn` binds to `127.0.0.1`; only the reverse proxy listens on public interfaces.
-- TLS terminates at the reverse proxy or gateway.
-- `INSIGHT_GRAPH_API_KEY` is set to a high-entropy value and stored outside the repo.
-- API keys are rotated by updating `/etc/insightgraph/auth.env` and restarting the service.
-- Provider secrets live in `/etc/insightgraph/secrets.env` with mode `600`.
-- Request bodies, headers, query strings, and provider payloads are not logged by the proxy.
-- SQLite or JSON job-store files are owned by the service user and not world-readable.
-- SQLite/job-store backups exclude provider API keys and are protected like application data.
-- Reverse proxy or API gateway rate limits are enabled for `/research` and `/research/jobs/*`.
-- `/health` remains reachable for uptime checks but does not expose secrets or job details.
-
-Built-in rate limiting is not part of this MVP. Use Nginx, Caddy, a cloud load balancer,
-or an API gateway to enforce request limits for public demos.
-
-## Reverse Proxy Requirements
-
-Minimum reverse proxy behavior:
-
-- Forward `Authorization` and `X-API-Key` headers unchanged.
-- Preserve WebSocket upgrade headers for `/research/jobs/<job_id>/stream`.
-- Set conservative request body size limits; research queries are text prompts, not uploads.
-- Disable access-log capture of sensitive headers and full request bodies.
-- Return generic upstream error pages instead of raw backend tracebacks.
-
-If the dashboard is used through the proxy, confirm WebSocket streaming works from the
-browser. If WebSockets are blocked, the dashboard falls back to REST polling but live
-event latency increases.
-
-## Nginx Example
-
-This example terminates HTTPS at Nginx, forwards REST and WebSocket traffic to a local
-uvicorn process, and applies a small request-rate limit to research endpoints. Replace
-`insightgraph.example.com` and certificate paths for your host.
-
-```nginx
-# Place these directives in the Nginx `http` context.
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
-log_format insightgraph_safe '$remote_addr - $remote_user [$time_local] '
-                             '"$request_method $uri $server_protocol" $status '
-                             '$body_bytes_sent "$http_referer" "$http_user_agent"';
-
-limit_req_zone $binary_remote_addr zone=insightgraph_research:10m rate=30r/m;
-
-server {
-    listen 443 ssl http2;
-    server_name insightgraph.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/insightgraph.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/insightgraph.example.com/privkey.pem;
-
-    client_max_body_size 1m;
-
-    access_log /var/log/nginx/insightgraph.access.log insightgraph_safe;
-    error_log /var/log/nginx/insightgraph.error.log warn;
-
-    location /research {
-        limit_req zone=insightgraph_research burst=10 nodelay;
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Authorization $http_authorization;
-        proxy_set_header X-API-Key $http_x_api_key;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Authorization $http_authorization;
-        proxy_set_header X-API-Key $http_x_api_key;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-    }
-}
-
-server {
-    listen 80;
-    server_name insightgraph.example.com;
-    return 301 https://$host$request_uri;
-}
-```
-
-Use a log format like `insightgraph_safe` that records `$uri`, not `$request_uri`, so
-dashboard WebSocket API keys are not written through query strings. If your deployment
-adds custom log formats, do not log `Authorization`, `X-API-Key`, request bodies, or
-full query strings.
-
-## Caddy Example
-
-Caddy can manage TLS automatically. This example proxies to uvicorn on localhost and
-applies a request body limit. Use a Caddy rate-limit plugin or an upstream gateway if
-you need per-client throttling.
-
-```caddyfile
-insightgraph.example.com {
-    request_body {
-        max_size 1MB
-    }
-
-    reverse_proxy 127.0.0.1:8000 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-        header_up Authorization {header.Authorization}
-        header_up X-API-Key {header.X-API-Key}
-    }
-}
-```
-
-Caddy's `reverse_proxy` handles WebSocket upgrades automatically. Confirm the dashboard
-shows `WebSocket: connected` for a running job before using it for demos.
-If you enable Caddy access logging, configure it so credentials and full query strings
-are not written to disk.
-
-## Proxy Verification
-
-After deploying the proxy, verify the public boundary rather than only localhost:
-
-```bash
-curl https://insightgraph.example.com/health
-curl -H "Authorization: Bearer $INSIGHT_GRAPH_API_KEY" \
-  https://insightgraph.example.com/research/jobs/summary
-```
-
-Open `https://insightgraph.example.com/dashboard`, save the API key in the dashboard,
-start a short research job, and confirm the status line reports `WebSocket: connected`.
-If it stays on polling, review the proxy WebSocket upgrade configuration.
-
-You can also run the deployment smoke test script against the public URL:
-
-```bash
-INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com
-INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com --markdown
-INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com --markdown --output smoke.md
-```
-
-The script checks `/health`, `/dashboard`, and `/research/jobs/summary`. It exits `0`
-when all checks pass, `1` when any endpoint check fails, and `2` for invalid CLI input.
-It emits JSON by default, supports `--markdown` for runbook notes, supports `--output`
-for saving deployment evidence, and records UTC creation time plus per-check and total
-duration in milliseconds. It does not print the API key.
-
-## Storage and Backup Notes
-
-For SQLite deployments:
-
-- Keep `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` under a directory owned by the service user.
-- Back up the SQLite file with the service stopped, or use SQLite backup tooling.
-- Treat job metadata as operational data; reports may include research queries and summaries.
-- Use filesystem permissions to prevent unrelated local users from reading job history.
-
-For JSON metadata storage:
-
-- Use it only for single-process demos.
-- Do not share the JSON file between multiple API workers.
-- Back up the file with the service stopped to avoid copying a partially replaced file.
-
-## Secret Handling Notes
-
-Never pass provider keys or the shared API key in request bodies, dashboard URLs, shell
-history snippets, or issue reports. Configure them through environment files or your
-deployment platform's secret manager.
-
-The application intentionally keeps LLM observability metadata safe: it records provider,
-model, router, duration, success state, and sanitized errors, not prompts, completions,
-headers, raw provider payloads, or API keys.
-
-## Operational Checks
-
-Deployment smoke test:
-
-```bash
-INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke http://127.0.0.1:8000
-```
+## Offline And Smoke Validation
 
 Health:
 
@@ -982,24 +120,36 @@ Health:
 curl http://127.0.0.1:8000/health
 ```
 
-Queue summary:
+Deployment smoke:
 
 ```bash
-curl http://127.0.0.1:8000/research/jobs/summary
+insight-graph-smoke http://127.0.0.1:8000
+insight-graph-smoke http://127.0.0.1:8000 --api-key "$INSIGHT_GRAPH_API_KEY" --markdown
 ```
 
-Recent logs with systemd:
+## Live Benchmark
+
+Manual live benchmark is allowed only through explicit opt-in:
 
 ```bash
-journalctl -u insightgraph -n 100 --no-pager
+python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
 ```
 
-## Troubleshooting
+Or:
 
-| Symptom | Check |
-| --- | --- |
-| `uvicorn` command not found | Install `uvicorn[standard]` in the active virtual environment. |
-| Live LLM falls back or fails | Check `INSIGHT_GRAPH_LLM_API_KEY`, `INSIGHT_GRAPH_LLM_BASE_URL`, and `INSIGHT_GRAPH_LLM_MODEL`. |
-| SQLite startup fails | Verify the parent directory exists and is writable by the API process. |
-| Jobs remain queued | Check active job limit, worker logs, and whether the API process is still running. |
-| Public access is needed | Put a reverse proxy or gateway with authentication in front of the API first. |
+```bash
+export INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1
+python scripts/benchmark_live_research.py --output reports/live-benchmark.json --case-file docs/benchmarks/live-research-cases.json
+```
+
+This path may incur network/LLM cost. Do not commit generated live benchmark
+reports.
+
+## Operational Notes
+
+- `live-research` is the only intended live product path.
+- Keep offline deterministic behavior available for smoke checks and CI.
+- Do not share JSON job metadata across multiple API workers.
+- Prefer SQLite for durable async demos before introducing PostgreSQL.
+- Treat MCP runtime invocation and real sandboxed Python execution as deferred
+  features, not deployment defaults.

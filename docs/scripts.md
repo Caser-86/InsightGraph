@@ -1,127 +1,144 @@
 # InsightGraph Scripts
 
-## 脚本状态
+This document summarizes the scripts that are meant to be used directly by
+operators and contributors.
 
-| 脚本 | 状态 | 用途 |
-|------|------|------|
-| `scripts/run_research.py` | 当前可用 | 运行 research workflow，默认输出 Markdown；支持 stdin `-`、`--preset offline\|live-llm\|live-research` 和 `--output-json` 输出 CLI/API 对齐结构 |
-| `scripts/run_with_llm_log.py` | 当前可用 | 运行 research workflow，stdout 输出 Markdown，并将安全 LLM metadata 写入 `llm_logs/`；不记录 prompt、completion、raw response 或 API key |
-| `scripts/validate_sources.py` | 当前可用 | 离线校验 Markdown 报告 citation 与 References；支持文件路径或 stdin `-`，默认 JSON 输出，`--markdown` 输出表格；不联网校验 URL 可访问性 |
-| `scripts/benchmark_research.py` | 当前可用 | 离线运行固定 benchmark cases，输出 JSON 或 `--markdown` 表格；不访问公网、不调用 LLM、不做阈值 gate |
-| `scripts/benchmark_live_research.py` | 当前可用 | 手动 opt-in 运行 `live-research` benchmark；需要 `--allow-live` 或 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1`，会使用联网/LLM 配置并可能产生 network/LLM cost |
-| `scripts/validate_document_reader.py` | 当前可用 | 离线验证当前本地 TXT/Markdown/HTML/PDF `document_reader` 行为、长文档 bounded snippets 和 JSON query ranking，默认 JSON 输出，`--markdown` 输出表格；PDF OCR、页级分页与向量语义检索验证属于后续路线图 |
-| `scripts/validate_pdf_fetch.py` | 当前可用 | 离线验证本地 PDF reader、`search_document` PDF query/page retrieval、fake remote PDF fetch 和 PDF metadata；不访问公网 |
-| `scripts/validate_github_search.py` | 当前可用 | 离线验证默认 deterministic `github_search` 和 fake live GitHub provider 映射，默认 JSON 输出，`--markdown` 输出表格；不读取 token、不请求 GitHub API |
-| `insight-graph-smoke` / `scripts/smoke_deployment.py` | 当前可用 | 对已运行的 API 部署执行 smoke test：检查 `/health`、`/dashboard` 和 `/research/jobs/summary`；默认从 `INSIGHT_GRAPH_API_KEY` 读取 API key，输出 JSON |
+## Script Inventory
 
-## run_research.py
+| Script | Status | Purpose |
+| --- | --- | --- |
+| `scripts/run_research.py` | active | Run one research workflow and print Markdown or JSON |
+| `scripts/run_with_llm_log.py` | active | Run one workflow and write safe LLM metadata logs |
+| `scripts/validate_sources.py` | active | Validate report citations and references offline |
+| `scripts/benchmark_research.py` | active | Run deterministic offline benchmark cases |
+| `scripts/benchmark_live_research.py` | active | Manual opt-in live benchmark; may incur network/LLM cost |
+| `scripts/validate_document_reader.py` | active | Validate local TXT/Markdown/HTML/PDF document reading |
+| `scripts/validate_pdf_fetch.py` | active | Validate PDF fetch and retrieval metadata flows |
+| `scripts/validate_github_search.py` | active | Validate deterministic and fake-live GitHub search mapping |
+| `scripts/smoke_deployment.py` / `insight-graph-smoke` | active | Run API/dashboard deployment smoke checks |
+| `scripts/summarize_eval_report.py` | active | Summarize eval JSON into compact outputs |
+| `scripts/append_eval_history.py` | active | Append eval summary history artifacts |
+
+## `run_research.py`
+
+Examples:
 
 ```bash
 python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot"
 python scripts/run_research.py - < query.txt
 python scripts/run_research.py "Compare Cursor, OpenCode, and GitHub Copilot" --preset live-research --output-json
-INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python scripts/run_research.py '{"path":"report.md","query":"enterprise pricing"}'
 ```
 
-该脚本复用当前 research workflow。默认 `--preset offline` 不应用 live defaults；当未预先设置 opt-in 工具/LLM 环境变量时，会使用 deterministic mock evidence。显式设置的 opt-in 环境变量仍会被保留并生效，与现有 CLI 语义一致；`--preset live-research` 会启用联网搜索、GitHub/SEC、多源采集、URL validation、OpenAI-compatible relevance judge、LLM Analyst 和 LLM Reporter。`--preset live-llm` 保留为轻量 web search + LLM preset。
+Notes:
 
-当 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 时，query 可以是本地文件路径，也可以是 JSON：`{"path":"report.md","query":"enterprise pricing"}`。JSON `query` 会触发 `document_reader` 的 deterministic lexical ranking，从本地文档 chunks 中优先返回词项匹配的 evidence；不使用 embeddings、LLM 或公网服务。
+- offline is the default path
+- live defaults are applied only through explicit presets or explicit env vars
+- `--output-json` mirrors the API-aligned result shape
 
-## run_with_llm_log.py
+## `run_with_llm_log.py`
+
+Examples:
 
 ```bash
 python scripts/run_with_llm_log.py "Compare Cursor, OpenCode, and GitHub Copilot"
-python scripts/run_with_llm_log.py - < query.txt
 python scripts/run_with_llm_log.py "Compare Cursor, OpenCode, and GitHub Copilot" --log-dir tmp_llm_logs
-INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python scripts/run_with_llm_log.py '{"path":"report.md","query":"enterprise pricing"}' --log-dir tmp_llm_logs
 ```
 
-该脚本会把本次运行的安全 LLM metadata 写入 JSON 文件。日志包含 `tool_call_log`、`llm_call_log`、summary counts 和 iterations；不包含完整报告、完整 findings、evidence pool、prompt、completion、raw response、headers、request body 或 API key。
+The log contains safe LLM metadata only:
 
-与 `run_research.py` 一样，当 `INSIGHT_GRAPH_USE_DOCUMENT_READER=1` 时，JSON query 会触发 `document_reader` 的 deterministic lexical ranking，并同时写入安全 metadata log；不使用 embeddings、LLM retrieval 或公网服务。
+- stage
+- provider
+- model
+- duration
+- token counts
+- error summary
 
-## benchmark_research.py
+It does not store prompt/completion bodies, raw responses, headers, request
+bodies, or API keys by default.
+
+## `benchmark_research.py`
+
+Examples:
 
 ```bash
 python scripts/benchmark_research.py
 python scripts/benchmark_research.py --markdown
 ```
 
-该脚本会在进程内清理会改变默认工具/LLM 行为的 opt-in 环境变量，确保 benchmark 使用 offline deterministic workflow。
+This path stays offline and deterministic.
 
-## benchmark_live_research.py
+## `benchmark_live_research.py`
+
+Examples:
 
 ```bash
 python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json
-INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1 python scripts/benchmark_live_research.py --output reports/live-benchmark.json --case "Compare Cursor, OpenCode, and GitHub Copilot"
 python scripts/benchmark_live_research.py --allow-live --output reports/live-benchmark.json --case-file docs/benchmarks/live-research-cases.json
 ```
 
-该脚本是手动/opt-in live benchmark，固定使用 `live-research` preset。未传 `--allow-live` 且未设置 `INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1` 时会退出，不写 artifact。启用后会访问真实网络/LLM provider，可能产生 network/LLM cost。Do not commit generated live benchmark reports；只提交 curated case profiles 和文档。
-
-`docs/benchmarks/live-research-cases.json` 保存 curated benchmark case profiles，包括 AI coding agents、public company analysis、SEC filing risk analysis 和 technology trend analysis。每个 case 包含 `expected_sections`、`required_source_types`、`minimum_source_diversity` 和 `report_depth_target_words`。
-
-JSON artifact 是安全的指标摘要，不包含生成的 live report 正文。主要字段包括 `url_validation_rate`、`citation_precision_proxy`、`source_diversity_by_type`、`source_diversity_by_domain`、`section_coverage`、`report_depth_words`、`runtime_ms`、`llm_call_count`、`tool_call_count` 和 `total_tokens`。
-
-## validate_sources.py
+Or:
 
 ```bash
-python scripts/validate_sources.py report.md
-python scripts/validate_sources.py - < report.md
-python scripts/validate_sources.py report.md --markdown
+export INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1
+python scripts/benchmark_live_research.py --output reports/live-benchmark.json
 ```
 
-该脚本只做离线结构校验，不请求 URL，也不验证网页是否可访问。
+Important:
 
-## validate_document_reader.py
+- always uses `live-research`
+- may incur network/LLM cost
+- uses `docs/benchmarks/live-research-cases.json`
+- do not commit generated live benchmark reports
 
-```bash
-python scripts/validate_document_reader.py
-python scripts/validate_document_reader.py --markdown
-```
+Typical metrics include:
 
-该脚本会在临时目录内创建 TXT/Markdown/HTML/PDF fixtures，并验证 `document_reader` 的成功读取、unsupported/empty/invalid 文件、缺失文件和路径越界返回空结果；不读取用户文件、不访问公网、不调用 LLM。
+- `url_validation_rate`
+- `citation_precision_proxy`
+- `source_diversity_by_type`
+- `source_diversity_by_domain`
+- `section_coverage`
+- `total_tokens`
 
-`document_reader` 也支持 JSON 输入按检索词选择更相关的 chunks：
+## Document Validation Scripts
 
-```bash
-INSIGHT_GRAPH_USE_DOCUMENT_READER=1 python -m insight_graph.cli research '{"path":"report.pdf","query":"enterprise pricing"}'
-```
+### `validate_document_reader.py`
 
-该排序是 deterministic lexical matching，不使用 embeddings、LLM 或公网服务。
+Validates:
 
-## validate_pdf_fetch.py
+- TXT / Markdown / HTML / PDF parsing
+- bounded snippets
+- deterministic query ranking
+- safety boundaries for local-only access
 
-```bash
-python scripts/validate_pdf_fetch.py
-python scripts/validate_pdf_fetch.py --markdown
-```
+### `validate_pdf_fetch.py`
 
-该脚本会在临时目录内创建 PDF fixtures，验证 `document_reader`、`search_document`、fake remote `fetch_url` PDF extraction 和 page/chunk metadata；不访问公网、不读取用户文件、不调用 LLM。
+Validates:
 
-## validate_github_search.py
+- local PDF reading
+- fake remote PDF fetch
+- page metadata
+- chunk metadata
+- retrieval behavior
 
-```bash
-python scripts/validate_github_search.py
-python scripts/validate_github_search.py --markdown
-```
+## Deployment Smoke
 
-该脚本验证默认 offline `github_search` 以及 `INSIGHT_GRAPH_GITHUB_PROVIDER=live` 的 fake GitHub API 映射路径；不读取 `GITHUB_TOKEN`、不请求真实 GitHub API，也不调用 LLM。
-
-## insight-graph-smoke
+Examples:
 
 ```bash
 insight-graph-smoke http://127.0.0.1:8000
-INSIGHT_GRAPH_API_KEY=change-me insight-graph-smoke https://insightgraph.example.com
-insight-graph-smoke https://insightgraph.example.com --timeout 10
-insight-graph-smoke https://insightgraph.example.com --markdown
-insight-graph-smoke https://insightgraph.example.com --output smoke.json
-insight-graph-smoke https://insightgraph.example.com --markdown --output smoke.md
+insight-graph-smoke http://127.0.0.1:8000 --api-key "$INSIGHT_GRAPH_API_KEY" --markdown
 ```
 
-该脚本会对已运行的 API 或 reverse proxy 边界执行部署 smoke test。它检查 `/health` 可访问、`/dashboard` 返回 dashboard HTML、`/research/jobs/summary` 返回 JSON；当设置 `INSIGHT_GRAPH_API_KEY` 或传入 `--api-key` 时，会用 `Authorization: Bearer <key>` 请求受保护的 jobs summary endpoint。
+The smoke script checks:
 
-退出码：全部通过为 `0`，任一 endpoint 检查失败为 `1`，CLI 参数错误或 `--output` 写入失败为 `2`。脚本默认输出 JSON；`--markdown` 输出 GitHub-flavored Markdown summary，便于粘贴到 runbook、issue 或发布记录。`--output PATH` 会把当前格式写入文件，endpoint 检查失败时仍会写出报告。报告包含 UTC `created_at`、总 `duration_ms` 和每个 endpoint check 的 `duration_ms`；Markdown 表格也会显示失败 check 的安全 error 文本。两种格式都不打印 API key、请求 body 或响应 body。
+- `/health`
+- `/dashboard`
+- `/research/jobs/summary`
 
-`scripts/smoke_deployment.py` remains as a repository-local compatibility wrapper around
-the packaged `insight-graph-smoke` command.
+## Related Docs
+
+- `README.md`
+- `docs/QUICK_START.md`
+- `docs/configuration.md`
+- `docs/deployment.md`
+- `docs/BENCHMARKS.md`

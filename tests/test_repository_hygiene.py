@@ -1,17 +1,24 @@
 from pathlib import Path
 
 
-def test_gitignore_excludes_local_tool_caches_and_generated_eval_reports() -> None:
+def test_gitignore_excludes_local_runtime_noise() -> None:
     gitignore = (Path(__file__).parents[1] / ".gitignore").read_text(encoding="utf-8")
 
-    assert ".ruff_cache/" in gitignore
-    assert "reports/eval.json" in gitignore
-    assert "reports/eval.md" in gitignore
-    assert "reports/eval-summary.json" in gitignore
-    assert "reports/eval-summary.md" in gitignore
-    assert "reports/eval-history.json" in gitignore
-    assert "reports/eval-history.md" in gitignore
-    assert "reports/ai-coding-agents-technical-review.md" in gitignore
+    for token in [
+        ".ruff_cache/",
+        ".pytest_cache/",
+        "reports/eval.json",
+        "reports/eval.md",
+        "reports/eval-summary.json",
+        "reports/eval-summary.md",
+        "reports/eval-history.json",
+        "reports/eval-history.md",
+        "reports/ai-coding-agents-technical-review.md",
+        "debug.log",
+        "error.log",
+        "data/",
+    ]:
+        assert token in gitignore
 
 
 def test_report_quality_roadmap_documents_worktree_pythonpath_rule() -> None:
@@ -38,7 +45,6 @@ def test_historical_superpowers_process_docs_are_not_tracked() -> None:
 
 def test_generated_showcase_report_is_not_tracked() -> None:
     root = Path(__file__).parents[1]
-
     assert not (root / "reports" / "ai-coding-agents-technical-review.md").exists()
 
 
@@ -83,7 +89,7 @@ def test_live_benchmark_artifacts_and_case_profiles_are_documented() -> None:
     assert "Do not commit generated live benchmark reports" in docs
 
 
-def test_final_docs_align_to_live_research_product_path() -> None:
+def test_docs_align_to_live_research_product_path() -> None:
     root = Path(__file__).parents[1]
     docs = {
         "roadmap": (root / "docs" / "roadmap.md").read_text(encoding="utf-8"),
@@ -99,28 +105,25 @@ def test_final_docs_align_to_live_research_product_path() -> None:
     combined = "\n".join(docs.values())
     assert "product path is `live-research`" in combined
     assert "Offline remains the deterministic testing/CI fallback" in combined
-    assert "The next optimization goal" in combined
-    assert "The active project route is now `docs/report-quality-roadmap.md`" not in docs[
-        "roadmap"
-    ]
+    assert "high-quality, evidence-grounded" in combined
     assert "Need reference-style live benchmark profile" not in docs["reference"]
     assert "Memory-on/off quality eval proof" not in docs["reference"]
 
 
-def test_docs_define_high_quality_report_roadmap_and_defer_high_risk_items() -> None:
+def test_docs_define_completed_route_and_deferred_items() -> None:
     root = Path(__file__).parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     roadmap = (root / "docs" / "roadmap.md").read_text(encoding="utf-8")
     architecture = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
     combined = "\n".join([readme, roadmap, architecture])
 
-    assert "生成高质量、可验证深度研究报告" in combined
     assert "Completed Optimization Batches" in roadmap
     assert "Report Quality v3 - complete" in roadmap
     assert "Live Benchmark Case Profiles - complete" in roadmap
     assert "Production RAG Hardening - complete" in roadmap
     assert "Memory Quality Loop - complete" in roadmap
     assert "Dashboard Productization - complete" in roadmap
+    assert "API And Operations Hardening - complete" in roadmap
     assert "Remaining Explicit-Decision Work" in roadmap
     for item in [
         "MCP runtime invocation behind allowlist",
@@ -128,34 +131,32 @@ def test_docs_define_high_quality_report_roadmap_and_defer_high_risk_items() -> 
         "`/tasks` API compatibility aliases",
         "release/deploy automation dry-run only",
     ]:
-        assert item in roadmap
+        assert item in combined
 
 
-def test_readme_uses_reference_style_sections_with_current_project_truths() -> None:
+def test_readme_explains_layered_documentation_and_project_truths() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
 
-    expected_sections = [
-        "## 项目结构",
-        "## 核心特性",
-        "## 技术架构",
-        "## 整体执行流程",
-        "## 多智能体协作流程",
-        "## 数据流与证据链路",
-        "## 技术栈",
-        "## 内置工具",
-        "## 执行链路详解",
-        "## 示例输出",
-        "## 效果与亮点",
-        "## 快速开始",
-        "## 配置说明",
-        "## 脚本",
-    ]
-    for section in expected_sections:
+    for section in [
+        "## What It Does",
+        "## Product Truths",
+        "## Architecture At A Glance",
+        "## Quick Start",
+        "## Documentation Guide",
+        "## Runtime Diagnostics",
+        "## Built-In Tools",
+        "## Storage And Memory",
+        "## Live Benchmark",
+    ]:
         assert section in readme
-    assert "Planner → Collector/Executor → Analyst → Critic → Reporter" in readme
-    assert "Offline deterministic 是测试/CI fallback" in readme
-    assert "真实 sandboxed Python/code execution 暂不启用" in readme
-    assert "MCP runtime invocation 暂不启用" in readme
+
+    assert "English Reference Docs" in readme
+    assert "Chinese Operator Docs" in readme
+    assert "Internal Reference Docs" in readme
+    assert "Planner -> Collector/Executor -> Analyst -> Critic -> Reporter" in readme
+    assert "Offline remains the deterministic testing/CI fallback" in readme
+    assert "Real sandboxed Python/code execution is not enabled." in readme
+    assert "MCP runtime invocation is not enabled." in readme
 
 
 def test_deployment_runbook_aligns_operational_env_surfaces() -> None:
@@ -188,7 +189,6 @@ def test_deployment_runbook_aligns_operational_env_surfaces() -> None:
         "INSIGHT_GRAPH_LLM_TRACE",
         "INSIGHT_GRAPH_LLM_TRACE_PATH",
         "INSIGHT_GRAPH_ALLOW_LIVE_BENCHMARK=1",
-        "network/LLM cost",
     ]:
         assert token in combined
 
@@ -215,6 +215,4 @@ def test_roadmap_and_readme_mark_completed_batches_and_next_priorities() -> None
     assert "3. release/deploy automation dry-run only" in roadmap
     assert "4. Real sandboxed Python/code execution" in roadmap
     assert "release/deploy/force-push automation" not in roadmap
-    assert "Next Optimization Plan" not in roadmap
-    assert "后续优化路线" in readme
-    assert "A-F complete" in readme
+    assert "Internal Reference Docs" in readme

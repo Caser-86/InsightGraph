@@ -8,6 +8,9 @@ __pycache__/
 htmlcov/
 server*.log
 start_server.ps1
+debug.log
+error.log
+data/
 reports/eval.json
 reports/eval.md
 reports/eval-summary.json
@@ -18,7 +21,6 @@ reports/*.md
 reports/ai-coding-agents-technical-review.md
 
 .env
-debug.log
 *.db
 data/research_jobs.json
 data/.research_jobs.json.*.tmp

@@ -1,79 +1,65 @@
-# 产品路线图
+# 产品路线图（中文）
+
+这份文档是 `docs/roadmap.md` 的中文镜像，方便中文使用者快速理解项目当前完成度与后续边界。
 
 ## 当前产品路径
 
-当前产品路径为 `live-research`（实时研究）。
+InsightGraph 当前唯一面向正式研究场景的产品路径是 `live-research`。
 
-离线模式仍作为确定性测试/CI 的降级方案。网络、LLM、数据库、外部嵌入、完整跟踪负载和实时基准测试行为仍保持显式选入机制。
+离线模式继续作为测试、CI 与本地结构验证的 deterministic fallback。联网搜索、LLM、数据库、外部 embedding、完整 trace payload 与 live benchmark 都保持显式 opt-in。
 
-优化目标仍是**生成高质量、可验证的深度研究报告**。未来工作应在扩展高风险运行时接口之前，优先改进报告正确性、深度、来源质量、引用支撑和操作可观测性。
+核心优化目标仍然是：**生成高质量、可验证、证据驱动的深度研究报告**。
 
 ## 已完成的优化批次
 
-A-F 批次已完成。以下报告质量和运维加固路线已实施、测试并文档化。
+### A. Report Quality v3 - complete
 
-### 批次 A：报告质量 v3 - 已完成
+- 强化 deterministic 与 LLM Reporter 的章节级结构约束
+- 增加 claim density、evidence density、citation support、unsupported claim 等质量指标
+- Critic 输出更具体的 missing source type / section / entity / unsupported claim 提示
+- 补齐 deterministic completeness gate
 
-- 为确定性报告和 LLM 报告输出强化章节级报告约束。
-- 在评估基准摘要和 Markdown 输出中增加声明密度、证据密度、未支撑声明、引用支撑和章节指标。
-- 为 Critic 重规划提供更具体的元数据，包括缺失来源类型、实体、章节和未支撑声明提示。
-- 确定性报告完整性门控，覆盖章节覆盖、引用支撑、来源多样性和未支撑声明。
+### B. Live Benchmark Case Profiles - complete
 
-### 批次 B：实时基准测试案例配置 - 已完成
+- 建立 AI coding agents、上市公司分析、SEC 风险分析、技术趋势分析等 live benchmark case
+- 扩展 URL validation、citation precision proxy、source diversity、section coverage、runtime、token、LLM/tool 调用等指标
+- 文档化 benchmark 工件边界，避免提交 live 生成结果
 
-- 为 AI 编程代理、上市公司分析、SEC 风险分析和技术趋势分析策划手动实时基准测试案例。
-- 扩展实时基准测试指标，包括 URL 验证、引用精确度代理、来源多样性、报告深度、章节覆盖、运行时、token 总数和 LLM/工具调用次数。
-- 安全的基准测试工件文档化，不提交生成的实时报告。
+### C. Production RAG Hardening - complete
 
-### 批次 C：生产级 RAG 加固 - 已完成
+- 文档引用保留 page / section heading / chunk index / snippet offset
+- 跨文档检索优先高权威、精确章节、近时效、实体命中
+- pgvector 文档检索保持显式 opt-in，本地 JSON 索引仍为默认路径
 
-- 文档引用片段保留页码、章节标题、块索引和片段偏移量（如可用）。
-- 跨文档检索评分优先考虑权威文档、精确章节命中、近期块和实体匹配，同时保持确定性降级方案。
-- 可选的 pgvector 支持文档检索设计仍为显式选入；本地 JSON 索引保持默认。
+### D. Memory Quality Loop - complete
 
-### 批次 D：记忆质量闭环 - 已完成
+- memory writeback 覆盖摘要、实体、已支持结论、引用、来源可靠性、过期元数据
+- memory retrieval 按领域、实体、embedding 配置、时效与支持状态过滤
+- memory on/off eval proof 已补齐
 
-- 记忆回写分类分离报告摘要、实体、支撑声明、引用、来源可靠性笔记和过期元数据。
-- 记忆检索质量控制按领域、实体、嵌入配置、时效性和支撑状态过滤。
-- 记忆评估证明比较记忆开/关状态的模拟案例，并报告质量差异。
+### E. Dashboard Productization - complete
 
-### 批次 E：Dashboard 产品化 - 已完成
+- Dashboard 展示 section coverage、citation support、source diversity、unsupported claims、URL validation、token、runtime
+- evidence drilldown 展示 title、URL、source type、fetch status、citation support status、section ID、snippet
+- job stream/event filtering 支持 stage、type、trace ID
 
-- 报告质量卡片展示章节覆盖、引用支撑、来源多样性、未支撑声明、URL 验证、token 总数和运行时。
-- 证据钻取显示证据标题、URL、来源类型、抓取状态、引用支撑状态、章节 ID 和片段。
-- 任务事件和流过滤支持阶段、类型和跟踪 ID。
+### F. API And Operations Hardening - complete
 
-### 批次 F：API 和运维加固 - 已完成
+- terminal job retention 与 cleanup 策略落地
+- restart/resume smoke path 覆盖 queued jobs、expired running jobs、checkpoint、worker claim
+- deployment 文档对齐 API key、SQLite、PostgreSQL、pgvector、trace redaction、benchmark cost
 
-- 终态任务保留和清理策略覆盖 SQLite 清理和工件保留边界。
-- 重启/恢复冒烟测试路径覆盖排队任务、过期运行任务、检查点和工作人员声明行为。
-- 部署运行手册对齐 API 密钥、SQLite、PostgreSQL、pgvector、实时提供商、跟踪脱敏和基准测试成本。
+## 仍需显式决策的事项
 
-## 待决定的显式决策工作
+这些事项会扩大 API 面、攻击面或发布风险，默认不启用：
 
-以下项目会扩展 API 接口、攻击面或发布风险。仅在做出明确决策并进行专门安全审查后才执行。
+1. `/tasks` API compatibility aliases
+2. MCP runtime invocation behind allowlist
+3. release/deploy automation dry-run only
+4. Real sandboxed Python/code execution
+5. 更进一步的 V3 深度研究循环
 
-0. V3 深度研究循环。
-- 优先级：对报告质量为高优先级，但有意推迟直到 V1 质量诊断和可选 V2 LLM 审稿有足够的实时运行证据。
-- 目的：自动审查报告质量，生成针对性的补充搜索，重新采集证据，并重写报告，直到达到目标分数或预算限制。
-- 所需安全保障：严格的搜索/工具/token 预算、重复查询抑制、每次重写后的引用验证、可见的质量诊断和明确的成本操作控制。
+## 使用建议
 
-1. `/tasks` API 兼容性别名。
-- 优先级：在延期项目中优先级最高，因为主要是 API 适配器且安全影响最小。
-- 目的：为 `/research/jobs` 提供引用兼容的别名，如果有真实消费者需要。
-- 所需安全保障：稳定的兼容性契约、重复的 API 文档/测试、与 `/research/jobs` 无行为偏差。
-
-2. MCP 运行时调用（基于允许列表）。
-- 优先级：中等；仅在外部工具调用有具体用例时才有价值。
-- 目的：实际调用外部 MCP 工具，而非仅存储元数据规范。
-- 所需安全保障：允许列表、认证边界、请求/响应脱敏、审计日志、超时/资源限制。
-
-3. 发布/部署自动化（仅限试运行）。
-- 优先级：中低；在发布节奏建立后有用，但应以非破坏性检查开始。
-- 目的：自动化发布就绪检查和试运行部署步骤，不进行推送、打标签或强制推送。
-- 所需安全保障：分支保护、手动审批门控、默认试运行、不强制推送到受保护分支。
-
-4. 真实沙箱化 Python/代码执行。
-- 优先级：最低且风险最高。
-- 目的：运行真实分析代码用于 CSV/Excel/统计/财务建模。
-- 所需安全保障：沙箱、网络隔离、文件系统隔离、CPU/内存/时间限制、依赖策略。
+- 如果目标是当前可运行、可演示、可生成研究报告，项目已经完工
+- 如果目标是继续提升“更长、更深、更像人工研究员”的报告质量，应从 `docs/roadmap.md` 中剩余的显式决策项继续推进

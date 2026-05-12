@@ -2050,7 +2050,7 @@ def test_report_review_prompt_includes_target_word_expansion(monkeypatch) -> Non
     monkeypatch.setenv("INSIGHT_GRAPH_REPORT_INTENSITY", "deep-plus")
     client = UsageLLMClient(
         content=(
-            '{"markdown":"# InsightGraph 娣卞害鐮旂┒鎶ュ憡\\n\\n## 鏍稿績鍙戠幇\\n\\n'
+            '{"markdown":"# InsightGraph Deep Research Report\\n\\n## Key Findings\\n\\n'
             'Expanded supported finding [1]."}'
         )
     )

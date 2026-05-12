@@ -1,30 +1,42 @@
-# Research Jobs API
+# Research Jobs And Memory API
 
-The research jobs API is the non-blocking path for long-running research requests. It uses the repository contract documented in `docs/research-job-repository-contract.md` and supports in-memory storage by default, opt-in JSON metadata persistence, and opt-in SQLite storage with internal worker leasing.
+This is the canonical reference for InsightGraph asynchronous job execution,
+restart/resume behavior, report export, and memory management.
 
-If `INSIGHT_GRAPH_API_KEY` is configured, all research job endpoints require `Authorization: Bearer <key>` or `X-API-Key: <key>`. `/health` remains public.
+## Authentication
 
-## Endpoints
+If `INSIGHT_GRAPH_API_KEY` is configured, all endpoints below require either:
 
-- `POST /research/jobs` creates a queued job and returns `202`.
-- `GET /research/jobs` lists retained jobs newest first.
-- `GET /research/jobs/summary` returns status counts and active queued/running jobs.
-- `GET /research/jobs/{job_id}` returns job detail.
-- `WS /research/jobs/{job_id}/stream` streams safe job snapshots for dashboard updates.
-- `GET /research/jobs/{job_id}/report.md` downloads a completed Markdown report.
-- `GET /research/jobs/{job_id}/report.html` downloads an escaped HTML report.
-- `POST /research/jobs/{job_id}/cancel` cancels a queued or running job.
-- `POST /research/jobs/{job_id}/retry` creates a new queued job from a failed or cancelled job.
-- `GET /memory` lists retained memory records.
-- `POST /memory/search` searches memory records.
-- `DELETE /memory/{memory_id}` deletes one memory record.
+- `Authorization: Bearer <key>`
+- `X-API-Key: <key>`
 
-## Create job
+`/health` remains public.
+
+## Job Endpoints
+
+- `POST /research/jobs`
+- `GET /research/jobs`
+- `GET /research/jobs/summary`
+- `GET /research/jobs/{job_id}`
+- `POST /research/jobs/{job_id}/cancel`
+- `POST /research/jobs/{job_id}/retry`
+- `DELETE /research/jobs/{job_id}`
+- `GET /research/jobs/{job_id}/report.md`
+- `GET /research/jobs/{job_id}/report.html`
+- `WS /research/jobs/{job_id}/stream`
+
+## Memory Endpoints
+
+- `GET /memory`
+- `POST /memory/search`
+- `DELETE /memory/{memory_id}`
+
+## Create Job
 
 ```bash
 curl -X POST http://127.0.0.1:8000/research/jobs \
   -H "Content-Type: application/json" \
-  -d '{"query":"Compare Cursor, OpenCode, and GitHub Copilot"}'
+  -d '{"query":"Compare AI coding agents","preset":"live-research"}'
 ```
 
 Response:
@@ -37,203 +49,54 @@ Response:
 }
 ```
 
-If `queued + running` reaches the active cap, create returns `429`:
+If `queued + running` reaches the active cap, create returns `429`.
 
-```json
-{"detail":"Too many active research jobs."}
-```
-
-## List jobs
+## List Jobs
 
 ```bash
-curl "http://127.0.0.1:8000/research/jobs?status=queued&limit=2"
+curl "http://127.0.0.1:8000/research/jobs?status=queued&limit=20"
 ```
 
-- `status` is optional and can be `queued`, `running`, `succeeded`, `failed`, or `cancelled`.
-- `limit` is optional and must be between `1` and `100`.
-- Jobs are returned newest first by `created_order`.
-- List responses contain summaries only; they do not include `result` or `error`.
+Rules:
 
-Example:
-
-```json
-{
-  "jobs": [
-    {
-      "job_id": "job-123",
-      "status": "queued",
-      "query": "Compare AI coding agents",
-      "preset": "offline",
-      "created_at": "2026-04-27T10:00:00Z",
-      "queue_position": 1
-    }
-  ],
-  "count": 1
-}
-```
+- `status` is optional
+- `limit` must be between `1` and `100`
+- jobs are returned newest first
+- list payloads do not include `result` or `error`
 
 ## Summary
 
-```bash
-curl http://127.0.0.1:8000/research/jobs/summary
-```
+`GET /research/jobs/summary` returns:
 
-Summary includes all status counts, `active_count`, `active_limit`, queued job summaries, and running job summaries. `queue_position` is 1-based and dynamic for queued jobs only.
-
-## Retention And Cleanup
-
-Terminal job retention applies only to `succeeded`, `failed`, and `cancelled` jobs. Queued and running jobs are never deleted by cleanup.
-
-- Count-based retention is controlled by the retained job limit and prunes the oldest terminal jobs when new jobs are created or completed.
-- Time-based terminal job retention is opt-in with `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS`.
-- On API startup, jobs with `finished_at` older than the configured cutoff are deleted.
-- SQLite cleanup deletes matching terminal rows from the `research_jobs` table and keeps the `next_sequence` counter intact.
-- artifact retention is external: report downloads are generated from retained job records only; CI artifacts, exported files, and external object storage are not deleted by research job cleanup.
-
-## Restart And Resume Smoke Path
-
-SQLite jobs can be resumed after an API process restart when startup worker processing is enabled.
-
-- Set `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite` and `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` to persist queued/running jobs.
-- Set `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1` to let API startup claim queued jobs and expired running jobs.
-- Running jobs use worker leases; expired running jobs are requeued before the next worker claim.
-- Set `INSIGHT_GRAPH_CHECKPOINT_RESUME=1` to pass the job ID as the checkpoint `run_id` and resume from the latest checkpoint when one exists.
-- A successful restart/resume smoke path covers queued jobs, expired running jobs, checkpoint resume routing, and SQLite worker claim ownership.
-
-```json
-{
-  "counts": {
-    "queued": 1,
-    "running": 1,
-    "succeeded": 0,
-    "failed": 0,
-    "cancelled": 0,
-    "total": 2
-  },
-  "active_count": 2,
-  "active_limit": 100,
-  "queued_jobs": [
-    {
-      "job_id": "job-123",
-      "status": "queued",
-      "query": "Compare AI coding agents",
-      "preset": "offline",
-      "created_at": "2026-04-27T10:00:00Z",
-      "queue_position": 1
-    }
-  ],
-  "running_jobs": [
-    {
-      "job_id": "job-456",
-      "status": "running",
-      "query": "Analyze market signals",
-      "preset": "offline",
-      "created_at": "2026-04-27T10:01:00Z",
-      "started_at": "2026-04-27T10:01:01Z"
-    }
-  ]
-}
-```
+- status counts
+- `active_count`
+- `active_limit`
+- queued job summaries
+- running job summaries
 
 ## Detail
 
-```bash
-curl http://127.0.0.1:8000/research/jobs/job-123
-```
+`GET /research/jobs/{job_id}` returns one full job view.
 
-- `queued` includes `queue_position`.
-- `running` includes `started_at`.
-- `succeeded` includes `result`.
-- `failed` includes safe `error` only.
-- `cancelled` includes `finished_at`.
-- Detail responses include derived progress metadata: `progress_stage`, `progress_percent`, `progress_steps`, `runtime_seconds`, `tool_call_count`, and `llm_call_count`.
-- Detail responses include bounded safe `events` when available. Job list and summary responses omit events to keep those payloads compact.
-- Progress is derived from stored job state, result logs, and safe stage events.
+Depending on state, the payload may include:
 
-```json
-{
-  "job_id": "job-123",
-  "status": "running",
-  "events": [
-    {"type":"stage_started","stage":"planner","sequence":1}
-  ]
-}
-```
+- `queue_position`
+- `started_at`
+- `finished_at`
+- `result`
+- `error`
+- `events`
+- `progress_stage`
+- `progress_percent`
+- `progress_steps`
+- `runtime_seconds`
+- `tool_call_count`
+- `llm_call_count`
 
-Unknown jobs return `404`:
+Unknown jobs return:
 
 ```json
 {"detail":"Research job not found."}
-```
-
-## WebSocket stream
-
-```text
-ws://127.0.0.1:8000/research/jobs/job-123/stream
-```
-
-The stream sends safe JSON events using the same job detail shape as REST,
-including derived progress fields. It does not stream prompts, completions, raw
-provider responses, headers, request bodies, or API keys.
-
-```json
-{
-  "type": "job_snapshot",
-  "job": {
-    "job_id": "job-123",
-    "status": "running",
-    "progress_stage": "planner",
-    "progress_percent": 20
-  }
-}
-```
-
-While a worker runs in the same process, the stream may also include safe execution
-events:
-
-```json
-{"type":"stage_started","stage":"planner","sequence":1}
-{"type":"stage_finished","stage":"collector","sequence":4}
-{"type":"tool_call","record":{"tool_name":"mock_search","success":true},"sequence":5}
-{"type":"llm_call","record":{"stage":"analyst","model":"...","success":true},"sequence":6}
-{"type":"report_ready","sequence":10}
-```
-
-Event history is bounded and persisted with retained job details. On process restart,
-or when connecting to a different process than the one executing the job, clients may
-still receive replayed persisted events, but not live cross-process pub/sub updates.
-When cached stage events are available in the same process, snapshot progress fields
-derive from those events, so `progress_stage`, `progress_percent`, and
-`progress_steps` show the active Planner, Collector, Analyst, Critic, or Reporter
-stage instead of the generic running fallback. If memory cache is empty, persisted
-stage events are used as a fallback.
-
-Unknown jobs send an error event and close:
-
-```json
-{"type":"error","detail":"Research job not found."}
-```
-
-If `INSIGHT_GRAPH_API_KEY` is configured, browser clients pass the key as a query
-parameter because standard browser WebSocket APIs cannot set custom headers:
-
-```text
-ws://127.0.0.1:8000/research/jobs/job-123/stream?api_key=demo-key
-```
-
-## Report export
-
-```bash
-curl http://127.0.0.1:8000/research/jobs/job-123/report.md
-curl http://127.0.0.1:8000/research/jobs/job-123/report.html
-```
-
-Report export endpoints require the same API key headers as other research job
-endpoints when `INSIGHT_GRAPH_API_KEY` is configured. They return completed report
-content only. Jobs without an available report return `409`:
-
-```json
-{"detail":"Research job report is not available."}
 ```
 
 ## Cancel
@@ -248,7 +111,8 @@ Queued and running jobs are cancellable. Terminal jobs return `409`:
 {"detail":"Only queued or running research jobs can be cancelled."}
 ```
 
-Successful cancel returns the normal job detail payload with `status: "cancelled"`.
+Successful cancel returns the normal job detail shape with `status:
+"cancelled"`.
 
 ## Retry
 
@@ -256,70 +120,109 @@ Successful cancel returns the normal job detail payload with `status: "cancelled
 curl -X POST http://127.0.0.1:8000/research/jobs/job-123/retry
 ```
 
-Only `failed` and `cancelled` jobs are retryable. Retry creates a new queued job with the same query and preset; the source job is unchanged.
+Only `failed` and `cancelled` jobs are retryable. Retry creates a new queued
+job with the same query and preset.
 
-Successful retry returns `202` with a normal create response:
-
-```json
-{
-  "job_id": "job-789",
-  "status": "queued",
-  "created_at": "2026-04-27T10:05:00Z"
-}
-```
-
-Unknown source jobs return `404`:
-
-```json
-{"detail":"Research job not found."}
-```
-
-Non-retryable jobs return `409`:
+Non-retryable jobs return:
 
 ```json
 {"detail":"Only failed or cancelled research jobs can be retried."}
 ```
 
-If `queued + running` reaches the active cap, retry returns `429`:
+## Delete
 
-```json
-{"detail":"Too many active research jobs."}
+```bash
+curl -X DELETE http://127.0.0.1:8000/research/jobs/job-123
 ```
 
-If configured storage fails while creating the retry job, retry returns `500`:
+Delete is allowed only for terminal jobs. Active jobs return `409`.
 
-```json
-{"detail":"Research job store failed."}
+## Report Export
+
+```bash
+curl http://127.0.0.1:8000/research/jobs/job-123/report.md
+curl http://127.0.0.1:8000/research/jobs/job-123/report.html
 ```
 
-## Retention and persistence
+Jobs without an available report return:
 
-- The in-memory repository retains the latest 100 terminal jobs: `succeeded`, `failed`, and `cancelled`.
-- `queued` and `running` jobs are not pruned by terminal-job retention.
-- `INSIGHT_GRAPH_RESEARCH_JOBS_PATH` enables opt-in JSON metadata persistence.
-- With JSON metadata persistence, unfinished persisted jobs become `failed` with `Research job did not complete before server restart.`
-- With SQLite storage, queued jobs remain queued and expired running jobs are requeued through internal worker lease claim.
-- Workflow execution is not resumed in-place after restart, and jobs are not automatically retried after terminal failure.
+```json
+{"detail":"Research job report is not available."}
+```
 
-## Runtime storage configuration
+## WebSocket Stream
 
-- Default: in-memory research job storage.
-- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=memory`: explicit in-memory storage.
-- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`: use SQLite storage.
-- `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`: required when backend is `sqlite`.
-- `INSIGHT_GRAPH_RESEARCH_JOBS_PATH=/path/jobs.json`: existing JSON metadata path. With SQLite selected, this is only used as an optional import source during startup initialization.
+```text
+ws://127.0.0.1:8000/research/jobs/job-123/stream
+```
+
+The stream sends safe JSON snapshots and safe event records. It does not send
+prompts, completions, raw provider payloads, request bodies, headers, or API
+keys.
+
+Possible event types include:
+
+- `job_snapshot`
+- `stage_started`
+- `stage_finished`
+- `tool_call`
+- `llm_call`
+- `report_ready`
+- `resumed_from_checkpoint`
+
+## Retention And Cleanup
+
+Terminal job retention applies only to `succeeded`, `failed`, and `cancelled`
+jobs. This terminal job retention rule never deletes queued or running jobs.
+
+- Count-based retention prunes the oldest terminal jobs.
+- Time-based cleanup is opt-in via
+  `INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS`.
+- SQLite cleanup deletes matching terminal rows from the `research_jobs` table.
+- artifact retention is external: report downloads depend on retained job
+  records, but CI artifacts and external storage are outside research job
+  cleanup.
+
+## Restart And Resume Smoke Path
+
+SQLite jobs can resume after process restart when startup worker processing is
+enabled.
+
+- Set `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`
+- Set `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`
+- Set `INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER=1`
+- Set `INSIGHT_GRAPH_CHECKPOINT_RESUME=1` if you want the workflow to reuse the
+  job ID as checkpoint `run_id`
+
+Rules:
+
+- queued jobs stay queued until a worker claim
+- expired running jobs are requeued through worker lease claim
+- checkpoint resume can continue from the latest stored checkpoint
+- worker claim ownership prevents cross-worker terminal writes
+
+This restart/resume smoke path covers queued jobs, expired running jobs,
+checkpoint resume routing, and worker claim behavior.
+
+## Runtime Storage Configuration
+
+- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=memory`
+- `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND=sqlite`
+- `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH=/path/jobs.sqlite3`
+- `INSIGHT_GRAPH_RESEARCH_JOBS_PATH=/path/jobs.json`
+
+JSON metadata persistence is single-process only. SQLite is the durable
+multi-process-safe job metadata path.
 
 ## Memory API
 
-Memory management respects the same API key rules as other non-`/health` endpoints.
-
-List memory records:
+### List Memory Records
 
 ```bash
 curl http://127.0.0.1:8000/memory
 ```
 
-Search memory records:
+### Search Memory Records
 
 ```bash
 curl -X POST http://127.0.0.1:8000/memory/search \
@@ -327,10 +230,12 @@ curl -X POST http://127.0.0.1:8000/memory/search \
   -d '{"query":"Xiaomi SU7 deliveries", "limit": 5}'
 ```
 
-Delete one memory record:
+### Delete One Memory Record
 
 ```bash
 curl -X DELETE http://127.0.0.1:8000/memory/memory-123
 ```
 
-When `INSIGHT_GRAPH_MEMORY_WRITEBACK=1`, successful reports can write summary, entity, supported-claim, reference, and source-reliability memory records into the configured memory backend.
+When `INSIGHT_GRAPH_MEMORY_WRITEBACK=1`, successful reports can write summary,
+entity, supported-claim, reference, and source-reliability records into the
+configured memory backend.

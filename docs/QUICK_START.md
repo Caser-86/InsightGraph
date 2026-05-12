@@ -1,15 +1,20 @@
 # 快速开始
 
-5 分钟内快速上手 InsightGraph。
+这份文档面向中文使用者，帮助你在 5-10 分钟内跑通 InsightGraph。
 
-## 需求
+## 适用场景
+
+- 想先离线体验完整研究流程
+- 想接入 LLM 和联网搜索，生成更完整的正式报告
+- 想启动 API 和 Dashboard 做演示
+
+## 环境要求
 
 - Python 3.11+
-- OpenAI 兼容的 LLM endpoint（或使用离线 mock 模式）
+- 可选：OpenAI-compatible LLM endpoint
+- 可选：DuckDuckGo、SerpAPI 或 Google Custom Search 配置
 
 ## 安装
-
-### 方式 1: 从源代码安装（开发）
 
 ```bash
 git clone https://github.com/Caser-86/InsightGraph.git
@@ -19,159 +24,95 @@ source .venv/bin/activate  # Windows: .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 ```
 
-### 方式 2: 从 PyPI 安装（生产）
+## 第一次运行
+
+### 1. 离线模式
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .\.venv\Scripts\Activate.ps1
-pip install insightgraph
+insight-graph research "对比 Cursor、OpenCode 和 GitHub Copilot"
 ```
 
-## 配置 LLM（可选）
+特点：
 
-如果要生成中文研究报告，需要配置 LLM endpoint。
+- 不访问公网
+- 不调用 LLM
+- 适合本地验证、CI、演示基础流程
 
-### 使用 DeepSeek
+### 2. live-research 模式
 
 ```bash
-# 创建 .env 文件
-cat > .env << 'EOF'
-INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1
-INSIGHT_GRAPH_LLM_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-INSIGHT_GRAPH_ANALYST_PROVIDER=llm
-INSIGHT_GRAPH_REPORTER_PROVIDER=llm
-EOF
+insight-graph research --preset live-research "对比 Cursor、OpenCode 和 GitHub Copilot"
 ```
 
-### 使用其他 OpenAI 兼容 API
+特点：
+
+- 启用联网搜索
+- 启用 LLM Analyst / Reporter
+- 启用 GitHub / SEC / URL validation 等相关能力
+- 可能产生 network/LLM cost
+
+## 配置 LLM
+
+以 DeepSeek 为例：
 
 ```bash
-export INSIGHT_GRAPH_LLM_BASE_URL=https://api.your-provider.com/v1
-export INSIGHT_GRAPH_LLM_API_KEY=your-api-key
-export INSIGHT_GRAPH_LLM_MODEL=your-model-name
+export INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1
+export INSIGHT_GRAPH_LLM_API_KEY=sk-xxxxxxxx
 export INSIGHT_GRAPH_ANALYST_PROVIDER=llm
 export INSIGHT_GRAPH_REPORTER_PROVIDER=llm
 ```
 
-## 运行你的第一次研究
-
-### 1. 离线模式（无需 API Key）
+也支持本地或其他 OpenAI-compatible endpoint：
 
 ```bash
-insight-graph research "如何对标 Cursor 和 GitHub Copilot?"
+export INSIGHT_GRAPH_LLM_BASE_URL=http://localhost:11434/v1
+export INSIGHT_GRAPH_LLM_MODEL=your-model
+export INSIGHT_GRAPH_LLM_API_KEY=dummy-or-real-key
 ```
 
-输出：
-```
-[Planner] Planning research strategy...
-[Collector] Gathering evidence from offline sources...
-[Analyst] Analyzing findings...
-[Reporter] Generating research report...
+## 配置搜索
 
-Report saved to: reports/research-[timestamp].md
-```
-
-### 2. 实时联网模式（需要 LLM 和搜索 API Key）
+### DuckDuckGo
 
 ```bash
-# 启用实时搜索和 LLM 分析
-INSIGHT_GRAPH_USE_WEB_SEARCH=1 \
-INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo \
-INSIGHT_GRAPH_ANALYST_PROVIDER=llm \
-INSIGHT_GRAPH_REPORTER_PROVIDER=llm \
-  insight-graph research "Compare Cursor, OpenCode, and GitHub Copilot"
+export INSIGHT_GRAPH_USE_WEB_SEARCH=1
+export INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo
 ```
 
-或使用预设：
+### SerpAPI
 
 ```bash
-insight-graph research --preset live-research "对标分析：Cursor vs OpenCode vs GitHub Copilot"
+export INSIGHT_GRAPH_USE_WEB_SEARCH=1
+export INSIGHT_GRAPH_SEARCH_PROVIDER=serpapi
+export INSIGHT_GRAPH_SERPAPI_KEY=your-serpapi-key
 ```
 
-### 3. 使用 API 服务
-
-启动 API 服务器：
+## 启动 API 与 Dashboard
 
 ```bash
-uvicorn insight_graph.api:app --host 0.0.0.0 --port 8000
+python -m pip install "uvicorn[standard]"
+uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 ```
 
-发送研究请求：
+访问地址：
+
+- Health: `http://127.0.0.1:8000/health`
+- OpenAPI: `http://127.0.0.1:8000/docs`
+- Dashboard: `http://127.0.0.1:8000/dashboard`
+
+## 常用命令
 
 ```bash
-curl -X POST http://localhost:8000/research \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "如何对标 Cursor 和 GitHub Copilot?",
-    "preset": "live-research"
-  }'
-```
-
-查询任务状态：
-
-```bash
-curl http://localhost:8000/health
-```
-
-## 常见选项
-
-```bash
-# 查看所有选项
 insight-graph research --help
-
-# 指定搜索引擎
-insight-graph research --search-provider duckduckgo "Your query"
-
-# 指定搜索结果数
-insight-graph research --search-limit 10 "Your query"
-
-# 指定输出目录
-insight-graph research --output-dir reports/ "Your query"
-
-# 启用 GitHub 搜索
-INSIGHT_GRAPH_USE_GITHUB_SEARCH=1 \
-  insight-graph research "Find open source alternatives"
-
-# 启用 SEC 财务数据
-INSIGHT_GRAPH_USE_SEC_FILINGS=1 \
-  insight-graph research "Analyze Apple's financial reports"
+python scripts/run_research.py "Analyze Xiaomi EV strategy"
+python scripts/run_with_llm_log.py "Analyze Xiaomi EV strategy"
+python scripts/benchmark_research.py --markdown
 ```
-
-## 验证安装
-
-```bash
-# 检查 CLI 命令可用
-insight-graph --version
-
-# 运行单元测试
-python -m pytest tests/ -v --tb=short
-
-# 运行离线评估
-insight-graph-eval --case-file docs/evals/default.json
-
-# 运行部署检验
-insight-graph-smoke
-```
-
-## 生成的报告
-
-报告默认保存在 `reports/` 目录，格式为 `research-[timestamp].md`。
-
-内容包括：
-- **概述 (Summary)**: 核心发现
-- **深度分析 (Analysis)**: 逐点论证
-- **引用 (References)**: 可验证的证据链接
-- **诊断 (Diagnostics)**: 搜索/LLM 调用统计
 
 ## 下一步
 
-- 📖 阅读 [配置文档](docs/configuration.md) 了解高级选项
-- 🚀 查看 [部署指南](docs/deployment.md) 用于生产部署
-- 🤝 贡献代码: 参考 [CONTRIBUTING.md](CONTRIBUTING.md)
-- ❓ 问题排查: 查看 [FAQ.md](FAQ.md)
-
-## 获取帮助
-
-- GitHub Issues: 报告 bug 或请求功能
-- 查看项目文档: [docs/](docs/)
-- 检查示例脚本: [scripts/](scripts/)
+- 更完整的接口说明：`docs/API.md`
+- 异步任务与 Memory API：`docs/research-jobs-api.md`
+- 配置项总表：`docs/configuration.md`
+- 部署方式：`docs/deployment.md`
+- 常见问题：`docs/FAQ.md`
