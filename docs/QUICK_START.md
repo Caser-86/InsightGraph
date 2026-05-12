@@ -1,18 +1,18 @@
 # 快速开始
 
-这份文档面向中文使用者，帮助你在 5-10 分钟内跑通 InsightGraph。
+这份文档帮助你在 5 到 10 分钟内跑通 InsightGraph。
 
 ## 适用场景
 
-- 想先离线体验完整研究流程
-- 想接入 LLM 和联网搜索，生成更完整的正式报告
-- 想启动 API 和 Dashboard 做演示
+- 先离线体验完整研究流程
+- 接入 LLM 与联网搜索生成正式长报告
+- 启动 API 与 Dashboard 做本地演示
 
 ## 环境要求
 
 - Python 3.11+
 - 可选：OpenAI-compatible LLM endpoint
-- 可选：DuckDuckGo、SerpAPI 或 Google Custom Search 配置
+- 可选：DuckDuckGo / SerpAPI / Google 搜索配置
 
 ## 安装
 
@@ -26,7 +26,7 @@ python -m pip install -e ".[dev]"
 
 ## 第一次运行
 
-### 1. 离线模式
+### 离线模式
 
 ```bash
 insight-graph research "对比 Cursor、OpenCode 和 GitHub Copilot"
@@ -36,9 +36,9 @@ insight-graph research "对比 Cursor、OpenCode 和 GitHub Copilot"
 
 - 不访问公网
 - 不调用 LLM
-- 适合本地验证、CI、演示基础流程
+- 适合本地验证、CI、结构演示
 
-### 2. live-research 模式
+### `live-research` 模式
 
 ```bash
 insight-graph research --preset live-research "对比 Cursor、OpenCode 和 GitHub Copilot"
@@ -60,14 +60,6 @@ export INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1
 export INSIGHT_GRAPH_LLM_API_KEY=sk-xxxxxxxx
 export INSIGHT_GRAPH_ANALYST_PROVIDER=llm
 export INSIGHT_GRAPH_REPORTER_PROVIDER=llm
-```
-
-也支持本地或其他 OpenAI-compatible endpoint：
-
-```bash
-export INSIGHT_GRAPH_LLM_BASE_URL=http://localhost:11434/v1
-export INSIGHT_GRAPH_LLM_MODEL=your-model
-export INSIGHT_GRAPH_LLM_API_KEY=dummy-or-real-key
 ```
 
 ## 配置搜索
@@ -100,19 +92,10 @@ uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 - OpenAPI: `http://127.0.0.1:8000/docs`
 - Dashboard: `http://127.0.0.1:8000/dashboard`
 
-## 常用命令
-
-```bash
-insight-graph research --help
-python scripts/run_research.py "Analyze Xiaomi EV strategy"
-python scripts/run_with_llm_log.py "Analyze Xiaomi EV strategy"
-python scripts/benchmark_research.py --markdown
-```
-
 ## 下一步
 
-- 更完整的接口说明：`docs/API.md`
-- 异步任务与 Memory API：`docs/research-jobs-api.md`
-- 配置项总表：`docs/configuration.md`
-- 部署方式：`docs/deployment.md`
-- 常见问题：`docs/FAQ.md`
+- 中文文档索引：`docs/README.zh-CN.md`
+- API 中文总览：`docs/API.zh-CN.md`
+- 异步任务与记忆接口：`docs/research-jobs-api.zh-CN.md`
+- 配置说明：`docs/configuration.zh-CN.md`
+- 部署说明：`docs/deployment.zh-CN.md`

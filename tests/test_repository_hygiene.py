@@ -138,25 +138,26 @@ def test_readme_explains_layered_documentation_and_project_truths() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
 
     for section in [
-        "## What It Does",
-        "## Product Truths",
-        "## Architecture At A Glance",
-        "## Quick Start",
-        "## Documentation Guide",
-        "## Runtime Diagnostics",
-        "## Built-In Tools",
-        "## Storage And Memory",
-        "## Live Benchmark",
+        "## 项目结构",
+        "## 核心特性",
+        "## 技术架构",
+        "## 整体执行流程",
+        "## 多智能体协作流程",
+        "## 数据流与证据链路",
+        "## 技术栈",
+        "## 内置工具",
+        "## 快速开始",
+        "## 配置说明",
+        "## 文档导航",
     ]:
         assert section in readme
 
-    assert "English Reference Docs" in readme
-    assert "Chinese Operator Docs" in readme
-    assert "Internal Reference Docs" in readme
+    assert "### 中文文档" in readme
+    assert "### 英文参考" in readme
     assert "Planner -> Collector/Executor -> Analyst -> Critic -> Reporter" in readme
-    assert "Offline remains the deterministic testing/CI fallback" in readme
-    assert "Real sandboxed Python/code execution is not enabled." in readme
-    assert "MCP runtime invocation is not enabled." in readme
+    assert "离线路径继续作为 deterministic 测试与 CI fallback" in readme
+    assert "当前唯一正式 live 产品路径是 `live-research`" in readme
+    assert "MCP runtime invocation" in readme
 
 
 def test_deployment_runbook_aligns_operational_env_surfaces() -> None:
@@ -215,4 +216,4 @@ def test_roadmap_and_readme_mark_completed_batches_and_next_priorities() -> None
     assert "3. release/deploy automation dry-run only" in roadmap
     assert "4. Real sandboxed Python/code execution" in roadmap
     assert "release/deploy/force-push automation" not in roadmap
-    assert "Internal Reference Docs" in readme
+    assert "### 中文文档" in readme

@@ -7,7 +7,7 @@
 不一定。
 
 - 离线模式不需要
-- `live-research` 常常需要搜索或 LLM 配置
+- `live-research` 通常需要搜索或 LLM 配置
 - Dashboard 和 API 是否需要鉴权，取决于是否设置了 `INSIGHT_GRAPH_API_KEY`
 
 ### Q: 支持哪些 LLM？
@@ -16,7 +16,7 @@
 
 - DeepSeek
 - OpenAI
-- Azure OpenAI-compatible proxy
+- Azure OpenAI-compatible 代理
 - 本地 Ollama / LM Studio / vLLM / 其他兼容网关
 
 ### Q: 支持哪些搜索方式？
@@ -96,7 +96,7 @@ uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 
 - JSON 元数据：未完成任务会被标记为失败
 - SQLite：排队任务会保留，过期运行中任务会重新进入可 claim 状态
-- 如果同时开启 `INSIGHT_GRAPH_CHECKPOINT_RESUME=1`，任务可从最新 checkpoint 继续
+- 若同时开启 `INSIGHT_GRAPH_CHECKPOINT_RESUME=1`，任务可从最新 checkpoint 继续
 
 ## Memory 与持久化
 
@@ -104,7 +104,7 @@ uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 
 不是。
 
-默认是内存态、进程内使用。要做长期记忆，一般需要：
+默认是进程内 memory。要做长期记忆，一般需要：
 
 - `INSIGHT_GRAPH_MEMORY_BACKEND=pgvector`
 - `INSIGHT_GRAPH_USE_MEMORY_CONTEXT=1`
@@ -142,14 +142,13 @@ export INSIGHT_GRAPH_MEMORY_WRITEBACK=1
 
 没有。
 
-当前仍是 deferred item，只有元数据或边界准备，不是默认可用功能。
+当前仍是 deferred item，不是默认可用功能。
 
-## 文档怎么读
-
-建议顺序：
+## 文档建议阅读顺序
 
 1. `README.md`
-2. `docs/QUICK_START.md`
-3. `docs/research-jobs-api.md`
-4. `docs/configuration.md`
-5. `docs/deployment.md`
+2. `docs/README.zh-CN.md`
+3. `docs/QUICK_START.md`
+4. `docs/research-jobs-api.zh-CN.md`
+5. `docs/configuration.zh-CN.md`
+6. `docs/deployment.zh-CN.md`

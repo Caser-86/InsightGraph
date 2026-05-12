@@ -5,6 +5,7 @@ This index helps readers find the right InsightGraph document quickly.
 ## Start Here
 
 - [Project Overview](D:/Files/opencode.files/README.md)
+- [中文文档索引](D:/Files/opencode.files/docs/README.zh-CN.md)
 - [Quick Start (Chinese)](D:/Files/opencode.files/docs/QUICK_START.md)
 - [API Reference](D:/Files/opencode.files/docs/API.md)
 - [Research Jobs And Memory API](D:/Files/opencode.files/docs/research-jobs-api.md)
