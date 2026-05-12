@@ -96,6 +96,7 @@ InsightGraph now uses a layered documentation model.
 
 ### English Reference Docs
 
+- `docs/README.md`
 - `docs/architecture.md`
 - `docs/configuration.md`
 - `docs/deployment.md`
