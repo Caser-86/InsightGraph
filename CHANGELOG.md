@@ -2,72 +2,57 @@
 
 ## Unreleased
 
-- Added offline `scripts/validate_pdf_fetch.py` to validate PDF fetch and retrieval evidence metadata without network access.
-- Added opt-in `search_document` tool for local TOC/page/vector-style document retrieval.
-- Added opt-in external/local embedding provider boundary for research memory.
-- Added opt-in local JSON document vector indexing via `INSIGHT_GRAPH_DOCUMENT_INDEX_PATH`.
-- Added `INSIGHT_GRAPH_LLM_PROVIDER` presets for local/self-hosted OpenAI-compatible LLM runtimes and optional Qwen/DashScope config.
-- Updated `run_with_llm_log.py` to write full LLM trace logs and token/call summaries by default.
-- Added opt-in full LLM JSONL trace logging for Analyst and Reporter calls.
+### Documentation And Project Finish
+
+- Rebuilt the public-facing project documentation into a publish-ready set.
+- Added a layered documentation index at `docs/README.md`.
+- Rewrote README, quick start, API, deployment, configuration, roadmap, and operator docs for the completed project state.
+- Added a cleaner contributor guide aligned with the current product route.
+
+### Report Quality And Workflow
+
+- Strengthened deterministic and LLM report-quality controls.
 - Added snippet-level citation support metadata and tighter Reporter anti-hallucination prompts.
 - Added live Reporter URL revalidation for final references.
-- Hardened the pre-fetch pipeline with fetch-budget caps, per-result failure isolation, and retrieval-query propagation.
-- Added opt-in Executor conversation compression summaries for long-running collection loops.
-- Added configurable per-subtask tool rounds via `INSIGHT_GRAPH_MAX_TOOL_ROUNDS`.
-- Added opt-in planner memory context injection and planning hints for tried strategies.
-- Added file-backed Markdown domain profiles with keyword-based detection.
-- Added opt-in API/background research job checkpoint resume wiring.
-- Added deterministic vector fallback ranking for opt-in long-document retrieval.
-- Added deterministic offline embeddings for research memory records.
-- Added memory deletion controls by memory ID and metadata key/value.
-- Added event-runner checkpoint save and resume hooks for persisted `GraphState` runs.
-- Added `INSIGHT_GRAPH_MAX_TOKENS` accounting for LLM analyst, reporter, and relevance calls.
-- Added safe boundaries for full LLM trace export, MCP-style tool specs, and opt-in restricted code execution.
-- Added long-term research memory interfaces with opt-in pgvector persistence.
-- Added checkpoint store interfaces with opt-in PostgreSQL checkpoint persistence.
-- Added a deterministic document index layer with an opt-in vector retrieval boundary.
-- Added centralized research budgets for tool calls, steps, fetches, and per-run evidence caps.
-- Added deterministic conversation compression summaries that preserve evidence IDs, sources, tool-call counts, and findings.
-- Added Critic tried-strategy metadata to avoid repeating identical section replan requests.
-- Added bounded multi-round collection depth for `live-research` and Eval Bench collection-depth metrics.
-- Added opt-in Eval Bench gates for source diversity, report depth, evidence density, and duplicate source rate.
-- Added opt-in Eval Bench gates for section coverage, citation support, official-source coverage, and unsupported claims.
-- Added Eval Bench metrics for evidence per section and official-source coverage.
-- Aligned the roadmap with the completed Phase 10 work queue.
-- Closed the Phase 10 queue by documenting PostgreSQL/pgvector deferral criteria.
-- Added deterministic SEC companyfacts financial evidence.
-- Added opt-in rendered-page fetch support for JavaScript-heavy pages.
-- Improved long-document chunk ranking for local documents and fetched pages.
-- Tightened deterministic report templates to follow planned domain sections.
-- Added section-aware per-tool collection queries.
-- Added Executor evidence caps per tool, per section budget, and per run.
-- Added deterministic section attribution metadata for collected evidence.
+- Added structured Critic replan request metadata and tried-strategy metadata.
+- Added deterministic section collection status, section research plans, entity resolution, and report-quality metrics.
 - Added retry follow-up collection queries from Critic replan requests.
-- Documented the ordered Phase 10 next-work queue for remaining report-quality work.
-- Added section-level required source type coverage metadata and replan hints.
-- Ordered collected evidence by deterministic evidence scores before analysis/reporting.
-- Suppressed noisy pypdf logs during remote PDF evidence extraction.
-- Added Content-Length preflight rejection for oversized live URL responses.
-- Aligned architecture and README documentation with implemented Phase 10 live evidence features.
-- Added a default response size guard for live URL fetching.
-- Added remote PDF extraction with page metadata for fetched URL evidence.
-- Improved SEC filings target detection for public-company names and Planner source selection.
-- Added an opt-in SEC EDGAR filings evidence tool for public-company research.
+- Tightened deterministic report templates to follow planned domain sections.
+
+### Search, Fetch, And Retrieval
+
+- Hardened the pre-fetch pipeline with fetch-budget caps, per-result failure isolation, and retrieval-query propagation.
+- Added Content-Length preflight rejection and a default response-size guard for live URL fetching.
 - Added chunked evidence metadata for long fetched HTML pages.
-- Added document evidence chunk, page, and section metadata for long-document retrieval.
+- Added remote PDF extraction with page metadata for fetched URL evidence.
+- Added offline `scripts/validate_pdf_fetch.py` to validate PDF fetch and retrieval evidence metadata without network access.
+- Added opt-in `search_document` for local TOC/page/vector-style document retrieval.
+- Added deterministic vector fallback ranking and an opt-in local JSON document vector index.
+- Added section-aware per-tool collection queries and bounded multi-round collection depth for `live-research`.
+
+### Storage, Memory, And Resume
+
+- Added long-term memory interfaces with opt-in pgvector persistence.
+- Added deterministic offline embeddings, memory deletion controls, and memory context hints.
+- Added checkpoint store interfaces with opt-in PostgreSQL checkpoint persistence.
+- Added event-runner checkpoint save and resume hooks for persisted `GraphState` runs.
+- Added opt-in API/background research job checkpoint resume wiring.
+- Documented PostgreSQL/pgvector deferral criteria and restart/resume behavior.
+
+### Benchmarks, Eval, And Observability
+
+- Expanded Eval Bench metrics for evidence per section, section coverage, source diversity, citation support, unsupported claims, duplicate source rate, and collection depth.
+- Added opt-in full LLM JSONL trace logging and improved `run_with_llm_log.py` summaries.
+- Added safe boundaries for full trace export, MCP-style tool specs, and opt-in restricted code execution.
+- Added `INSIGHT_GRAPH_MAX_TOKENS` accounting for analyst, reporter, and relevance calls.
+
+### Live Research Capability
+
 - Expanded `live-research` to use multi-source web and GitHub live collection.
-- Added a `live-research` preset for opt-in networked research runs.
-- Added Reporter citation support summaries from verified citation metadata.
-- Added structured Critic replan request metadata.
-- Added deterministic citation support metadata in Critic.
-- Added deterministic evidence scoring metadata after collection.
-- Added deterministic section collection status metadata.
-- Added deterministic section research plans to Planner state.
-- Added deterministic entity resolution for Planner state.
-- Added deterministic domain profile selection for Planner state.
-- Added deterministic report-quality metrics to Eval Bench outputs.
-- Added the canonical report-quality roadmap for future development.
-- Redesigned the README around the current MVP capabilities and report-quality route.
+- Added deterministic SEC companyfacts financial evidence and an opt-in SEC EDGAR filings evidence tool.
+- Improved SEC filing target detection for public-company research.
+- Added file-backed Markdown domain profiles with keyword-based detection.
+- Added `INSIGHT_GRAPH_LLM_PROVIDER` presets for local or self-hosted OpenAI-compatible runtimes.
 
 ## v0.1.32 - 2026-04-29
 
