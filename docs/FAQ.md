@@ -61,15 +61,24 @@ insight-graph research --preset live-research "Compare Cursor, OpenCode, and Git
 
 ### Q: 如何启动 API 和 Dashboard？
 
-```bash
-python -m pip install "uvicorn[standard]"
-uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
+Windows 本地测试建议使用稳定启动脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
 ```
 
-然后访问：
+打开 `dashboard_status.ps1` 输出的地址，例如：
 
-- `http://127.0.0.1:8000/docs`
-- `http://127.0.0.1:8000/dashboard`
+- `http://127.0.0.1:8003/health`
+- `http://127.0.0.1:8003/docs`
+- `http://127.0.0.1:8003/dashboard`
+
+停止服务：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
 
 ## 异步任务
 

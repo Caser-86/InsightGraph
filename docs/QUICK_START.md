@@ -81,16 +81,29 @@ export INSIGHT_GRAPH_SERPAPI_KEY=your-serpapi-key
 
 ## 启动 API 与 Dashboard
 
-```bash
-python -m pip install "uvicorn[standard]"
-uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
+Windows local demos should use the managed Dashboard launcher. It sets the repo
+`src` path, chooses a free port, writes runtime metadata, and waits until
+`/health` is ready.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
 ```
 
 访问地址：
 
-- Health: `http://127.0.0.1:8000/health`
-- OpenAPI: `http://127.0.0.1:8000/docs`
-- Dashboard: `http://127.0.0.1:8000/dashboard`
+- Use the URL printed by `dashboard_status.ps1`
+- Example Dashboard: `http://127.0.0.1:8003/dashboard`
+
+Stop it with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
+
+Manual `uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000` is still
+valid after installing the package, but the managed script is the stable local
+testing path on Windows.
 
 ## 下一步
 

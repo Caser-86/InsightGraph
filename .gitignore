@@ -19,6 +19,7 @@ reports/eval-history.json
 reports/eval-history.md
 reports/*.md
 reports/ai-coding-agents-technical-review.md
+.runtime/
 
 .env
 *.db

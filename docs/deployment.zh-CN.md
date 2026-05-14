@@ -13,6 +13,20 @@
 
 ## 启动
 
+Windows 本地演示优先使用稳定启动脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
+
+脚本会注入本地 `src` 路径、自动选择可用端口、写入 `.runtime`
+状态文件，并等待 `/health` 返回正常。打开 `dashboard_status.ps1`
+输出的 Dashboard 地址即可。
+
+已安装包或类生产环境仍可直接使用：
+
 ```bash
 uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 ```

@@ -265,14 +265,25 @@ insight-graph research --preset live-research "Compare Cursor, OpenCode, and Git
 
 ### 启动 API 与 Dashboard
 
-```bash
-python -m pip install "uvicorn[standard]"
-uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
+Windows local demos should use the managed Dashboard launcher. It injects the
+repo `src` path, checks `/health`, and falls back to the next free port when the
+preferred port is busy.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
 ```
 
-- Health: `http://127.0.0.1:8000/health`
-- OpenAPI: `http://127.0.0.1:8000/docs`
-- Dashboard: `http://127.0.0.1:8000/dashboard`
+Open the Dashboard URL printed by `dashboard_status.ps1`, for example:
+
+- Health: `http://127.0.0.1:8003/health`
+- OpenAPI: `http://127.0.0.1:8003/docs`
+- Dashboard: `http://127.0.0.1:8003/dashboard`
+
+Manual `uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000` remains
+valid after installing the package, but the managed scripts are recommended for
+repeated local testing.
 
 ---
 

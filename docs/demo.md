@@ -48,17 +48,17 @@ What this shows:
 
 ## 2. Dashboard Demo
 
-Start the API:
+On Windows, start the local API and Dashboard with the managed launcher:
 
-```bash
-python -m pip install "uvicorn[standard]"
-uvicorn insight_graph.api:app --reload
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
 ```
 
-Open:
+Open the URL printed by `dashboard_status.ps1`, for example:
 
 ```text
-http://127.0.0.1:8000/dashboard
+http://127.0.0.1:8003/dashboard
 ```
 
 Suggested walkthrough:
@@ -72,6 +72,12 @@ Suggested walkthrough:
 
 If `INSIGHT_GRAPH_API_KEY` is set, enter the key in the dashboard before using
 job actions or streams.
+
+Stop the managed local Dashboard with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
 
 ## 3. Live LLM Demo
 

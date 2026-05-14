@@ -39,6 +39,21 @@ When this variable is set, all non-`/health` endpoints require either:
 
 ## Start The Service
 
+For Windows local demos, prefer the managed launcher:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
+
+The launcher injects the repo `src` path, chooses a free port between the
+preferred port and `-MaxPort`, writes `.runtime/insightgraph-dashboard.json`,
+and waits until `/health` responds. Open the Dashboard URL printed by
+`dashboard_status.ps1`.
+
+For installed or production-like environments, direct `uvicorn` remains valid:
+
 ```bash
 uvicorn insight_graph.api:app --host 127.0.0.1 --port 8000
 ```

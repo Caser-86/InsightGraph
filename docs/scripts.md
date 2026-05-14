@@ -9,6 +9,10 @@ operators and contributors.
 | --- | --- | --- |
 | `scripts/run_research.py` | active | Run one research workflow and print Markdown or JSON |
 | `scripts/run_with_llm_log.py` | active | Run one workflow and write safe LLM metadata logs |
+| `scripts/start_dashboard.ps1` | active | Start the local API and dashboard with health checks, port fallback, and runtime metadata |
+| `scripts/stop_dashboard.ps1` | active | Stop the local dashboard process started by the runtime launcher |
+| `scripts/dashboard_status.ps1` | active | Show local dashboard PID, URL, and health status |
+| `scripts/local_dashboard_server.py` | active | Python launcher used by the Windows dashboard startup wrapper |
 | `scripts/validate_sources.py` | active | Validate report citations and references offline |
 | `scripts/benchmark_research.py` | active | Run deterministic offline benchmark cases |
 | `scripts/benchmark_live_research.py` | active | Manual opt-in live benchmark; may incur network/LLM cost |
@@ -55,6 +59,54 @@ The log contains safe LLM metadata only:
 
 It does not store prompt/completion bodies, raw responses, headers, request
 bodies, or API keys by default.
+
+## Local Dashboard Scripts
+
+These PowerShell helpers are intended for Windows local development and demos.
+
+### `start_dashboard.ps1`
+
+Starts `uvicorn insight_graph.api:app` with:
+
+- the local Python interpreter
+- the repo-root `src` path injected by `scripts/local_dashboard_server.py`
+- a preferred local port, falling back through a bounded port range
+- a runtime PID file
+- a runtime metadata file
+- a startup health check
+
+Example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_dashboard.ps1
+```
+
+Optional parameters:
+
+- `-PreferredPort 8000`
+- `-MaxPort 8010`
+- `-StartupTimeoutSeconds 25`
+
+Runtime artifacts are written under:
+
+- `.runtime/insightgraph-dashboard.pid`
+- `.runtime/insightgraph-dashboard.json`
+
+### `stop_dashboard.ps1`
+
+Stops the locally managed dashboard process and removes runtime metadata.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_dashboard.ps1
+```
+
+### `dashboard_status.ps1`
+
+Prints whether the managed dashboard is running and, if healthy, shows the URL.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dashboard_status.ps1
+```
 
 ## `benchmark_research.py`
 
