@@ -74,15 +74,15 @@ Client (CLI / API / Dashboard)
 
 ```mermaid
 flowchart TB
-    A[用户请求] --> B[可选 memory context]
-    B --> C[Planner]
-    C --> D[Collector / Executor]
-    D --> E[Evidence scoring / dedupe / budget]
-    E --> F[Analyst]
-    F --> G[Critic]
-    G -->|证据不足| C
-    G -->|通过或重试耗尽| H[Reporter]
-    H --> I[报告 / 引用 / 运行诊断]
+    A["用户请求 User request"] --> B["可选记忆上下文 Optional memory context"]
+    B --> C["规划智能体 Planner"]
+    C --> D["采集与执行智能体 Collector Executor"]
+    D --> E["证据评分去重与预算控制 Evidence scoring dedupe budget"]
+    E --> F["分析智能体 Analyst"]
+    F --> G["审查智能体 Critic"]
+    G -->|"证据不足 Needs more evidence"| C
+    G -->|"通过或重试耗尽 Pass or retry exhausted"| H["报告智能体 Reporter"]
+    H --> I["报告引用与运行诊断 Report citations diagnostics"]
 ```
 
 ---
@@ -92,26 +92,26 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Planner
-        P1[领域识别] --> P2[实体解析]
-        P2 --> P3[章节研究计划]
-        P3 --> P4[Query strategies]
+        P1["领域识别 Domain detection"] --> P2["实体解析 Entity resolution"]
+        P2 --> P3["章节研究计划 Section research plan"]
+        P3 --> P4["查询策略 Query strategies"]
     end
 
     subgraph CollectorExecutor
-        E1[搜索 / 抓取 / 检索] --> E2[canonical dedupe]
-        E2 --> E3[evidence scoring]
-        E3 --> E4[collection stop reason]
+        E1["搜索抓取检索 Search fetch retrieve"] --> E2["规范去重 Canonical dedupe"]
+        E2 --> E3["证据评分 Evidence scoring"]
+        E3 --> E4["采集停止原因 Collection stop reason"]
     end
 
     subgraph AnalystCritic
-        A1[grounded findings] --> A2[competitive matrix]
-        A2 --> C1[citation support]
-        C1 --> C2[replan hints]
+        A1["有证据支撑的发现 Grounded findings"] --> A2["竞争矩阵 Competitive matrix"]
+        A2 --> C1["引用支撑校验 Citation support"]
+        C1 --> C2["重规划提示 Replan hints"]
     end
 
     Planner --> CollectorExecutor
     CollectorExecutor --> AnalystCritic
-    C2 -->|need more evidence| Planner
+    C2 -->|"需要更多证据 Need more evidence"| Planner
 ```
 
 ---
@@ -120,15 +120,15 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    Q[query strategy] --> S[web_search / GitHub / SEC / document tools]
-    S --> F[fetch_url / content extraction / PDF chunks]
-    F --> E[Evidence]
-    E --> D[dedupe + source typing + scoring]
-    D --> P[global_evidence_pool]
-    P --> A[grounded findings]
-    A --> C[citation support]
-    C --> R[Reporter allowed claims]
-    R --> O[Markdown report]
+    Q["查询策略 Query strategy"] --> S["网页搜索 GitHub SEC 文档工具 Search GitHub SEC docs"]
+    S --> F["网页抓取与内容抽取 Fetch URL content extraction"]
+    F --> E["证据 Evidence"]
+    E --> D["去重来源分类与评分 Dedupe source typing scoring"]
+    D --> P["全局证据池 Global evidence pool"]
+    P --> A["有证据支撑的发现 Grounded findings"]
+    A --> C["引用支撑校验 Citation support"]
+    C --> R["允许写入报告的结论 Allowed report claims"]
+    R --> O["Markdown 报告 Markdown report"]
 ```
 
 ---
