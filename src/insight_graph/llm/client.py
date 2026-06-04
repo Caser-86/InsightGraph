@@ -140,16 +140,24 @@ class OpenAICompatibleChatClient:
             kwargs = {"api_key": self.config.api_key}
             if self.config.base_url:
                 kwargs["base_url"] = self.config.base_url
+            if self.config.timeout_seconds is not None:
+                kwargs["timeout"] = self.config.timeout_seconds
             self._client = self._client_factory(**kwargs)
         return self._client
 
 
-def _create_openai_client(api_key: str, base_url: str | None = None) -> Any:
+def _create_openai_client(
+    api_key: str,
+    base_url: str | None = None,
+    timeout: float | None = None,
+) -> Any:
     from openai import OpenAI
 
     kwargs = {"api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
+    if timeout is not None:
+        kwargs["timeout"] = timeout
     return OpenAI(**kwargs)
 
 

@@ -31,6 +31,8 @@ def test_domain_profiles_define_required_phase2_domains() -> None:
         ("Analyze AI agent architecture and technology trends", "technology_trends"),
         ("Map the AI coding tools market opportunity", "market_research"),
         ("Build a company profile for Anthropic funding and products", "company_profile"),
+        ("分析腾讯公司业务与财务", "company_profile"),
+        ("研究小米市场机会", "market_research"),
         ("Summarize this research topic", "generic"),
     ],
 )

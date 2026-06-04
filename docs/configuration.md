@@ -34,6 +34,35 @@ are all explicit opt-in surfaces.
 - `INSIGHT_GRAPH_REPORTER_PROVIDER=llm`
 - `INSIGHT_GRAPH_REPORT_REVIEW_PROVIDER=llm`
 
+## LLM Routing
+
+InsightGraph can use one OpenAI-compatible provider for fast analysis and a
+separate strong provider for report writing and review.
+
+Common variables:
+
+- `INSIGHT_GRAPH_LLM_PROVIDER=openai_compatible`
+- `INSIGHT_GRAPH_LLM_BASE_URL`
+- `INSIGHT_GRAPH_LLM_API_KEY`
+- `INSIGHT_GRAPH_LLM_MODEL`
+- `INSIGHT_GRAPH_LLM_ROUTER=rules`
+- `INSIGHT_GRAPH_LLM_MODEL_FAST`
+- `INSIGHT_GRAPH_LLM_MODEL_DEFAULT`
+- `INSIGHT_GRAPH_LLM_MODEL_STRONG`
+
+Strong-tier overrides are applied when the router selects `reporter` or
+`report_review`. Use them when the final report model lives behind a different
+endpoint, for example MiMo V2.5 Pro via Token Plan:
+
+- `INSIGHT_GRAPH_LLM_BASE_URL_STRONG`
+- `INSIGHT_GRAPH_LLM_API_KEY_STRONG`
+- `INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS_STRONG`
+- `INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS_STRONG`
+- `INSIGHT_GRAPH_LLM_WIRE_API_STRONG`
+
+Do not commit real API keys. Keep secrets in local `.env`, deployment secrets,
+or the host environment.
+
 ## Search And Fetch
 
 ### Search Provider Controls

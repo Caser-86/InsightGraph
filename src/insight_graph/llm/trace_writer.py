@@ -68,7 +68,14 @@ def write_full_llm_trace_event(
     event["duration_ms"] = max(duration_ms, 0)
     event["success"] = success
     if error is not None:
-        event["error"] = f"{type(error).__name__}: LLM call failed."
+        if os.getenv("INSIGHT_GRAPH_VERBOSE_LLM_ERRORS", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            event["error"] = f"{type(error).__name__}: {_redact_text(str(error), api_key)}"
+        else:
+            event["error"] = f"{type(error).__name__}: LLM call failed."
     write_llm_trace_event(event)
 
 

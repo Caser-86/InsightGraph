@@ -319,6 +319,20 @@ def test_serpapi_per_run_limit_caps_effective_limit(monkeypatch) -> None:
     assert captured["limit"] == 2
 
 
+def test_duckduckgo_default_per_run_limit_caps_effective_limit(monkeypatch) -> None:
+    captured = {}
+
+    class FakeClient:
+        def text(self, query: str, **kwargs):
+            captured["max_results"] = kwargs["max_results"]
+            return []
+
+    provider = DuckDuckGoSearchProvider(client_factory=lambda **kwargs: FakeClient())
+    provider.search("query", 55)
+
+    assert captured["max_results"] == 10
+
+
 def test_get_search_quota_snapshot_includes_provider_limits(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_SERPAPI_DAILY_CALL_LIMIT", "10")
     snapshot = get_search_quota_snapshot()

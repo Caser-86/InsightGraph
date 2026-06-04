@@ -1,12 +1,16 @@
 # InsightGraph API 总览
 
-这份文档是中文 API 入口说明。异步任务、取消/重试、重启恢复、Memory API 的权威说明请优先看：
+这份文档是 API 的中文入口说明，帮助你快速理解项目公开接口面。
+
+异步任务、取消/重试、重启恢复和 Memory API 的权威说明以：
 
 - `docs/research-jobs-api.zh-CN.md`
 
-## 主要端点
+为准。
 
-### 公共端点
+## 主要接口
+
+### 公开接口
 
 - `GET /health`
 - `GET /dashboard`
@@ -14,7 +18,7 @@
 - `GET /redoc`
 - `GET /openapi.json`
 
-### 设置 `INSIGHT_GRAPH_API_KEY` 后受保护的端点
+### 配置 `INSIGHT_GRAPH_API_KEY` 后受保护的接口
 
 - `POST /research`
 - `GET /memory`
@@ -33,14 +37,29 @@
 
 ## 鉴权方式
 
+可使用任一方式：
+
 - `Authorization: Bearer <key>`
 - `X-API-Key: <key>`
 
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:8000/research \
+  -H "Authorization: Bearer $INSIGHT_GRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Compare Cursor and GitHub Copilot"}'
+```
+
 ## 同步研究接口
 
-`POST /research` 适合单次快速执行，直接返回最终报告 payload。
+`POST /research` 适合：
 
-常用请求字段：
+- 小查询
+- 开发调试
+- 快速拿到最终结果
+
+常见请求字段：
 
 - `query`
 - `preset`
@@ -51,14 +70,52 @@
 - `search_provider`
 - `web_search_mode`
 
-常见响应字段：
+常见返回字段：
 
 - `report_markdown`
 - `findings`
 - `competitive_matrix`
-- `evidence_pool`
 - `tool_call_log`
 - `llm_call_log`
+- `evidence_pool`
 - `quality`
 - `quality_cards`
 - `runtime_diagnostics`
+
+## Memory API
+
+### 列表
+
+```bash
+curl http://127.0.0.1:8000/memory
+```
+
+### 搜索
+
+```bash
+curl -X POST http://127.0.0.1:8000/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Xiaomi EV supply chain", "limit": 5}'
+```
+
+### 删除
+
+```bash
+curl -X DELETE http://127.0.0.1:8000/memory/memory-123
+```
+
+## Dashboard
+
+访问：
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+适合做：
+
+- 提交任务
+- 观察执行状态
+- 查看证据与 citation support
+- 查看报告质量卡片
+- 下载 Markdown / HTML 报告

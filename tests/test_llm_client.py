@@ -397,12 +397,14 @@ def test_resolve_llm_config_reads_retry_and_fallback(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_MAX_RETRIES", "3")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_RETRY_BACKOFF_SECONDS", "0.25")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_FALLBACK_MODELS", "deepseek-chat,qwen-max")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS", "45.5")
 
     config = resolve_llm_config(api_key="test-key", model="deepseek-reasoner")
 
     assert config.max_retries == 3
     assert config.retry_backoff_seconds == 0.25
     assert config.fallback_models == ("deepseek-chat", "qwen-max")
+    assert config.timeout_seconds == 45.5
 
 
 def test_openai_compatible_chat_client_retries_then_succeeds(monkeypatch) -> None:

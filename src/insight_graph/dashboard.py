@@ -1929,6 +1929,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         [t('llmCallsLabel'), diagnostics.llm_call_count ?? 0],
         [t('successfulLlmCalls'), diagnostics.successful_llm_call_count ?? 0],
         [t('verifiedEvidence'), `${diagnostics.verified_evidence_count ?? 0} / ${diagnostics.evidence_count ?? 0}`],
+        ['Quality gate status', diagnostics.quality_gate_status || t('unknown')],
+        ['Quality gate warnings', (diagnostics.quality_gate_warnings || []).join('; ') || t('none')],
         ['Topic coverage ratio', `${diagnostics.topic_coverage_ratio ?? 0}%`],
         ['Citation support distribution', `${diagnostics.citation_supported_count ?? 0}/${diagnostics.citation_partial_count ?? 0}/${diagnostics.citation_unsupported_count ?? 0}`],
         ['Fact mapping (mapped/weak/total)', `${diagnostics.mapped_conclusion_count ?? 0}/${diagnostics.weak_conclusion_count ?? 0}/${diagnostics.conclusion_count ?? 0}`],

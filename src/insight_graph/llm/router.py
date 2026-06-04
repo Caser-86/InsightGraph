@@ -35,6 +35,8 @@ def get_llm_client(
     )
     if selected_model != resolved.model:
         resolved = resolved.model_copy(update={"model": selected_model})
+    if decision is not None:
+        resolved = _apply_tier_overrides(resolved, decision.tier)
     client = OpenAICompatibleChatClient(config=resolved)
     if decision is not None:
         client.router_decision = decision
@@ -87,11 +89,18 @@ def select_llm_model_with_decision(
         DEFAULT_STRONG_CHAR_THRESHOLD,
     )
 
-    if purpose == "reporter":
+    if purpose in {"reporter", "report_review"}:
         return strong_model, LLMRouterDecision(
             router=router,
             tier="strong",
-            reason="reporter_strong",
+            reason=f"{purpose}_strong",
+            message_chars=message_chars,
+        )
+    if purpose in {"analyst", "citation_judge"}:
+        return default_model, LLMRouterDecision(
+            router=router,
+            tier="default",
+            reason=f"{purpose}_default",
             message_chars=message_chars,
         )
     if message_chars is not None and message_chars > strong_threshold:
@@ -118,6 +127,55 @@ def select_llm_model_with_decision(
 
 def _tier_model(env_name: str, fallback: str) -> str:
     return os.getenv(env_name) or fallback
+
+
+def _apply_tier_overrides(config: LLMConfig, tier: str) -> LLMConfig:
+    suffix = tier.upper().replace("-", "_")
+    overrides: dict[str, object] = {}
+    api_key = os.getenv(f"INSIGHT_GRAPH_LLM_API_KEY_{suffix}")
+    base_url = os.getenv(f"INSIGHT_GRAPH_LLM_BASE_URL_{suffix}")
+    wire_api = os.getenv(f"INSIGHT_GRAPH_LLM_WIRE_API_{suffix}")
+    max_output_tokens = _optional_int_env(
+        f"INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS_{suffix}"
+    )
+    timeout_seconds = _optional_float_env(
+        f"INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS_{suffix}"
+    )
+    if api_key:
+        overrides["api_key"] = api_key
+    if base_url:
+        overrides["base_url"] = base_url
+    if wire_api:
+        overrides["wire_api"] = wire_api
+    if max_output_tokens is not None:
+        overrides["max_output_tokens"] = max_output_tokens
+    if timeout_seconds is not None:
+        overrides["timeout_seconds"] = timeout_seconds
+    if not overrides:
+        return config
+    return config.model_copy(update=overrides)
+
+
+def _optional_int_env(name: str) -> int | None:
+    raw_value = os.getenv(name)
+    if raw_value in {None, ""}:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    return value if value > 0 else None
+
+
+def _optional_float_env(name: str) -> float | None:
+    raw_value = os.getenv(name)
+    if raw_value in {None, ""}:
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    return value if value > 0 else None
 
 
 def _message_char_count(messages: list[ChatMessage] | None) -> int | None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from insight_graph.llm.client import ChatCompletionClient, ChatCompletionResult, ChatMessage
 from insight_graph.llm.router import get_llm_router_decision
 from insight_graph.state import LLMCallRecord
@@ -62,4 +64,16 @@ def _normalize_token_count(value: int | None) -> int | None:
 
 
 def _summarize_error(error: Exception, secrets: list[str | None]) -> str:
-    return f"{type(error).__name__}: LLM call failed."
+    if os.getenv("INSIGHT_GRAPH_VERBOSE_LLM_ERRORS", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return f"{type(error).__name__}: LLM call failed."
+    message = str(error).strip()
+    for secret in secrets:
+        if secret:
+            message = message.replace(secret, "[REDACTED]")
+    if not message:
+        message = "LLM call failed."
+    return f"{type(error).__name__}: {message}"

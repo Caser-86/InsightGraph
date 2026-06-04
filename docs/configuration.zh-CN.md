@@ -32,6 +32,33 @@
 - `INSIGHT_GRAPH_USE_SEC_FILINGS`
 - `INSIGHT_GRAPH_USE_SEC_FINANCIALS`
 
+## LLM 与模型路由
+
+InsightGraph 支持前置分析和后置报告使用不同 OpenAI-compatible 供应商。
+常见做法是前面使用快速模型，报告生成和审稿使用更强模型。
+
+常用变量：
+
+- `INSIGHT_GRAPH_LLM_PROVIDER=openai_compatible`
+- `INSIGHT_GRAPH_LLM_BASE_URL`
+- `INSIGHT_GRAPH_LLM_API_KEY`
+- `INSIGHT_GRAPH_LLM_MODEL`
+- `INSIGHT_GRAPH_LLM_ROUTER=rules`
+- `INSIGHT_GRAPH_LLM_MODEL_FAST`
+- `INSIGHT_GRAPH_LLM_MODEL_DEFAULT`
+- `INSIGHT_GRAPH_LLM_MODEL_STRONG`
+
+当路由选择 `reporter` 或 `report_review` 时，会应用 strong tier 专属配置。
+如果报告模型来自另一个 endpoint，例如 MiMo V2.5 Pro / Token Plan，可配置：
+
+- `INSIGHT_GRAPH_LLM_BASE_URL_STRONG`
+- `INSIGHT_GRAPH_LLM_API_KEY_STRONG`
+- `INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS_STRONG`
+- `INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS_STRONG`
+- `INSIGHT_GRAPH_LLM_WIRE_API_STRONG`
+
+不要提交真实 API key。密钥应放在本地 `.env`、部署平台 secret 或宿主环境变量中。
+
 ## 研究预算
 
 - `INSIGHT_GRAPH_MAX_TOOL_CALLS`

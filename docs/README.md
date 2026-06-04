@@ -4,35 +4,42 @@ This index helps readers find the right InsightGraph document quickly.
 
 ## Start Here
 
-- [Project Overview](D:/Files/opencode.files/README.md)
-- [中文文档索引](D:/Files/opencode.files/docs/README.zh-CN.md)
-- [Quick Start (Chinese)](D:/Files/opencode.files/docs/QUICK_START.md)
-- [API Reference](D:/Files/opencode.files/docs/API.md)
-- [Research Jobs And Memory API](D:/Files/opencode.files/docs/research-jobs-api.md)
+- [Project Overview](../README.md)
+- [Chinese Documentation Index](README.zh-CN.md)
+- [Quick Start](QUICK_START.md)
+- [API Reference](API.md)
+- [Research Jobs And Memory API](research-jobs-api.md)
 
 ## English Reference Docs
 
-- [Architecture](D:/Files/opencode.files/docs/architecture.md)
-- [Configuration](D:/Files/opencode.files/docs/configuration.md)
-- [Deployment](D:/Files/opencode.files/docs/deployment.md)
-- [Benchmarks](D:/Files/opencode.files/docs/BENCHMARKS.md)
-- [Scripts](D:/Files/opencode.files/docs/scripts.md)
-- [Roadmap](D:/Files/opencode.files/docs/roadmap.md)
+- [Architecture](architecture.md)
+- [Configuration](configuration.md)
+- [Deployment](deployment.md)
+- [Benchmarks](BENCHMARKS.md)
+- [Scripts](scripts.md)
+- [Roadmap](roadmap.md)
 
 ## Chinese Operator Docs
 
-- [Quick Start](D:/Files/opencode.files/docs/QUICK_START.md)
-- [FAQ](D:/Files/opencode.files/docs/FAQ.md)
-- [Demo Guide](D:/Files/opencode.files/docs/demo.md)
-- [Roadmap (Chinese)](D:/Files/opencode.files/docs/roadmap-cn.md)
+- [中文文档索引](README.zh-CN.md)
+- [API 总览](API.zh-CN.md)
+- [系统架构](architecture.zh-CN.md)
+- [配置说明](configuration.zh-CN.md)
+- [部署说明](deployment.zh-CN.md)
+- [异步任务与 Memory API](research-jobs-api.zh-CN.md)
+- [脚本说明](scripts.zh-CN.md)
+- [基准测试](BENCHMARKS.zh-CN.md)
+- [FAQ](FAQ.md)
+- [Demo Guide](demo.md)
+- [Roadmap 中文版](roadmap-cn.md)
 
 ## Internal Reference Docs
 
-- [Reference Parity Roadmap](D:/Files/opencode.files/docs/reference-parity-roadmap.md)
-- [Report Quality Roadmap](D:/Files/opencode.files/docs/report-quality-roadmap.md)
-- [Research Job Repository Contract](D:/Files/opencode.files/docs/research-job-repository-contract.md)
-- [Caveman Applied Skills](D:/Files/opencode.files/docs/skills/caveman-applied-skills.md)
-- [Remaining Product Roadmap Plan](D:/Files/opencode.files/docs/superpowers/plans/2026-04-30-remaining-product-roadmap.md)
+- [Reference Parity Roadmap](reference-parity-roadmap.md)
+- [Report Quality Roadmap](report-quality-roadmap.md)
+- [Research Job Repository Contract](research-job-repository-contract.md)
+- [Caveman Applied Skills](skills/caveman-applied-skills.md)
+- [Remaining Product Roadmap Plan](superpowers/plans/2026-04-30-remaining-product-roadmap.md)
 
 ## Reading Order
 

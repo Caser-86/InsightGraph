@@ -63,3 +63,30 @@ def test_validate_evidence_url_records_failure(monkeypatch) -> None:
         "status_code": None,
         "error": "Network error while fetching URL: timeout",
     }
+
+
+def test_validate_evidence_url_records_raw_timeout(monkeypatch) -> None:
+    validation_module = importlib.import_module("insight_graph.report_quality.url_validation")
+
+    def fake_fetch_text(url: str, timeout: float = 10.0):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(validation_module, "fetch_text", fake_fetch_text)
+    evidence = Evidence(
+        id="source",
+        subtask_id="collect",
+        title="Source",
+        source_url="https://example.com/source",
+        snippet="Source snippet.",
+        verified=True,
+    )
+
+    result = validate_evidence_url(evidence)
+
+    assert result == {
+        "evidence_id": "source",
+        "source_url": "https://example.com/source",
+        "valid": False,
+        "status_code": None,
+        "error": "Timeout error while validating URL: timed out",
+    }

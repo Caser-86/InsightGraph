@@ -70,6 +70,49 @@ KNOWN_ENTITIES: tuple[ResolvedEntity, ...] = (
     ResolvedEntity("openai", "OpenAI", "company", ("OpenAI",), ("openai.com",), ("OpenAI",)),
     ResolvedEntity("github", "GitHub", "company", ("GitHub",), ("github.com",), ("GitHub",)),
     ResolvedEntity(
+        "meta",
+        "Meta",
+        "company",
+        ("Meta", "Facebook", "META", "Meta Platforms", "Meta Platforms Inc"),
+        (
+            "meta.com",
+            "investor.fb.com",
+            "investor.fb.com/financials",
+            "about.meta.com/company-info",
+            "about.meta.com/technologies",
+        ),
+        ("Meta", "Facebook", "META", "Meta Platforms"),
+    ),
+    ResolvedEntity(
+        "tencent",
+        "Tencent",
+        "company",
+        ("Tencent", "Tencent Holdings", "腾讯", "腾讯控股", "0700.HK"),
+        (
+            "tencent.com",
+            "tencent.com/en-us/investors.html",
+            "tencent.com/en-us/business.html",
+            "tencent.com/en-us/about.html",
+            "tencent.com/en-us/media.html",
+            "tencent.com/en-us/investors/financial-news.html",
+        ),
+        ("Tencent", "腾讯", "腾讯控股", "0700.HK"),
+    ),
+    ResolvedEntity(
+        "xiaomi",
+        "Xiaomi",
+        "company",
+        ("Xiaomi", "Xiaomi Corporation", "小米", "小米集团", "1810.HK"),
+        (
+            "xiaomi.com",
+            "ir.mi.com",
+            "ir.mi.com/en/financial-information/financial-reports",
+            "mi.com/global/about",
+            "mi.com/global/discover/newsroom",
+        ),
+        ("Xiaomi", "小米", "小米集团", "1810.HK"),
+    ),
+    ResolvedEntity(
         "salesforce",
         "Salesforce",
         "company",
@@ -161,8 +204,15 @@ def _alias_position(text: str, alias: str) -> int:
 
 
 def _alias_span(text: str, alias: str) -> tuple[int, int] | None:
+    if _contains_cjk(alias):
+        position = text.lower().find(alias.lower())
+        return None if position < 0 else (position, position + len(alias))
     match = re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", text, flags=re.IGNORECASE)
     return None if match is None else match.span()
+
+
+def _contains_cjk(value: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
 def _span_overlaps(start: int, end: int, spans: list[tuple[int, int]]) -> bool:

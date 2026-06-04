@@ -1,8 +1,10 @@
 .worktrees/
+.venv/
 __pycache__/
 .pytest_cache/
 .pytest-tmp*/
 .pytest_tmp*/
+pytest-cache-files-*/
 .ruff_cache/
 .coverage
 htmlcov/
@@ -26,3 +28,11 @@ reports/ai-coding-agents-technical-review.md
 data/research_jobs.json
 data/.research_jobs.json.*.tmp
 memory/CLAUDE.md.original.md
+
+# Local presentation artifacts
+InsightGraph_*.pptx
+InsightGraph_Presentation.pptx
+generate_ppt.py
+generate_ppt_cn.py
+scripts/build_project_presentation_zh_cn.py
+docs/presentation-plan.zh-CN.md

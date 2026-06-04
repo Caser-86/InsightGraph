@@ -1,7 +1,9 @@
 import json
+import os
 import re
 
 from insight_graph.report_quality.budgeting import get_research_budgets
+from insight_graph.report_quality.intensity import get_report_intensity_config
 from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
@@ -16,7 +18,11 @@ def pre_fetch_results(
     query: str | None = None,
 ) -> list[Evidence]:
     evidence: list[Evidence] = []
-    fetch_limit = min(limit, get_research_budgets().max_fetches)
+    fetch_limit = min(
+        limit,
+        get_research_budgets().max_fetches,
+        _per_query_prefetch_limit(),
+    )
     seen_canonical_urls: set[str] = set()
     for rank, result in enumerate(results[:fetch_limit], start=1):
         canonical_url = canonicalize_url(result.url)
@@ -109,6 +115,25 @@ def _url_slug(url: str) -> str:
 
 def _source_url_is_trusted(url: str) -> bool:
     return infer_source_type(url) in {"official_site", "docs", "github", "news", "sec", "paper"}
+
+
+def _per_query_prefetch_limit() -> int:
+    raw_value = os.getenv("INSIGHT_GRAPH_PREFETCH_PER_QUERY_LIMIT")
+    if raw_value is not None:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = 0
+        if value > 0:
+            return value
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 5
+    if intensity == "deep":
+        return 3
+    if intensity == "standard":
+        return 2
+    return 1
 
 
 def _fetch_error_message(error: Exception) -> str:

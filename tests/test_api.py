@@ -440,8 +440,70 @@ def test_research_job_quality_gate_uses_multi_provider_serpapi_threshold(monkeyp
 
     failure = api_module._research_job_quality_failure(job, result)
 
+    assert failure is None
+    assert result["runtime_diagnostics"]["quality_gate_warnings"]
+    assert "evidence_count=19 < 20" in result["runtime_diagnostics"]["quality_gate_warnings"][0]
+
+
+def test_research_job_quality_gate_warns_instead_of_failing_partial_evidence(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "1")
+    job = jobs_module.ResearchJob(
+        id="quality-partial-live-run",
+        query="Quality",
+        preset=api_module.ResearchPreset.live_research,
+        created_order=1,
+        created_at="2026-05-01T00:00:00Z",
+        report_intensity=api_module.ReportIntensity.standard,
+        search_provider="duckduckgo",
+    )
+    result = {
+        "runtime_diagnostics": {
+            "evidence_count": 4,
+            "verified_evidence_count": 4,
+            "successful_llm_call_count": 4,
+        },
+        "report_markdown": "x" * 9000,
+    }
+
+    failure = api_module._research_job_quality_failure(job, result)
+
+    assert failure is None
+    assert result["runtime_diagnostics"]["quality_gate_status"] == "needs_improvement"
+    assert result["runtime_diagnostics"]["quality_gate_warnings"] == [
+        "evidence_count=4 < 18",
+        "verified_evidence_count=4 < 12",
+    ]
+
+
+def test_research_job_quality_gate_explains_empty_evidence_and_llm_failures(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "1")
+    job = jobs_module.ResearchJob(
+        id="quality-empty-live-run",
+        query="Quality",
+        preset=api_module.ResearchPreset.live_research,
+        created_order=1,
+        created_at="2026-05-01T00:00:00Z",
+        report_intensity=api_module.ReportIntensity.standard,
+        search_provider="duckduckgo",
+    )
+    result = {
+        "runtime_diagnostics": {
+            "evidence_count": 0,
+            "verified_evidence_count": 0,
+            "successful_llm_call_count": 0,
+        },
+        "report_markdown": "too short",
+    }
+
+    failure = api_module._research_job_quality_failure(job, result)
+
     assert failure is not None
-    assert "evidence_count=19 < 20" in failure
+    assert "no live evidence collected" in failure
+    assert "no successful LLM calls" in failure
 
 
 def test_publish_research_job_event_uses_dynamic_retention_by_intensity() -> None:
@@ -1929,6 +1991,42 @@ def test_get_research_job_includes_progress_metadata_for_failed_job() -> None:
     assert payload["progress_percent"] == 100
     assert payload["runtime_seconds"] == 3
     assert payload["progress_steps"][0]["status"] == "failed"
+
+
+def test_get_research_job_counts_failed_job_calls_from_events() -> None:
+    jobs_module.reset_research_jobs_state()
+    job = jobs_module.ResearchJob(
+        id="failed-call-count-job",
+        query="Failed call counts",
+        preset=api_module.ResearchPreset.offline,
+        created_order=1,
+        created_at="2026-04-28T10:00:00Z",
+        started_at="2026-04-28T10:00:05Z",
+        finished_at="2026-04-28T10:00:08Z",
+        status="failed",
+        error="Research workflow failed.",
+    )
+    jobs_module.seed_research_job(job, next_job_sequence=1)
+    api_module._clear_research_job_events(job.id)
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "tool_call", "record": {"tool_name": "web_search"}},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "llm_call", "record": {"stage": "analyst", "success": False}},
+    )
+    api_module._publish_research_job_event(
+        job.id,
+        {"type": "llm_call", "record": {"stage": "reporter", "success": False}},
+    )
+
+    response = TestClient(api_module.app).get(f"/research/jobs/{job.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["tool_call_count"] == 1
+    assert payload["llm_call_count"] == 2
 
 
 def test_get_research_job_derives_failed_stage_from_stage_events() -> None:

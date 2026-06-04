@@ -60,6 +60,7 @@ class LLMConfig(BaseModel):
     max_retries: int = 2
     retry_backoff_seconds: float = 0.8
     fallback_models: tuple[str, ...] = ()
+    timeout_seconds: float | None = None
 
     @field_validator("provider")
     @classmethod
@@ -133,6 +134,7 @@ def resolve_llm_config(
             0.8,
         ),
         fallback_models=_fallback_models_env(),
+        timeout_seconds=_positive_float_env("INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS"),
     )
 
 
@@ -167,6 +169,17 @@ def _non_negative_float_env(name: str, default: float) -> float:
     except ValueError:
         return default
     return value if value >= 0 else default
+
+
+def _positive_float_env(name: str) -> float | None:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return None
+    return value if value > 0 else None
 
 
 def _fallback_models_env() -> tuple[str, ...]:

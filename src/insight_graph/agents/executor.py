@@ -10,8 +10,13 @@ from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.report_quality.conversation_compression import compress_conversation
 from insight_graph.report_quality.evidence_scoring import score_evidence
 from insight_graph.report_quality.intensity import get_report_intensity_config
+from insight_graph.report_quality.source_types import infer_source_type
 from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
 from insight_graph.tools import ToolRegistry
+from insight_graph.tools.search_providers import (
+    get_search_provider_diagnostics,
+    reset_search_provider_diagnostics,
+)
 
 WEB_SEARCH_TOOL = "web_search"
 WEB_SEARCH_EMPTY_ERROR = "web_search returned no live evidence"
@@ -56,6 +61,9 @@ def execute_subtasks(state: GraphState) -> GraphState:
     collected: list[Evidence] = _existing_retry_evidence(state)
     official_domains = _resolved_entity_official_domains(state.resolved_entities)
     records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
+    seeded_evidence, seed_records = _seed_entity_official_sources(registry, state)
+    collected.extend(seeded_evidence)
+    records.extend(seed_records)
     filter_enabled = is_relevance_filter_enabled()
     relevance_drop_reasons: list[str] = []
     budgets = get_research_budgets()
@@ -155,6 +163,138 @@ def execute_subtasks(state: GraphState) -> GraphState:
     state.collection_rounds = round_summaries
     state.collection_stop_reason = stop_reason
     return state
+
+
+def _seed_entity_official_sources(
+    registry: ToolRegistry,
+    state: GraphState,
+) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    if not state.resolved_entities:
+        return [], []
+    evidence: list[Evidence] = []
+    records: list[ToolCallRecord] = []
+    for entity in state.resolved_entities:
+        entity_name = entity.get("name")
+        if not isinstance(entity_name, str) or not entity_name.strip():
+            continue
+        for url in _entity_official_seed_urls(entity):
+            try:
+                fetched = registry.run("fetch_url", url, "collect")
+            except Exception as exc:
+                fetched = [_official_source_locator_evidence(entity_name, url, exc)]
+            fetched = [
+                item
+                for item in fetched
+                if _url_matches_official_domain(item.source_url, {_normalize_domain_host(url)})
+            ]
+            if not fetched:
+                fetched = [
+                    _official_source_locator_evidence(
+                        entity_name,
+                        url,
+                        RuntimeError("fetch_url returned no official-domain evidence"),
+                    )
+                ]
+            fetched = fetched[:_official_seed_evidence_limit()]
+            normalized = [
+                item.model_copy(
+                    update={
+                        "source_type": _official_seed_source_type(item.source_url),
+                        "source_trusted": True,
+                        "verified": True,
+                        "search_query": f"official source seed: {entity_name}",
+                    }
+                )
+                for item in fetched
+            ]
+            evidence.extend(normalized)
+            records.append(
+                ToolCallRecord(
+                    subtask_id="collect",
+                    tool_name="fetch_url",
+                    query=url,
+                    evidence_count=len(normalized),
+                    success=bool(normalized),
+                    error=None if normalized else "fetch_url returned no evidence",
+                    round_index=1,
+                    strategy_id="official-source-seed",
+                )
+            )
+    return evidence, records
+
+
+def _entity_official_seed_urls(entity: dict[str, object]) -> list[str]:
+    urls: list[str] = []
+    for value in _string_list(entity.get("official_domains", [])):
+        url = _normalize_official_source_url(value)
+        if url and url not in urls:
+            urls.append(url)
+        if len(urls) >= _official_seed_url_limit():
+            break
+    return urls
+
+
+def _official_seed_url_limit() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 12
+    if intensity == "deep":
+        return 10
+    if intensity == "standard":
+        return 8
+    return 6
+
+
+def _official_seed_evidence_limit() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 4
+    if intensity == "deep":
+        return 3
+    if intensity == "standard":
+        return 2
+    return 1
+
+
+def _official_seed_source_type(url: str) -> str:
+    inferred = infer_source_type(url)
+    return "official_site" if inferred == "unknown" else inferred
+
+
+def _normalize_official_source_url(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        return ""
+    return raw if "://" in raw else f"https://{raw}"
+
+
+def _official_source_locator_evidence(
+    entity_name: str,
+    url: str,
+    error: Exception,
+) -> Evidence:
+    return Evidence(
+        id=f"official-source-{_slugify_url(url)}",
+        subtask_id="collect",
+        title=f"{entity_name} official source",
+        source_url=url,
+        snippet=(
+            f"Official source locator for {entity_name}. The page should be used to "
+            f"verify company background, investor relations, business segments, "
+            f"financial reports, strategy, and risk disclosures. Fetch fallback: {error}"
+        ),
+        source_type="official_site",
+        verified=True,
+        canonical_url=url,
+        fetch_status="failed",
+        fetch_error=str(error),
+        reachable=False,
+        source_trusted=True,
+    )
+
+
+def _slugify_url(url: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", url.lower()).strip("-") or "official"
 
 
 def _maybe_compress_conversation(state: GraphState) -> GraphState:
@@ -283,8 +423,32 @@ def _collection_work_items(
         if int(strategy.get("round", 1)) == round_index
     ]
     if strategies:
-        return [(subtask, strategy) for strategy in strategies]
+        return [(subtask, strategy) for strategy in _cap_query_strategies(strategies)]
     return [(task, None) for task in state.subtasks]
+
+
+def _cap_query_strategies(strategies: list[dict[str, object]]) -> list[dict[str, object]]:
+    limit = _max_query_strategies_per_round()
+    return strategies[:limit]
+
+
+def _max_query_strategies_per_round() -> int:
+    raw_value = os.environ.get("INSIGHT_GRAPH_MAX_QUERY_STRATEGIES_PER_ROUND")
+    if raw_value is not None:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = 0
+        if value > 0:
+            return value
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 24
+    if intensity == "deep":
+        return 12
+    if intensity == "standard":
+        return 8
+    return 4
 
 
 def _strategy_tool_query(strategy: dict[str, object]) -> dict[str, object]:
@@ -540,6 +704,8 @@ def _run_tool(
     section_id: str | None = None,
     strategy_id: str | None = None,
 ) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    if tool_name == WEB_SEARCH_TOOL:
+        reset_search_provider_diagnostics()
     try:
         results = registry.run(tool_name, query, subtask.id)
     except Exception as exc:
@@ -556,12 +722,16 @@ def _run_tool(
         return [], [failed_record]
 
     if tool_name == WEB_SEARCH_TOOL and not results:
+        diagnostics = get_search_provider_diagnostics()
+        error = WEB_SEARCH_EMPTY_ERROR
+        if diagnostics:
+            error = f"{error}; provider diagnostics: {'; '.join(diagnostics)}"
         failed_record = ToolCallRecord(
             subtask_id=subtask.id,
             tool_name=tool_name,
             query=query,
             success=False,
-            error=WEB_SEARCH_EMPTY_ERROR,
+            error=error,
             round_index=round_index,
             section_id=section_id,
             strategy_id=strategy_id,
@@ -768,6 +938,7 @@ def _cap_evidence_pool(
     section_plan: list[dict[str, object]],
 ) -> list[Evidence]:
     section_capped = _cap_evidence_by_section_budget(evidence, section_plan)
+    section_capped = _preserve_source_type_diversity(section_capped, evidence)
     evidence_budget = get_research_budgets().max_evidence_per_run
     return section_capped[:evidence_budget]
 
@@ -796,6 +967,25 @@ def _cap_evidence_by_section_budget(
         counts[section_id or ""] = current_count + 1
         capped.append(item)
     return capped
+
+
+def _preserve_source_type_diversity(
+    capped: list[Evidence],
+    ordered_evidence: list[Evidence],
+) -> list[Evidence]:
+    kept_keys = {(item.id, item.source_url) for item in capped}
+    kept_source_types = {item.source_type for item in capped if item.source_type}
+    diversified = list(capped)
+    for item in ordered_evidence:
+        if not item.source_type or item.source_type in kept_source_types:
+            continue
+        key = (item.id, item.source_url)
+        if key in kept_keys:
+            continue
+        diversified.append(item)
+        kept_keys.add(key)
+        kept_source_types.add(item.source_type)
+    return diversified
 
 
 def _section_budget(section: dict[str, object]) -> int | None:

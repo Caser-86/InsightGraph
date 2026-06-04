@@ -62,28 +62,36 @@ def analyze_evidence(
 
 
 def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
-    evidence_ids = [item.id for item in state.evidence_pool if item.verified]
-    if not evidence_ids:
+    verified_evidence = [item for item in state.evidence_pool if item.verified]
+    if not verified_evidence:
         state.findings = []
         state.grounded_claims = []
         state.competitive_matrix = []
         return state
+    positioning_evidence = _select_positioning_evidence(verified_evidence)
+    repository_evidence = _select_repository_evidence(
+        verified_evidence,
+        excluded_ids={item.id for item in positioning_evidence},
+    )
+    if not positioning_evidence:
+        positioning_evidence = verified_evidence[:1]
+    positioning_ids = {evidence.id for evidence in positioning_evidence}
+    if not repository_evidence:
+        repository_evidence = [
+            item for item in verified_evidence if item.id not in positioning_ids
+        ][:2]
+    if not repository_evidence:
+        repository_evidence = positioning_evidence[:1]
     state.findings = [
         Finding(
             title="Official sources establish baseline product positioning",
-            summary=(
-                "Cursor publishes product tiers and pricing on its official pricing page. "
-                "GitHub Copilot documentation describes IDE integrations and enterprise features."
-            ),
-            evidence_ids=evidence_ids[:2],
+            summary=_evidence_backed_summary(positioning_evidence),
+            evidence_ids=[item.id for item in positioning_evidence],
         ),
         Finding(
             title="Open repositories add adoption and roadmap signals",
-            summary=(
-                "The OpenCode repository provides public project information, README content, "
-                "and release history."
-            ),
-            evidence_ids=evidence_ids[2:],
+            summary=_evidence_backed_summary(repository_evidence),
+            evidence_ids=[item.id for item in repository_evidence],
         ),
     ]
     state.grounded_claims = _build_grounded_claims(state.findings, state.evidence_pool)
@@ -92,6 +100,81 @@ def _analyze_evidence_deterministic(state: GraphState) -> GraphState:
         state.evidence_pool,
     )
     return state
+
+
+def _select_positioning_evidence(evidence_pool: list[Evidence]) -> list[Evidence]:
+    return _select_evidence_by_terms(
+        evidence_pool,
+        preferred_source_types={"official_site", "docs"},
+        terms={
+            "pricing",
+            "tiers",
+            "plans",
+            "business",
+            "enterprise",
+            "documentation",
+            "copilot",
+            "features",
+            "coding",
+            "assistant",
+        },
+        limit=2,
+    )
+
+
+def _select_repository_evidence(
+    evidence_pool: list[Evidence],
+    *,
+    excluded_ids: set[str],
+) -> list[Evidence]:
+    candidates = [item for item in evidence_pool if item.id not in excluded_ids]
+    return _select_evidence_by_terms(
+        candidates,
+        preferred_source_types={"github", "official_site", "docs"},
+        terms={
+            "repository",
+            "github",
+            "stars",
+            "contributors",
+            "commits",
+            "release",
+            "roadmap",
+            "open",
+            "source",
+            "developer",
+            "developers",
+        },
+        limit=3,
+    )
+
+
+def _select_evidence_by_terms(
+    evidence_pool: list[Evidence],
+    *,
+    preferred_source_types: set[str],
+    terms: set[str],
+    limit: int,
+) -> list[Evidence]:
+    scored: list[tuple[int, int, Evidence]] = []
+    for index, evidence in enumerate(evidence_pool):
+        haystack = f"{evidence.title} {evidence.source_url} {evidence.snippet}".lower()
+        term_score = sum(1 for term in terms if term in haystack)
+        source_score = 2 if evidence.source_type in preferred_source_types else 0
+        score = source_score + term_score
+        if score <= 0:
+            continue
+        scored.append((score, index, evidence))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [item for _, _, item in scored[:limit]]
+
+
+def _evidence_backed_summary(evidence: list[Evidence]) -> str:
+    snippets = []
+    for item in evidence:
+        snippet = " ".join(item.snippet.split())
+        if snippet:
+            snippets.append(snippet)
+    return " ".join(snippets) if snippets else "Verified evidence is available."
 
 
 def _build_grounded_claims(
@@ -519,24 +602,24 @@ def _parse_competitive_matrix_from_data(
             raise ValueError("LLM competitive_matrix product is required")
         if not isinstance(positioning, str) or not positioning.strip():
             raise ValueError("LLM competitive_matrix positioning is required")
-        if not isinstance(strengths, list) or not all(
-            isinstance(item, str) and item.strip() for item in strengths
-        ):
+        strengths = _coerce_string_list(strengths)
+        if not strengths:
             raise ValueError("LLM competitive_matrix strengths must be strings")
         if len(strengths) > 5:
             raise ValueError("LLM competitive_matrix strengths must have at most 5 items")
         if pricing is not None and not isinstance(pricing, str):
-            raise ValueError("LLM competitive_matrix pricing must be a string")
-        for field_name, values in {
+            pricing = _coerce_string(pricing)
+        coerced_optional_fields = {}
+        for field_name, raw_values in {
             "features": features,
             "integrations": integrations,
             "target_users": target_users,
             "risks": risks,
         }.items():
-            if not isinstance(values, list) or not all(
-                isinstance(item, str) and item.strip() for item in values
-            ):
+            values = _coerce_string_list(raw_values)
+            if raw_values and not values:
                 raise ValueError(f"LLM competitive_matrix {field_name} must be strings")
+            coerced_optional_fields[field_name] = values
         if not isinstance(evidence_ids, list) or not evidence_ids:
             raise ValueError("LLM competitive_matrix evidence_ids are required")
         if not all(
@@ -550,13 +633,35 @@ def _parse_competitive_matrix_from_data(
             CompetitiveMatrixRow(
                 product=product.strip(),
                 positioning=positioning.strip(),
-                strengths=[item.strip() for item in strengths],
+                strengths=strengths,
                 pricing=pricing.strip() if isinstance(pricing, str) and pricing.strip() else None,
-                features=[item.strip() for item in features],
-                integrations=[item.strip() for item in integrations],
-                target_users=[item.strip() for item in target_users],
-                risks=[item.strip() for item in risks],
+                features=coerced_optional_fields["features"],
+                integrations=coerced_optional_fields["integrations"],
+                target_users=coerced_optional_fields["target_users"],
+                risks=coerced_optional_fields["risks"],
                 evidence_ids=evidence_ids,
             )
         )
     return matrix
+
+
+def _coerce_string(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("label", "name", "title", "value", "text", "summary"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+    return ""
+
+
+def _coerce_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    strings: list[str] = []
+    for item in value:
+        text = _coerce_string(item)
+        if text:
+            strings.append(text)
+    return strings

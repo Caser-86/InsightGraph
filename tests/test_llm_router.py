@@ -96,7 +96,7 @@ def test_rules_router_selects_analyst_default_for_short_prompt(monkeypatch) -> N
     assert selected == "default-model"
 
 
-def test_rules_router_selects_analyst_strong_for_long_prompt(monkeypatch) -> None:
+def test_rules_router_selects_analyst_default_for_long_prompt(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_ROUTER", "rules")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_DEFAULT", "default-model")
     monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_STRONG", "strong-model")
@@ -108,7 +108,15 @@ def test_rules_router_selects_analyst_strong_for_long_prompt(monkeypatch) -> Non
         messages=[ChatMessage(role="user", content="x" * 11)],
     )
 
-    assert selected == "strong-model"
+    assert selected == "default-model"
+
+
+def test_rules_router_selects_report_review_strong(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_ROUTER", "rules")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_DEFAULT", "default-model")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_STRONG", "strong-model")
+
+    assert select_llm_model(base_config("base-model"), purpose="report_review") == "strong-model"
 
 
 def test_rules_router_falls_back_missing_tier_models(monkeypatch) -> None:
@@ -130,6 +138,25 @@ def test_get_llm_client_preserves_non_model_config_when_router_enabled(monkeypat
     assert client.config.model == "strong-model"
     assert client.config.api_key == "test-key"
     assert client.config.base_url == "https://relay.example/v1"
+    assert client.config.wire_api == "responses"
+
+
+def test_get_llm_client_applies_strong_provider_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_ROUTER", "rules")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_MODEL_STRONG", "mimo-v2.5-pro")
+    monkeypatch.setenv(
+        "INSIGHT_GRAPH_LLM_BASE_URL_STRONG",
+        "https://token-plan-cn.xiaomimimo.com/v1",
+    )
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_API_KEY_STRONG", "mimo-key")
+    monkeypatch.setenv("INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS_STRONG", "600")
+
+    client = get_llm_client(config=base_config("base-model"), purpose="reporter")
+
+    assert client.config.model == "mimo-v2.5-pro"
+    assert client.config.base_url == "https://token-plan-cn.xiaomimimo.com/v1"
+    assert client.config.api_key == "mimo-key"
+    assert client.config.timeout_seconds == 600
     assert client.config.wire_api == "responses"
 
 
@@ -200,8 +227,8 @@ def test_rules_router_attaches_strong_decision_to_client(monkeypatch) -> None:
 
     decision = get_llm_router_decision(client)
     assert decision is not None
-    assert decision.tier == "strong"
-    assert decision.reason == "long_prompt"
+    assert decision.tier == "default"
+    assert decision.reason == "analyst_default"
     assert decision.message_chars == 11
 
 

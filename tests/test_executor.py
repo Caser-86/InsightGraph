@@ -30,6 +30,49 @@ def test_executor_collects_evidence_and_records_success() -> None:
     assert updated.tool_call_log[0].error is None
 
 
+def test_executor_seeds_known_entity_official_sources(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            if name == "fetch_url":
+                return [
+                    Evidence(
+                        id="tencent-investors",
+                        subtask_id=subtask_id,
+                        title="Tencent Investor Relations",
+                        source_url=query,
+                        snippet="Tencent investor relations annual report revenue strategy.",
+                        source_type="unknown",
+                        verified=True,
+                    )
+                ]
+            return []
+
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="分析腾讯公司",
+        resolved_entities=[
+            {
+                "id": "tencent",
+                "name": "Tencent",
+                "aliases": ["腾讯", "0700.HK"],
+                "official_domains": ["tencent.com/en-us/investors.html"],
+            }
+        ],
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
+    )
+
+    updated = execute_subtasks(state)
+
+    assert "tencent-investors" in {item.id for item in updated.evidence_pool}
+    seeded = next(item for item in updated.evidence_pool if item.id == "tencent-investors")
+    assert seeded.source_type == "official_site"
+    assert seeded.source_trusted is True
+    assert updated.tool_call_log[0].tool_name == "fetch_url"
+    assert updated.tool_call_log[0].strategy_id == "official-source-seed"
+
+
 def test_max_collection_rounds_defaults_to_one(monkeypatch) -> None:
     executor_module = importlib.import_module("insight_graph.agents.executor")
     monkeypatch.delenv("INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS", raising=False)
@@ -1451,6 +1494,32 @@ def test_executor_records_empty_web_search_without_mock_fallback(monkeypatch) ->
     assert updated.tool_call_log[0].evidence_count == 0
     assert updated.tool_call_log[0].filtered_count == 0
     assert updated.tool_call_log[0].error == "web_search returned no live evidence"
+
+
+def test_executor_caps_query_strategies_per_round(monkeypatch) -> None:
+    executor_module = importlib.import_module("insight_graph.agents.executor")
+    observed_queries = []
+
+    class FakeRegistry:
+        def run(self, name: str, query: str, subtask_id: str):
+            observed_queries.append(query)
+            return []
+
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_QUERY_STRATEGIES_PER_ROUND", "2")
+    monkeypatch.setattr(executor_module, "ToolRegistry", FakeRegistry)
+    state = GraphState(
+        user_request="Analyze Meta",
+        subtasks=[Subtask(id="collect", description="Collect", suggested_tools=["web_search"])],
+        query_strategies=[
+            {"round": 1, "tool_name": "web_search", "query": "q1"},
+            {"round": 1, "tool_name": "web_search", "query": "q2"},
+            {"round": 1, "tool_name": "web_search", "query": "q3"},
+        ],
+    )
+
+    execute_subtasks(state)
+
+    assert observed_queries == ["q1", "q2"]
 
 
 def test_executor_records_web_search_exception_without_mock_fallback(monkeypatch) -> None:

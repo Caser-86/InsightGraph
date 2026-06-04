@@ -87,12 +87,13 @@ def _fetch_page(url: str) -> FetchedPage:
             text=cached.body.decode("utf-8", errors="replace"),
             body=cached.body,
         )
+    fetch_timeout = _fetch_timeout_seconds()
     if _is_truthy_env("INSIGHT_GRAPH_FETCH_RENDERED"):
         try:
-            return render_page(url)
+            return _render_page_with_timeout(url, fetch_timeout)
         except FetchError:
             pass
-    page = fetch_text(url)
+    page = _fetch_text_with_timeout(url, fetch_timeout)
     if page.body is not None:
         store_cached_fetch(
             FetchCacheEntry(
@@ -107,6 +108,31 @@ def _fetch_page(url: str) -> FetchedPage:
 
 def _is_truthy_env(name: str) -> bool:
     return os.getenv(name, "").lower() in {"1", "true", "yes"}
+
+
+def _fetch_timeout_seconds() -> float:
+    raw_value = os.getenv("INSIGHT_GRAPH_FETCH_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return 5.0
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return 5.0
+    return value if value > 0 else 5.0
+
+
+def _render_page_with_timeout(url: str, timeout: float) -> FetchedPage:
+    try:
+        return render_page(url, timeout=timeout)
+    except TypeError:
+        return render_page(url)
+
+
+def _fetch_text_with_timeout(url: str, timeout: float) -> FetchedPage:
+    try:
+        return fetch_text(url, timeout=timeout)
+    except TypeError:
+        return fetch_text(url)
 
 
 def _parse_fetch_url_query(query: str) -> FetchUrlQuery:

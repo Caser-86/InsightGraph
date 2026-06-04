@@ -304,6 +304,11 @@ repeated local testing.
 | `INSIGHT_GRAPH_SERPAPI_KEY` | SerpAPI key |
 | `INSIGHT_GRAPH_LLM_BASE_URL` | OpenAI-compatible endpoint |
 | `INSIGHT_GRAPH_LLM_API_KEY` | LLM API key |
+| `INSIGHT_GRAPH_LLM_MODEL_DEFAULT` | 默认/分析模型，例如 `deepseek-v4-flash` |
+| `INSIGHT_GRAPH_LLM_MODEL_STRONG` | 报告/审稿强模型，例如 `mimo-v2.5-pro` |
+| `INSIGHT_GRAPH_LLM_BASE_URL_STRONG` | 强模型专属 OpenAI-compatible endpoint |
+| `INSIGHT_GRAPH_LLM_API_KEY_STRONG` | 强模型专属 API key，适合 MiMo / Token Plan 等独立供应商 |
+| `INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS_STRONG` | 强模型专属超时，长报告建议 300-600 秒 |
 | `INSIGHT_GRAPH_REPORT_INTENSITY` | 报告强度 |
 | `INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND` | `memory` / `sqlite` |
 | `INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH` | SQLite jobs 路径 |

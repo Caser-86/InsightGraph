@@ -137,6 +137,19 @@ class SerpAPINewsSearchProvider(SerpAPISearchProvider):
 
 _VALID_PROVIDER_NAMES = ("mock", "duckduckgo", "google", "serpapi")
 _PROVIDER_DAILY_CALL_USAGE: dict[str, int] = {}
+_LAST_PROVIDER_DIAGNOSTICS: list[str] = []
+
+
+def get_search_provider_diagnostics() -> list[str]:
+    return list(_LAST_PROVIDER_DIAGNOSTICS)
+
+
+def reset_search_provider_diagnostics() -> None:
+    _LAST_PROVIDER_DIAGNOSTICS.clear()
+
+
+def _record_search_provider_diagnostic(provider: str, message: str) -> None:
+    _LAST_PROVIDER_DIAGNOSTICS.append(f"{provider}: {message}")
 
 
 def get_search_provider(name: str | None = None) -> SearchProvider:
@@ -193,11 +206,17 @@ def search_with_providers(
     limit: int,
     provider_expression: str | None = None,
 ) -> list[SearchResult]:
+    reset_search_provider_diagnostics()
     provider_names = resolve_search_providers(provider_expression)
-    buckets = [
-        _apply_result_quality_filters(get_search_provider(name).search(query, limit))
-        for name in provider_names
-    ]
+    buckets = []
+    for name in provider_names:
+        try:
+            bucket = _apply_result_quality_filters(get_search_provider(name).search(query, limit))
+        except Exception as exc:
+            _record_search_provider_diagnostic(name, f"{type(exc).__name__}: {exc}")
+            bucket = []
+        _record_search_provider_diagnostic(name, f"{len(bucket)} result(s)")
+        buckets.append(bucket)
     max_len = max((len(bucket) for bucket in buckets), default=0)
     merged: list[SearchResult] = []
     seen_urls: set[str] = set()
@@ -221,14 +240,20 @@ def search_news_with_providers(
     limit: int,
     provider_expression: str | None = None,
 ) -> list[SearchResult]:
+    reset_search_provider_diagnostics()
     provider_names = resolve_search_providers(provider_expression)
-    buckets = [
-        _apply_result_quality_filters(
-            get_news_search_provider(name).search(query, limit),
-            news_mode=True,
-        )
-        for name in provider_names
-    ]
+    buckets = []
+    for name in provider_names:
+        try:
+            bucket = _apply_result_quality_filters(
+                get_news_search_provider(name).search(query, limit),
+                news_mode=True,
+            )
+        except Exception as exc:
+            _record_search_provider_diagnostic(name, f"{type(exc).__name__}: {exc}")
+            bucket = []
+        _record_search_provider_diagnostic(name, f"{len(bucket)} news result(s)")
+        buckets.append(bucket)
     return _merge_provider_buckets(buckets, limit)
 
 
@@ -259,6 +284,8 @@ def _create_duckduckgo_client(proxy: str | None = None) -> Any:
 
     effective_proxy = proxy or os.getenv("INSIGHT_GRAPH_SEARCH_PROXY") or os.getenv("DDGS_PROXY")
     kwargs = {"proxy": effective_proxy} if effective_proxy else {}
+    timeout = _positive_float_env("INSIGHT_GRAPH_DDG_TIMEOUT_SECONDS", 5.0)
+    kwargs["timeout"] = int(timeout) if timeout.is_integer() else timeout
     return DDGS(**kwargs)
 
 
@@ -634,6 +661,8 @@ def _provider_per_run_limit(provider: str) -> int | None:
         return None
     raw = os.getenv(env_name)
     if raw is None or not raw.strip():
+        if provider == "duckduckgo":
+            return 10
         return None
     try:
         value = int(raw)
@@ -647,6 +676,17 @@ def _effective_provider_limit(provider: str, limit: int) -> int:
     if per_run_limit is None:
         return limit
     return min(limit, per_run_limit)
+
+
+def _positive_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _provider_alert_threshold(provider: str) -> float:

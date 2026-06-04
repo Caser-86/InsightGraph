@@ -36,14 +36,14 @@ def plan_research(state: GraphState) -> GraphState:
         state.domain_profile,
         state.resolved_entities,
     )
+    collection_tools = _collection_tool_names(state.user_request)
     state.section_research_plan = [
-        section.to_payload()
+        _adapt_section_source_types(section.to_payload(), collection_tools)
         for section in build_section_research_plan(
             profile=get_domain_profile(state.domain_profile),
             resolved_entities=state.resolved_entities,
         )
     ]
-    collection_tools = _collection_tool_names(state.user_request)
     state.query_strategies = _build_query_strategies(
         research_focus,
         state.section_research_plan,
@@ -205,6 +205,50 @@ def _collection_tool_names(user_request: str) -> list[str]:
             return tools
 
     return [_collection_tool_name(user_request)]
+
+
+def _adapt_section_source_types(
+    section: dict[str, object],
+    collection_tools: list[str],
+) -> dict[str, object]:
+    available = _available_source_types_for_tools(collection_tools)
+    if not available or "web_search" in collection_tools:
+        return section
+    required = _section_source_types(section)
+    adapted = [source_type for source_type in required if source_type in available]
+    if adapted:
+        return {**section, "required_source_types": adapted}
+    fallback = [source_type for source_type in available if source_type in required]
+    return {**section, "required_source_types": fallback or required}
+
+
+def _available_source_types_for_tools(collection_tools: list[str]) -> list[str]:
+    source_types: list[str] = []
+    for tool_name in collection_tools:
+        for source_type in _tool_source_types(tool_name):
+            if source_type not in source_types:
+                source_types.append(source_type)
+    return source_types
+
+
+def _tool_source_types(tool_name: str) -> tuple[str, ...]:
+    if tool_name == "mock_search":
+        return ("official_site", "docs", "github")
+    if tool_name == "github_search":
+        return ("github",)
+    if tool_name == "news_search":
+        return ("news",)
+    if tool_name in {"sec_filings", "sec_financials"}:
+        return ("sec", "official_site")
+    if tool_name in {
+        "document_reader",
+        "search_document",
+        "read_file",
+        "list_directory",
+        "write_file",
+    }:
+        return ("docs",)
+    return ()
 
 
 def _collection_tool_name(user_request: str) -> str:
@@ -559,6 +603,14 @@ def _strategy_query(
     source_hint = SOURCE_HINTS.get(source_type, "")
     if source_hint:
         parts.append(source_hint)
+    company_hint = _company_research_hint(
+        section_id or title,
+        source_type,
+        entity_names,
+        entity_aliases,
+    )
+    if company_hint:
+        parts.append(company_hint)
     question = _first_query_question(section)
     if question:
         parts.append(_collapse_terms(question))
@@ -621,7 +673,16 @@ def _single_entity_deep_dive_query(
     source_hint = SOURCE_HINTS.get(source_type, "")
     if source_hint:
         parts.append(source_hint)
-    parts.append("pricing roadmap integration security enterprise")
+    company_hint = _company_research_hint(
+        section_id or title,
+        source_type,
+        entity_names,
+        entity_aliases,
+    )
+    if company_hint:
+        parts.append(company_hint)
+    else:
+        parts.append("pricing roadmap integration security enterprise")
     question = _first_query_question(section)
     if question:
         parts.append(_collapse_terms(question))
@@ -651,6 +712,15 @@ def _replan_missing_evidence_query(
     entity_aliases: list[str],
     official_domains: list[str],
 ) -> str:
+    company_query = _targeted_company_gap_query(
+        request,
+        source_type,
+        entity_names,
+        entity_aliases,
+        official_domains,
+    )
+    if company_query:
+        return company_query
     parts = [_compact_query_seed(user_request)]
     section_id = str(request.get("section_id", "")).strip()
     if section_id:
@@ -666,6 +736,107 @@ def _replan_missing_evidence_query(
     if domain_hint:
         parts.append(domain_hint)
     return _join_query_parts(parts)
+
+
+def _targeted_company_gap_query(
+    request: dict[str, object],
+    source_type: str,
+    entity_names: list[str],
+    entity_aliases: list[str],
+    official_domains: list[str],
+) -> str:
+    if not _looks_like_company_entity(entity_names, entity_aliases):
+        return ""
+    section = _collapse_terms(str(request.get("section_id", "")))
+    english_name = _english_company_name(entity_names, entity_aliases)
+    chinese_name = _chinese_company_name(entity_aliases)
+    domain_hint = _domain_search_hint(official_domains)
+    parts: list[str] = []
+    if english_name:
+        parts.append(
+            _join_query_parts(
+                [english_name, section, _company_gap_terms(source_type, language="en"), domain_hint]
+            )
+        )
+    if chinese_name:
+        parts.append(
+            _join_query_parts(
+                [chinese_name, section, _company_gap_terms(source_type, language="zh")]
+            )
+        )
+    return " OR ".join(part for part in parts if part)
+
+
+def _company_research_hint(
+    section: str,
+    source_type: str,
+    entity_names: list[str],
+    entity_aliases: list[str],
+) -> str:
+    if not _looks_like_company_entity(entity_names, entity_aliases):
+        return ""
+    section_terms = _collapse_terms(section.replace("-", " "))
+    return _join_query_parts(
+        [
+            section_terms,
+            _company_gap_terms(source_type, language="en"),
+            _company_gap_terms(source_type, language="zh"),
+        ]
+    )
+
+
+def _company_gap_terms(source_type: str, *, language: str) -> str:
+    if language == "zh":
+        if source_type == "news":
+            return "新闻 业绩 业务 战略 竞争 2024 2025 2026"
+        if source_type == "sec":
+            return "财报 年报 季报 投资者关系 风险 2024 2025 2026"
+        return "年报 财报 业绩 收入 业务板块 战略 风险 2024 2025 2026"
+    if source_type == "news":
+        return "news earnings business strategy competition 2024 2025 2026"
+    if source_type == "sec":
+        return "annual report quarterly report investor relations risk 2024 2025 2026"
+    return "annual report earnings revenue business segments strategy risk 2024 2025 2026"
+
+
+def _looks_like_company_entity(entity_names: list[str], entity_aliases: list[str]) -> bool:
+    haystack = " ".join([*entity_names, *entity_aliases]).lower()
+    company_signals = (
+        "inc",
+        "corp",
+        "corporation",
+        "holdings",
+        "platforms",
+        "0700.hk",
+        "1810.hk",
+        "meta",
+        "tencent",
+        "xiaomi",
+        "腾讯",
+        "小米",
+        "公司",
+        "集团",
+        "控股",
+    )
+    return any(signal in haystack for signal in company_signals)
+
+
+def _english_company_name(entity_names: list[str], entity_aliases: list[str]) -> str:
+    for value in [*entity_names, *entity_aliases]:
+        if value and not _contains_cjk(value):
+            return _collapse_terms(value)
+    return ""
+
+
+def _chinese_company_name(entity_aliases: list[str]) -> str:
+    for value in entity_aliases:
+        if _contains_cjk(value):
+            return _collapse_terms(value)
+    return ""
+
+
+def _contains_cjk(value: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
 def _replan_unsupported_claim_query(
@@ -732,7 +903,7 @@ def _compact_query_seed(user_request: str) -> str:
 
 def _entity_search_hint(entity_names: list[str], entity_aliases: list[str]) -> str:
     names = [name for name in entity_names if name][:3]
-    aliases = [alias for alias in entity_aliases if alias and alias not in names][:2]
+    aliases = [alias for alias in entity_aliases if alias and alias not in names][:4]
     terms = names + aliases
     return " ".join(_collapse_terms(term) for term in terms if term)
 

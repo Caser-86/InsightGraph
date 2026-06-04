@@ -624,9 +624,38 @@ def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
         "progress_percent": progress_percent,
         "progress_steps": progress_steps,
         "runtime_seconds": runtime_seconds,
-        "tool_call_count": len(result.get("tool_call_log") or []),
-        "llm_call_count": len(result.get("llm_call_log") or []),
+        "tool_call_count": _research_job_call_count(
+            job.get("job_id"),
+            result,
+            result_key="tool_call_log",
+            event_type="tool_call",
+        ),
+        "llm_call_count": _research_job_call_count(
+            job.get("job_id"),
+            result,
+            result_key="llm_call_log",
+            event_type="llm_call",
+        ),
     }
+
+
+def _research_job_call_count(
+    job_id: str | None,
+    result: dict[str, Any],
+    *,
+    result_key: str,
+    event_type: str,
+) -> int:
+    result_records = result.get(result_key)
+    if isinstance(result_records, list) and result_records:
+        return len(result_records)
+    if job_id is None:
+        return 0
+    return sum(
+        1
+        for event in _cached_research_job_events(job_id)
+        if event.get("type") == event_type
+    )
 
 
 def _with_research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
@@ -852,8 +881,49 @@ def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | Non
         if minimum > 0 and actual < minimum
     ]
     if not failed:
+        diagnostics["quality_gate_status"] = "passed"
         return None
-    return "Research quality gate failed: " + "; ".join(failed)
+    diagnostics["quality_gate_warnings"] = failed
+    diagnostics["quality_gate_status"] = "needs_improvement"
+    hard_failed = [
+        failure
+        for failure in failed
+        if _quality_gate_failure_is_hard(failure, diagnostics)
+    ]
+    if not hard_failed:
+        return None
+    hints = _research_quality_failure_hints(diagnostics)
+    message = "Research quality gate failed: " + "; ".join(hard_failed)
+    if hints:
+        message = f"{message}. Hints: {'; '.join(hints)}"
+    return message
+
+
+def _quality_gate_failure_is_hard(failure: str, diagnostics: dict[str, Any]) -> bool:
+    if failure.startswith(("evidence_count=", "verified_evidence_count=")):
+        return (
+            _int_value(diagnostics.get("evidence_count")) == 0
+            and _int_value(diagnostics.get("verified_evidence_count")) == 0
+        )
+    return True
+
+
+def _research_quality_failure_hints(diagnostics: dict[str, Any]) -> list[str]:
+    hints: list[str] = []
+    evidence_count = _int_value(diagnostics.get("evidence_count"))
+    verified_evidence_count = _int_value(diagnostics.get("verified_evidence_count"))
+    successful_llm_call_count = _int_value(diagnostics.get("successful_llm_call_count"))
+    if evidence_count == 0 and verified_evidence_count == 0:
+        hints.append(
+            "no live evidence collected; check search engine selection, network access, "
+            "SerpAPI quota/key, or disable strict live quality gate for dry runs"
+        )
+    if successful_llm_call_count == 0:
+        hints.append(
+            "no successful LLM calls; check INSIGHT_GRAPH_LLM_API_KEY, "
+            "INSIGHT_GRAPH_LLM_BASE_URL, model name, and provider connectivity"
+        )
+    return hints
 
 
 def _int_value(value: object) -> int:
@@ -1605,6 +1675,7 @@ def _run_research_job(job_id: str) -> None:
                         job,
                         finished_at=_current_utc_timestamp(),
                         error=quality_failure,
+                        result=result,
                         worker_id=worker_id,
                     )
                     return
@@ -1673,6 +1744,7 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                             job,
                             finished_at=_current_utc_timestamp(),
                             error=quality_failure,
+                            result=result,
                             worker_id=worker_id,
                         )
                         return

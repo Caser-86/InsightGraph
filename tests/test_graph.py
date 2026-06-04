@@ -123,7 +123,9 @@ def test_run_research_with_events_emits_tool_and_report_events(monkeypatch) -> N
     tool_events = [event for event in events if event["type"] == "tool_call"]
     report_events = [event for event in events if event["type"] == "report_ready"]
     assert tool_events
-    assert tool_events[0]["record"]["tool_name"] == "mock_search"
+    tool_names = [event["record"]["tool_name"] for event in tool_events]
+    assert tool_names[0] == "fetch_url"
+    assert "mock_search" in tool_names
     assert report_events == [{"type": "report_ready", "trace_id": result.trace_id}]
     assert result.report_markdown is not None
 

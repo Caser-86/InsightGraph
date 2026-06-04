@@ -181,6 +181,32 @@ def test_pre_fetch_results_respects_fetch_budget(monkeypatch) -> None:
     assert fetched_urls == ["https://example.com/one"]
 
 
+def test_pre_fetch_results_caps_per_query_fetches(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    fetched_urls = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        fetched_urls.append(url)
+        return []
+
+    monkeypatch.setenv("INSIGHT_GRAPH_MAX_FETCHES", "100")
+    monkeypatch.setenv("INSIGHT_GRAPH_PREFETCH_PER_QUERY_LIMIT", "3")
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title=str(index), url=f"https://example.com/{index}", snippet=str(index))
+        for index in range(10)
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=10)
+
+    assert len(evidence) == 3
+    assert fetched_urls == [
+        "https://example.com/0",
+        "https://example.com/1",
+        "https://example.com/2",
+    ]
+
+
 def test_pre_fetch_results_passes_query_to_fetch_url(monkeypatch) -> None:
     pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
     observed_queries = []

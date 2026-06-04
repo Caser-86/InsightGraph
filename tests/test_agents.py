@@ -537,6 +537,50 @@ def test_planner_adds_single_entity_deep_dive_strategies(monkeypatch) -> None:
     )
 
 
+def test_planner_builds_bilingual_company_queries_for_chinese_company(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    state = GraphState(user_request="分析腾讯公司")
+
+    updated = plan_research(state)
+
+    assert updated.domain_profile == "company_profile"
+    assert [entity["id"] for entity in updated.resolved_entities] == ["tencent"]
+    queries = "\n".join(str(strategy["query"]) for strategy in updated.query_strategies)
+    assert "Tencent" in queries
+    assert "腾讯" in queries
+    assert "annual report" in queries
+    assert "年报" in queries
+    assert "site:tencent.com" in queries
+    assert "0700.HK" in queries
+
+
+def test_planner_replan_uses_short_targeted_company_queries(monkeypatch) -> None:
+    monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_USE_NEWS_SEARCH", "1")
+    state = GraphState(
+        user_request="分析腾讯公司",
+        iterations=1,
+        replan_requests=[
+            {
+                "type": "missing_section_evidence",
+                "section_id": "financial-analysis",
+                "missing_evidence": 2,
+                "missing_source_types": ["official_site", "news"],
+            }
+        ],
+    )
+
+    updated = plan_research(state)
+
+    queries = [str(strategy["query"]) for strategy in updated.query_strategies]
+    assert any("Tencent financial-analysis annual report" in query for query in queries)
+    assert any("腾讯 financial-analysis 年报" in query for query in queries)
+    assert all("What question should the report answer" not in query for query in queries)
+
+
 def test_planner_replan_strategy_uses_missing_source_types(monkeypatch) -> None:
     monkeypatch.setenv("INSIGHT_GRAPH_MULTI_SOURCE_COLLECTION", "1")
     monkeypatch.setenv("INSIGHT_GRAPH_USE_WEB_SEARCH", "1")
@@ -1033,8 +1077,8 @@ def test_collector_adds_verified_mock_evidence(monkeypatch) -> None:
     assert all(item.verified for item in updated.evidence_pool)
     assert {item.source_type for item in updated.evidence_pool} >= {"official_site", "github"}
     assert updated.global_evidence_pool == updated.evidence_pool
-    assert len(updated.tool_call_log) == 1
-    assert updated.tool_call_log[0].tool_name == "mock_search"
+    assert "mock_search" in {record.tool_name for record in updated.tool_call_log}
+    assert any(record.strategy_id == "official-source-seed" for record in updated.tool_call_log)
 
 
 def test_collector_adds_verified_github_search_evidence(monkeypatch) -> None:
@@ -1045,10 +1089,10 @@ def test_collector_adds_verified_github_search_evidence(monkeypatch) -> None:
 
     updated = collect_evidence(state)
 
-    assert len(updated.evidence_pool) == 3
+    assert len(updated.evidence_pool) >= 3
     assert all(item.verified for item in updated.evidence_pool)
-    assert {item.source_type for item in updated.evidence_pool} == {"github"}
-    assert updated.tool_call_log[0].tool_name == "github_search"
+    assert "github" in {item.source_type for item in updated.evidence_pool}
+    assert "github_search" in {record.tool_name for record in updated.tool_call_log}
 
 
 def test_collector_adds_verified_news_search_evidence(monkeypatch) -> None:
@@ -1060,10 +1104,10 @@ def test_collector_adds_verified_news_search_evidence(monkeypatch) -> None:
 
     updated = collect_evidence(state)
 
-    assert len(updated.evidence_pool) == 3
+    assert len(updated.evidence_pool) >= 3
     assert all(item.verified for item in updated.evidence_pool)
-    assert {item.source_type for item in updated.evidence_pool} == {"news"}
-    assert updated.tool_call_log[0].tool_name == "news_search"
+    assert "news" in {item.source_type for item in updated.evidence_pool}
+    assert "news_search" in {record.tool_name for record in updated.tool_call_log}
 
 
 def test_get_analyst_provider_defaults_to_deterministic(monkeypatch) -> None:
@@ -1385,7 +1429,7 @@ def test_deterministic_analyst_builds_grounded_claims() -> None:
         {
             "claim": "Official sources establish baseline product positioning",
             "section_id": None,
-            "evidence_ids": ["cursor-pricing", "opencode-repo"],
+            "evidence_ids": ["copilot-docs", "cursor-pricing"],
             "confidence": "medium",
             "risk": "Deterministic claim needs human review before publication.",
             "unknowns": [],
@@ -1393,7 +1437,7 @@ def test_deterministic_analyst_builds_grounded_claims() -> None:
         {
             "claim": "Open repositories add adoption and roadmap signals",
             "section_id": None,
-            "evidence_ids": ["copilot-docs"],
+            "evidence_ids": ["opencode-repo"],
             "confidence": "medium",
             "risk": "Deterministic claim needs human review before publication.",
             "unknowns": [],
@@ -1739,6 +1783,33 @@ def test_llm_analyst_falls_back_when_matrix_strengths_missing(monkeypatch) -> No
         "GitHub Copilot",
     ]
     assert updated.findings[0].title == "Official sources establish baseline product positioning"
+
+
+def test_llm_analyst_coerces_matrix_list_fields(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_ANALYST_PROVIDER", "llm")
+    state = make_analyst_state()
+    client = UsageLLMClient(
+        content=(
+            '{"findings":[{"title":"Packaging differs",'
+            '"summary":"Cursor and Copilot use different packaging signals.",'
+            '"evidence_ids":["cursor-pricing"]}],'
+            '"competitive_matrix":[{"product":"Cursor",'
+            '"positioning":"Official product positioning signal",'
+            '"strengths":[{"label":"Official source coverage"}],'
+            '"features":["AI coding"],'
+            '"integrations":[{"name":"VS Code"}],'
+            '"target_users":["Engineering teams"],'
+            '"risks":["Pricing may change"],'
+            '"evidence_ids":["cursor-pricing"]}]}'
+        )
+    )
+
+    updated = analyze_evidence(state, llm_client=client)
+
+    assert updated.llm_call_log[-1].success is True
+    assert updated.competitive_matrix[0].strengths == ["Official source coverage"]
+    assert updated.competitive_matrix[0].integrations == ["VS Code"]
 
 
 @pytest.mark.parametrize(
@@ -2195,6 +2266,28 @@ def test_reporter_validates_urls_when_enabled(monkeypatch) -> None:
         "[2] GitHub Copilot Documentation. https://docs.github.com/en/copilot "
         "(URL validation failed: Network error)"
     ) in updated.report_markdown
+
+
+def test_reporter_does_not_fail_when_url_validation_times_out(monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    monkeypatch.setenv("INSIGHT_GRAPH_REPORTER_VALIDATE_URLS", "1")
+    validation_module = __import__(
+        "insight_graph.report_quality.url_validation",
+        fromlist=["url_validation"],
+    )
+
+    def fake_fetch_text(url: str, timeout: float = 10.0):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(validation_module, "fetch_text", fake_fetch_text)
+
+    updated = write_report(make_reporter_state())
+
+    assert updated.report_markdown is not None
+    assert "## References" in updated.report_markdown
+    assert updated.url_validation
+    assert updated.url_validation[0]["valid"] is False
+    assert "Timeout error while validating URL" in str(updated.url_validation[0]["error"])
 
 
 def test_reporter_uses_section_research_plan_for_deterministic_body(monkeypatch) -> None:

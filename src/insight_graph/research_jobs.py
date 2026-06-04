@@ -743,6 +743,7 @@ def mark_research_job_failed(
     finished_at: str,
     error: str,
     *,
+    result: dict[str, Any] | None = None,
     worker_id: str | None = None,
 ) -> None:
     with _JOBS_LOCK:
@@ -753,7 +754,7 @@ def mark_research_job_failed(
                     worker_id=worker_id,
                     status=RESEARCH_JOB_STATUS_FAILED,
                     finished_at=finished_at,
-                    result=None,
+                    result=result,
                     error=error,
                 )
                 return
@@ -761,12 +762,13 @@ def mark_research_job_failed(
                 job.id,
                 status=RESEARCH_JOB_STATUS_FAILED,
                 finished_at=finished_at,
-                result=None,
+                result=result,
                 error=error,
             )
             return
         job.status = RESEARCH_JOB_STATUS_FAILED
         job.finished_at = finished_at
+        job.result = result
         job.error = error
         _prune_finished_jobs_locked()
         _persist_research_jobs_best_effort_locked()

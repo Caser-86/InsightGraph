@@ -90,6 +90,9 @@ $baseUrl = "http://$HostAddress`:$selectedPort"
 $healthUrl = "$baseUrl/health"
 $dashboardUrl = "$baseUrl/dashboard"
 
+$env:INSIGHT_GRAPH_VERBOSE_LLM_ERRORS = "1"
+$env:INSIGHT_GRAPH_LLM_TIMEOUT_SECONDS = "180"
+
 $process = Start-Process `
     -FilePath python `
     -ArgumentList @($launcherPath, "--host", $HostAddress, "--port", "$selectedPort") `
