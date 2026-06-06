@@ -10,14 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
 # 加载 .env
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
-    with open(env_path) as f:
+    with open(env_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -55,7 +54,11 @@ def check_duckduckgo(query: str, limit: int) -> dict[str, object]:
 
 
 def check_serpapi(query: str, limit: int) -> dict[str, object]:
-    api_key = env("INSIGHT_GRAPH_SERPAPI_KEY") or env("INSIGHT_GRAPH_SERPAPI_API_KEY") or env("SERPAPI_API_KEY")
+    api_key = (
+        env("INSIGHT_GRAPH_SERPAPI_KEY")
+        or env("INSIGHT_GRAPH_SERPAPI_API_KEY")
+        or env("SERPAPI_API_KEY")
+    )
     if not api_key:
         return {
             "provider": "serpapi",
@@ -101,13 +104,50 @@ def check_serpapi(query: str, limit: int) -> dict[str, object]:
 
 
 def check_google(query: str, limit: int) -> dict[str, object]:
-    return {
-        "provider": "google",
-        "status": "SKIP",
-        "result_count": 0,
-        "first_url": "",
-        "error": "Google CSE not implemented in check script (requires CSE ID + API key)",
-    }
+    api_key = env("INSIGHT_GRAPH_GOOGLE_API_KEY")
+    cse_id = env("INSIGHT_GRAPH_GOOGLE_CSE_ID")
+    if not api_key or not cse_id:
+        return {
+            "provider": "google",
+            "status": "FAIL",
+            "result_count": 0,
+            "first_url": "",
+            "error": "GOOGLE_API_KEY or GOOGLE_CSE_ID not configured",
+        }
+    try:
+        import urllib.request
+
+        params = {
+            "key": api_key,
+            "cx": cse_id,
+            "q": query,
+            "num": str(limit),
+        }
+        url = (
+            "https://www.googleapis.com/customsearch/v1?"
+            + urllib.parse.urlencode(params)
+        )
+        start = time.monotonic()
+        resp = urllib.request.urlopen(url, timeout=10)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        body = json.loads(resp.read().decode("utf-8"))
+        results = body.get("items", [])
+        return {
+            "provider": "google",
+            "status": "PASS",
+            "result_count": len(results),
+            "first_url": results[0].get("link", "") if results else "",
+            "duration_ms": duration_ms,
+            "error": None,
+        }
+    except Exception as exc:
+        return {
+            "provider": "google",
+            "status": "FAIL",
+            "result_count": 0,
+            "first_url": "",
+            "error": str(exc)[:200],
+        }
 
 
 def check_mock(query: str, limit: int) -> dict[str, object]:

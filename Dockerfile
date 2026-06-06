@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 LABEL org.opencontainers.image.title="InsightGraph"
 LABEL org.opencontainers.image.description="LangGraph Multi-Agent Deep Research Engine"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.2.0"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -11,11 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
+COPY pyproject.toml README.md ./
 COPY src/ src/
-COPY README.md .
+
+RUN pip install --no-cache-dir -e .
 
 RUN mkdir -p /data /reports /logs
 

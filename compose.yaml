@@ -19,6 +19,7 @@ services:
       start_period: 10s
 
   nginx:
+    profiles: ["nginx"]
     image: nginx:alpine
     container_name: insightgraph-nginx
     ports:

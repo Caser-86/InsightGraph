@@ -6,7 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
 
@@ -38,7 +37,7 @@ def test_missing_all_returns_fail():
     returncode, data = run_validate()
     assert returncode == 1
     labels = [r["label"] for r in data.get("results", [])]
-    assert any("API" in l for l in labels)
+    assert any("API" in label for label in labels)
 
 
 def test_minimal_config_passes():

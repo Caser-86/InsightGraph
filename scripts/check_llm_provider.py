@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
 # 加载 .env
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
-    with open(env_path) as f:
+    with open(env_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -37,7 +36,12 @@ def check_model(label: str, model: str) -> dict[str, object]:
     api_key = env("INSIGHT_GRAPH_LLM_API_KEY")
 
     if not base_url or not api_key:
-        return {"label": label, "status": "FAIL", "model": model, "error": "base_url or api_key missing"}
+        return {
+            "label": label,
+            "status": "FAIL",
+            "model": model,
+            "error": "base_url or api_key missing",
+        }
 
     try:
         import urllib.request
@@ -87,7 +91,10 @@ def check_model(label: str, model: str) -> dict[str, object]:
 def main() -> int:
     results = [
         check_model("fast", env("INSIGHT_GRAPH_LLM_MODEL_FAST")),
-        check_model("default", env("INSIGHT_GRAPH_LLM_MODEL_DEFAULT") or env("INSIGHT_GRAPH_LLM_MODEL")),
+        check_model(
+            "default",
+            env("INSIGHT_GRAPH_LLM_MODEL_DEFAULT") or env("INSIGHT_GRAPH_LLM_MODEL"),
+        ),
         check_model("strong", env("INSIGHT_GRAPH_LLM_MODEL_STRONG")),
     ]
 

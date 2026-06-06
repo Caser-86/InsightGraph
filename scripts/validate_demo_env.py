@@ -28,7 +28,6 @@ def check(ok: bool, label: str, severity: str = "ERROR") -> dict[str, str]:
 def main() -> int:
     results: list[dict[str, str]] = []
     warnings: list[str] = []
-    error_count = 0
 
     # ---- API 安全 ----
     api_key = env("INSIGHT_GRAPH_API_KEY")
@@ -96,10 +95,22 @@ def main() -> int:
     ))
 
     # ---- 密钥安全 ----
-    for key_name in ["INSIGHT_GRAPH_LLM_API_KEY", "INSIGHT_GRAPH_SERPAPI_KEY", "INSIGHT_GRAPH_API_KEY"]:
+    _placeholder_keys = {
+        "INSIGHT_GRAPH_LLM_API_KEY",
+        "INSIGHT_GRAPH_SERPAPI_KEY",
+        "INSIGHT_GRAPH_API_KEY",
+    }
+    _placeholder_values = {
+        "replace-me",
+        "replace-me-with-strong-random-key",
+        "sk-your-deepseek-api-key",
+    }
+    for key_name in _placeholder_keys:
         key_val = env(key_name)
-        if key_val and key_val in ("replace-me", "replace-me-with-strong-random-key", "sk-your-deepseek-api-key"):
-            results.append(check(False, f"{key_name} 仍为占位符值", severity="WARN"))
+        if key_val and key_val in _placeholder_values:
+            results.append(
+                check(False, f"{key_name} 仍为占位符值", severity="WARN")
+            )
 
     # ---- 报告强度 ----
     intensity = env("INSIGHT_GRAPH_REPORT_INTENSITY", "standard")

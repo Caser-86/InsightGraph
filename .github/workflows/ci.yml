@@ -32,7 +32,13 @@ jobs:
         run: python -m ruff check .
 
       - name: Test
-        run: python -m pytest
+        run: python -m pytest -o addopts=
+
+      - name: Validate Demo Environment
+        run: python scripts/validate_demo_env.py
+
+      - name: Check Search Provider (mock)
+        run: python scripts/check_search_provider.py --provider mock
 
       - name: Coverage Report
         if: always()
@@ -77,3 +83,44 @@ jobs:
         with:
           name: coverage-reports
           path: htmlcov/
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: docker build -t insightgraph:ci .
+
+      - name: Validate compose config
+        run: docker compose config --quiet
+
+      - name: Start compose
+        run: docker compose up -d
+
+      - name: Wait for healthcheck
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then
+              echo "Healthcheck passed"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Healthcheck timeout"
+          exit 1
+
+      - name: Check /health returns expected fields
+        run: |
+          curl -sf http://localhost:8000/health | python -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          assert data.get('status') == 'ok', f'status not ok: {data}'
+          assert 'jobs_backend' in data, 'missing jobs_backend'
+          print('Health check OK:', json.dumps(data, indent=2))
+          "
+
+      - name: Stop compose
+        if: always()
+        run: docker compose down
