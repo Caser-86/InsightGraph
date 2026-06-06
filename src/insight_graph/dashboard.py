@@ -345,6 +345,26 @@ _DASHBOARD_HTML = r"""<!doctype html>
       letter-spacing: -0.05em;
     }
 
+    .demo-bar {
+      display: flex;
+      gap: 14px;
+      padding: 0 20px 8px;
+      flex-wrap: wrap;
+    }
+    .demo-chiclet {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.72rem;
+      background: rgba(117, 229, 232, 0.08);
+      color: var(--text-dim);
+    }
+    .demo-chiclet.green { background: rgba(0, 212, 170, 0.12); color: var(--accent); }
+    .demo-chiclet.yellow { background: rgba(255, 183, 0, 0.12); color: #ffb700; }
+    .demo-chiclet.red { background: rgba(255, 107, 130, 0.12); color: var(--red); }
+
     .workspace {
       display: grid;
       grid-template-columns: minmax(220px, 260px) 1fr;
@@ -685,6 +705,8 @@ _DASHBOARD_HTML = r"""<!doctype html>
         <button id="auto-refresh" class="pill" type="button">自动刷新开</button>
       </div>
     </header>
+
+    <div class="demo-bar" id="demo-bar"></div>
 
     <div class="grid">
       <section class="panel">
@@ -1032,6 +1054,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
         deletedJob: '已删除任务 {jobId}',
         deleteFailed: '删除失败',
         defaultQuery: '比较 Cursor、OpenCode 和 GitHub Copilot',
+        demoApiProtected: 'API 已保护',
+        demoApiUnprotected: 'API 未保护',
+        demoSqliteOn: 'SQLite',
+        demoSqliteOff: 'SQLite 未启用',
+        demoWorkerOn: 'Worker',
+        demoWorkerOff: 'Worker 未启用',
+        demoModelLabel: '模型',
+        demoSearchLabel: '搜索',
+        demoUnknown: '未知',
       },
       en: {
         pageTitle: 'InsightGraph Dashboard',
@@ -1237,6 +1268,15 @@ _DASHBOARD_HTML = r"""<!doctype html>
         deletedJob: 'Deleted job {jobId}',
         deleteFailed: 'Delete failed',
         defaultQuery: 'Compare Cursor, OpenCode, and GitHub Copilot',
+        demoApiProtected: 'API Protected',
+        demoApiUnprotected: 'API Unprotected',
+        demoSqliteOn: 'SQLite',
+        demoSqliteOff: 'SQLite off',
+        demoWorkerOn: 'Worker',
+        demoWorkerOff: 'Worker off',
+        demoModelLabel: 'Model',
+        demoSearchLabel: 'Search',
+        demoUnknown: 'Unknown',
       },
     };
 
@@ -1418,6 +1458,26 @@ _DASHBOARD_HTML = r"""<!doctype html>
       if (!els.message.textContent) setMessage(t('ready'), 'ok');
       renderJobList();
       renderDetail();
+    }
+
+    async function refreshDemoBar() {
+      try {
+        const resp = await apiFetch('/health');
+        const chips = [];
+        chips.push({ cls: resp.api_key_configured ? 'green' : 'yellow',
+          text: resp.api_key_configured ? t('demoApiProtected') : t('demoApiUnprotected') });
+        chips.push({ cls: resp.jobs_backend === 'sqlite' ? 'green' : 'yellow',
+          text: resp.jobs_backend === 'sqlite' ? t('demoSqliteOn') : t('demoSqliteOff') });
+        chips.push({ cls: resp.startup_worker_enabled ? 'green' : 'yellow',
+          text: resp.startup_worker_enabled ? t('demoWorkerOn') : t('demoWorkerOff') });
+        let tier = t('demoUnknown');
+        if (state.modelTier) tier = state.modelTier;
+        chips.push({ cls: 'green', text: t('demoModelLabel') + ': ' + tier });
+        chips.push({ cls: 'green', text: t('demoSearchLabel') + ': ' + (state.searchProviderLabel || t('demoUnknown')) });
+        document.getElementById('demo-bar').innerHTML = chips.map(
+          c => '<span class="demo-chiclet ' + c.cls + '">' + escapeHtml(c.text) + '</span>'
+        ).join('');
+      } catch (e) { /* silent */ }
     }
 
     function setConnection(key) {
@@ -2250,6 +2310,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
     });
 
     applyLanguage();
+    refreshDemoBar();
     renderRecentPanel();
     renderSearchProvidersPanel();
     refresh();

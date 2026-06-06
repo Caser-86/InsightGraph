@@ -1,0 +1,33 @@
+services:
+  insightgraph:
+    build: .
+    container_name: insightgraph
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+      - ./reports:/reports
+      - ./logs:/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    container_name: insightgraph-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./docs/nginx-insightgraph.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      insightgraph:
+        condition: service_healthy
+    restart: unless-stopped

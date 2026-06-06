@@ -459,8 +459,19 @@ def _request_field_was_set(request: BaseModel, field_name: str) -> bool:
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "api_key_configured": bool(_configured_api_key()),
+        "jobs_backend": os.environ.get(
+            "INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "memory"
+        ),
+        "sqlite_path_configured": bool(
+            os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", "").strip()
+        ),
+        "startup_worker_enabled": _startup_worker_enabled(),
+        "checkpoint_resume_enabled": _checkpoint_resume_enabled(),
+    }
 
 
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)

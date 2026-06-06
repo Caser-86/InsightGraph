@@ -617,7 +617,13 @@ def test_health_returns_ok() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert "jobs_backend" in body
+    assert "sqlite_path_configured" in body
+    assert "startup_worker_enabled" in body
+    assert "checkpoint_resume_enabled" in body
+    assert "api_key_configured" in body
 
 
 def test_health_remains_public_when_api_key_is_configured(monkeypatch) -> None:
@@ -627,7 +633,9 @@ def test_health_remains_public_when_api_key_is_configured(monkeypatch) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["api_key_configured"] is True
 
 
 def test_dashboard_returns_html() -> None:
@@ -964,7 +972,8 @@ def test_create_app_returns_configured_fastapi_app() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
 
 
 def test_module_level_app_remains_configured() -> None:
