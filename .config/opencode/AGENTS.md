@@ -32,5 +32,3 @@ This project applies selected Caveman skills from `https://github.com/JuliusBrus
 - Preserve code blocks, inline code, commands, URLs, file paths, env vars, version numbers, and proper nouns exactly.
 - Do not compress source code, config, lockfiles, `.env`, scripts, SQL, HTML, CSS, YAML, TOML, JSON, or generated artifacts.
 - Create a readable backup before overwriting memory/instruction Markdown.
-
-See `docs/skills/caveman-applied-skills.md` for source, applied skill list, and boundaries.

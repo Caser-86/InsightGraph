@@ -33,14 +33,10 @@ def test_report_quality_roadmap_documents_worktree_pythonpath_rule() -> None:
 
 def test_historical_superpowers_process_docs_are_not_tracked() -> None:
     root = Path(__file__).parents[1]
-
-    plan_files = sorted((root / "docs" / "superpowers" / "plans").glob("*.md"))
-    spec_dir = root / "docs" / "superpowers" / "specs"
-
-    assert [path.name for path in plan_files] == [
-        "2026-04-30-remaining-product-roadmap.md"
-    ]
-    assert not spec_dir.exists()
+    assert not (root / "docs" / "skills").exists()
+    assert not (root / "docs" / "superpowers").exists()
+    assert not (root / "memory" / "CLAUDE.md").exists()
+    assert not (root / "scripts" / "generate_xiaomi_serpapi.py").exists()
 
 
 def test_generated_showcase_report_is_not_tracked() -> None:

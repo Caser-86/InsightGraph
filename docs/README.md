@@ -33,13 +33,11 @@ This index helps readers find the right InsightGraph document quickly.
 - [Demo Guide](demo.md)
 - [Roadmap 中文版](roadmap-cn.md)
 
-## Internal Reference Docs
+## Contributor Reference Docs
 
 - [Reference Parity Roadmap](reference-parity-roadmap.md)
 - [Report Quality Roadmap](report-quality-roadmap.md)
 - [Research Job Repository Contract](research-job-repository-contract.md)
-- [Caveman Applied Skills](skills/caveman-applied-skills.md)
-- [Remaining Product Roadmap Plan](superpowers/plans/2026-04-30-remaining-product-roadmap.md)
 
 ## Reading Order
 
