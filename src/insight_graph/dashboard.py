@@ -365,6 +365,17 @@ _DASHBOARD_HTML = r"""<!doctype html>
     .demo-chiclet.yellow { background: rgba(255, 183, 0, 0.12); color: #ffb700; }
     .demo-chiclet.red { background: rgba(255, 107, 130, 0.12); color: var(--red); }
 
+    .detail-error-hint {
+      padding: 10px 14px;
+      margin: 8px 0;
+      border-radius: 12px;
+      background: rgba(255, 107, 130, 0.1);
+      border: 1px solid rgba(255, 107, 130, 0.3);
+      color: var(--red);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
     .workspace {
       display: grid;
       grid-template-columns: minmax(220px, 260px) 1fr;
@@ -1470,10 +1481,25 @@ _DASHBOARD_HTML = r"""<!doctype html>
           text: resp.jobs_backend === 'sqlite' ? t('demoSqliteOn') : t('demoSqliteOff') });
         chips.push({ cls: resp.startup_worker_enabled ? 'green' : 'yellow',
           text: resp.startup_worker_enabled ? t('demoWorkerOn') : t('demoWorkerOff') });
-        let tier = t('demoUnknown');
-        if (state.modelTier) tier = state.modelTier;
-        chips.push({ cls: 'green', text: t('demoModelLabel') + ': ' + tier });
-        chips.push({ cls: 'green', text: t('demoSearchLabel') + ': ' + (state.searchProviderLabel || t('demoUnknown')) });
+        chips.push({ cls: resp.serpapi_configured ? 'green' : 'yellow',
+          text: resp.serpapi_configured ? 'SerpAPI ✓' : 'SerpAPI ✗' });
+        const sp = resp.search_provider || 'duckduckgo';
+        chips.push({ cls: 'green', text: t('demoSearchLabel') + ': ' + sp });
+        const quota = resp.search_quota || {};
+        const spq = quota.serpapi || {};
+        if (spq.daily_call_limit) {
+          const used = spq.daily_calls_used || 0;
+          const limit = spq.daily_call_limit;
+          const cls = spq.alert_reached ? 'red' : (used > limit * 0.5 ? 'yellow' : 'green');
+          chips.push({ cls, text: 'SerpAPI: ' + used + '/' + limit });
+        }
+        const ddgq = quota.duckduckgo || {};
+        if (ddgq.daily_call_limit) {
+          const used = ddgq.daily_calls_used || 0;
+          const limit = ddgq.daily_call_limit;
+          const cls = ddgq.alert_reached ? 'red' : (used > limit * 0.5 ? 'yellow' : 'green');
+          chips.push({ cls, text: 'DDG: ' + used + '/' + limit });
+        }
         document.getElementById('demo-bar').innerHTML = chips.map(
           c => '<span class="demo-chiclet ' + c.cls + '">' + escapeHtml(c.text) + '</span>'
         ).join('');
@@ -1890,6 +1916,7 @@ _DASHBOARD_HTML = r"""<!doctype html>
           ${retryBtn}
         </div>
         ${renderProgressTimeline(detail)}
+        ${detail.error ? `<div class="detail-error-hint"><strong>${escapeHtml(t('errorLabel'))}:</strong> ${escapeHtml(detail.error)}</div>` : ''}
         <div class="overview-grid">
           <div class="info-card"><span>${escapeHtml(t('statusLabel'))}</span><strong>${escapeHtml(statusText(detail.status))}</strong></div>
           <div class="info-card"><span>${escapeHtml(t('stageLabel'))}</span><strong>${escapeHtml(stageText(detail.progress_stage))}</strong></div>

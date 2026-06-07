@@ -624,6 +624,9 @@ def test_health_returns_ok() -> None:
     assert "startup_worker_enabled" in body
     assert "checkpoint_resume_enabled" in body
     assert "api_key_configured" in body
+    assert "search_provider" in body
+    assert "serpapi_configured" in body
+    assert "search_quota" in body
 
 
 def test_health_remains_public_when_api_key_is_configured(monkeypatch) -> None:

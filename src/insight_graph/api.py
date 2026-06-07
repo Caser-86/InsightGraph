@@ -95,7 +95,10 @@ from insight_graph.research_jobs import (
     summarize_research_jobs as summarize_research_jobs_state,
 )
 from insight_graph.state import GraphState
-from insight_graph.tools.search_providers import resolve_search_providers
+from insight_graph.tools.search_providers import (
+    get_search_quota_snapshot,
+    resolve_search_providers,
+)
 
 
 
@@ -460,6 +463,7 @@ def _request_field_was_set(request: BaseModel, field_name: str) -> bool:
 
 @router.get("/health")
 def health() -> dict[str, object]:
+    providers = resolve_search_providers()
     return {
         "status": "ok",
         "api_key_configured": bool(_configured_api_key()),
@@ -471,6 +475,14 @@ def health() -> dict[str, object]:
         ),
         "startup_worker_enabled": _startup_worker_enabled(),
         "checkpoint_resume_enabled": _checkpoint_resume_enabled(),
+        "search_provider": os.environ.get(
+            "INSIGHT_GRAPH_SEARCH_PROVIDER", "duckduckgo"
+        ),
+        "serpapi_configured": bool(
+            os.environ.get("INSIGHT_GRAPH_SERPAPI_KEY", "").strip()
+        ),
+        "search_providers": providers,
+        "search_quota": get_search_quota_snapshot(),
     }
 
 
