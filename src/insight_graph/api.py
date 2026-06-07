@@ -100,6 +100,10 @@ from insight_graph.tools.search_providers import (
     resolve_search_providers,
 )
 
+# ===========================================================================
+# Section 1: Constants, Models, Response Examples
+# ===========================================================================
+
 
 
 
@@ -381,6 +385,10 @@ _PROGRESS_STAGE_PERCENT = {
 
 
 @contextmanager
+# ===========================================================================
+# Section 3: Preset Environment & Research Workflow
+# ===========================================================================
+
 def _research_preset_environment(
     preset: ResearchPreset,
     report_intensity: ReportIntensity | None = None,
@@ -461,6 +469,10 @@ def _request_field_was_set(request: BaseModel, field_name: str) -> bool:
     return field_name in getattr(request, "model_fields_set", set())
 
 
+# ===========================================================================
+# Section 2: Health & Dashboard Endpoints
+# ===========================================================================
+
 @router.get("/health")
 def health() -> dict[str, object]:
     providers = resolve_search_providers()
@@ -508,6 +520,10 @@ def _elapsed_seconds(started_at: str, finished_at: str) -> int:
     elapsed = _parse_utc_timestamp(finished_at) - _parse_utc_timestamp(started_at)
     return max(0, int(elapsed.total_seconds()))
 
+
+# ===========================================================================
+# Section 4: Progress Tracking
+# ===========================================================================
 
 def _progress_steps(status_by_id: dict[str, str]) -> list[dict[str, str]]:
     return [
@@ -684,6 +700,10 @@ def _research_job_call_count(
 def _with_research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
     return {**job, **_research_job_progress(job)}
 
+
+# ===========================================================================
+# Section 5: Event Streaming & WebSocket
+# ===========================================================================
 
 def _clear_research_job_events(job_id: str) -> None:
     with _RESEARCH_JOB_EVENT_LOCK:
