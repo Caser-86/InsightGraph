@@ -12,12 +12,18 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 def run_validate(env_overrides: dict[str, str] | None = None) -> tuple[int, dict]:
     env = os.environ.copy()
     env.pop("INSIGHT_GRAPH_API_KEY", None)
+    env.pop("INSIGHT_GRAPH_LLM_BASE_URL", None)
     env.pop("INSIGHT_GRAPH_LLM_API_KEY", None)
     env.pop("INSIGHT_GRAPH_LLM_MODEL", None)
     env.pop("INSIGHT_GRAPH_LLM_MODEL_FAST", None)
     env.pop("INSIGHT_GRAPH_LLM_MODEL_DEFAULT", None)
     env.pop("INSIGHT_GRAPH_LLM_MODEL_STRONG", None)
+    env.pop("INSIGHT_GRAPH_SEARCH_PROVIDER", None)
     env.pop("INSIGHT_GRAPH_SERPAPI_KEY", None)
+    env.pop("INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE", None)
+    env.pop("INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE", None)
+    env.pop("INSIGHT_GRAPH_REPORT_INTENSITY", None)
+    env["INSIGHT_GRAPH_ENV_FILE"] = str(Path("__missing_test_env_file__").resolve())
     if env_overrides:
         env.update(env_overrides)
     result = subprocess.run(
@@ -54,6 +60,32 @@ def test_minimal_config_passes():
         "INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE": "8",
     })
     assert returncode == 0
+
+
+def test_reads_config_from_env_file(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "INSIGHT_GRAPH_API_KEY=test-key-at-least-16-chars",
+                "INSIGHT_GRAPH_LLM_BASE_URL=https://api.deepseek.com/v1",
+                "INSIGHT_GRAPH_LLM_API_KEY=sk-test",
+                "INSIGHT_GRAPH_LLM_MODEL=deepseek-chat",
+                "INSIGHT_GRAPH_LLM_MODEL_FAST=deepseek-v4-flash",
+                "INSIGHT_GRAPH_LLM_MODEL_DEFAULT=deepseek-reasoner",
+                "INSIGHT_GRAPH_LLM_MODEL_STRONG=deepseek-v4-pro",
+                "INSIGHT_GRAPH_SEARCH_PROVIDER=duckduckgo",
+                "INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE=8",
+                "INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE=8",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    returncode, data = run_validate({"INSIGHT_GRAPH_ENV_FILE": str(env_file)})
+
+    assert returncode == 0
+    assert all(item["status"] == "PASS" for item in data["results"])
 
 
 def test_placeholder_key_returns_warning():

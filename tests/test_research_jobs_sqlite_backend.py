@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -18,7 +19,7 @@ def test_sqlite_backend_initializes_schema_and_sequence(tmp_path) -> None:
     backend = SQLiteResearchJobsBackend(db_path)
     backend.initialize()
 
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         tables = {
             row[0]
             for row in connection.execute(
@@ -35,7 +36,7 @@ def test_sqlite_backend_initializes_schema_and_sequence(tmp_path) -> None:
 
 
 def sqlite_columns(db_path, table_name: str) -> set[str]:
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         return {row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")}
 
 
@@ -68,7 +69,7 @@ def test_sqlite_backend_migrates_existing_database_with_missing_lease_columns(
     tmp_path,
 ) -> None:
     db_path = tmp_path / "jobs.sqlite3"
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         connection.execute("PRAGMA journal_mode=PERSIST")
         connection.executescript(
             """
@@ -131,7 +132,7 @@ def test_sqlite_backend_persists_job_events(tmp_path) -> None:
 
 
 def sqlite_job_row(db_path, job_id: str):
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         connection.row_factory = sqlite3.Row
         return connection.execute(
             "SELECT * FROM research_jobs WHERE id = ?",

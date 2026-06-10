@@ -48,3 +48,12 @@ def test_resolve_entities_detects_chinese_public_company_aliases() -> None:
     assert "0700.HK" in entities[0].query_terms
     assert "meta.com" in entities[1].official_domains
     assert "xiaomi.com" in entities[2].official_domains
+
+
+def test_resolve_entities_detects_alibaba_group_aliases() -> None:
+    entities = resolve_entities("分析阿里巴巴的云业务和公司战略")
+
+    assert [entity.id for entity in entities] == ["alibaba"]
+    assert entities[0].name == "Alibaba Group"
+    assert "阿里巴巴" in entities[0].aliases
+    assert "alibabagroup.com" in entities[0].official_domains

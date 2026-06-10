@@ -1,3 +1,6 @@
+import tomllib
+from pathlib import Path
+
 from insight_graph import __version__
 from insight_graph.cli import app
 from insight_graph.llm import ChatCompletionResult, ChatMessage
@@ -18,7 +21,11 @@ from insight_graph.state import (
 
 
 def test_package_version_is_defined() -> None:
-    assert __version__ == "0.1.0"
+    pyproject = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+
+    assert __version__ == pyproject["project"]["version"]
 
 
 def test_cli_app_is_importable() -> None:

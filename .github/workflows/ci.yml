@@ -32,9 +32,20 @@ jobs:
         run: python -m ruff check .
 
       - name: Test
-        run: python -m pytest -o addopts=
+        run: python -m pytest
 
       - name: Validate Demo Environment
+        env:
+          INSIGHT_GRAPH_API_KEY: test-key-at-least-16-chars
+          INSIGHT_GRAPH_LLM_BASE_URL: https://example.invalid/v1
+          INSIGHT_GRAPH_LLM_API_KEY: sk-test
+          INSIGHT_GRAPH_LLM_MODEL: test-model
+          INSIGHT_GRAPH_LLM_MODEL_FAST: test-fast
+          INSIGHT_GRAPH_LLM_MODEL_DEFAULT: test-default
+          INSIGHT_GRAPH_LLM_MODEL_STRONG: test-strong
+          INSIGHT_GRAPH_SEARCH_PROVIDER: duckduckgo
+          INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE: "8"
+          INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE: "8"
         run: python scripts/validate_demo_env.py
 
       - name: Check Search Provider (mock)

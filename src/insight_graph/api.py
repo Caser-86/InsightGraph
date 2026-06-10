@@ -1723,8 +1723,6 @@ def _run_research_job(job_id: str) -> None:
                     )
                     return
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         if is_research_job_cancelled(job.id):
             return
         _publish_failure_event(
@@ -1792,8 +1790,6 @@ def _run_claimed_research_job(job, worker_id: str) -> None:
                         )
                         return
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             if is_research_job_cancelled(job.id):
                 return
             _publish_failure_event(

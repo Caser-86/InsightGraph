@@ -544,6 +544,7 @@ def test_publish_research_job_event_uses_dynamic_retention_by_intensity() -> Non
 
 def test_run_research_job_emits_structured_failure_event_without_raw_error(
     monkeypatch,
+    capsys,
 ) -> None:
     jobs_module.reset_research_jobs_state()
     job = jobs_module.ResearchJob(
@@ -572,6 +573,9 @@ def test_run_research_job_emits_structured_failure_event_without_raw_error(
 
     api_module._run_research_job(job.id)
 
+    captured = capsys.readouterr()
+    assert "secret provider payload" not in captured.err
+    assert "Traceback" not in captured.err
     detail = jobs_module.get_research_job(job.id)
     assert detail["status"] == "failed"
     assert detail["error"] == "Research workflow failed."

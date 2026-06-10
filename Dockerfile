@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 LABEL org.opencontainers.image.title="InsightGraph"
 LABEL org.opencontainers.image.description="LangGraph Multi-Agent Deep Research Engine"
-LABEL org.opencontainers.image.version="0.2.0"
+LABEL org.opencontainers.image.version="0.2.2"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \

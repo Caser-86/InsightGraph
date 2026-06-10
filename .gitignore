@@ -12,6 +12,7 @@ server*.log
 start_server.ps1
 debug.log
 error.log
+llm_logs/
 data/
 reports/eval.json
 reports/eval.md

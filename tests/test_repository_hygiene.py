@@ -1,3 +1,5 @@
+import re
+import tomllib
 from pathlib import Path
 
 
@@ -16,9 +18,23 @@ def test_gitignore_excludes_local_runtime_noise() -> None:
         "reports/ai-coding-agents-technical-review.md",
         "debug.log",
         "error.log",
+        "llm_logs/",
         "data/",
     ]:
         assert token in gitignore
+
+
+def test_docker_image_version_matches_project_version() -> None:
+    root = Path(__file__).parents[1]
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    match = re.search(
+        r'org\.opencontainers\.image\.version="([^"]+)"',
+        dockerfile,
+    )
+
+    assert match is not None
+    assert match.group(1) == pyproject["project"]["version"]
 
 
 def test_report_quality_roadmap_documents_worktree_pythonpath_rule() -> None:

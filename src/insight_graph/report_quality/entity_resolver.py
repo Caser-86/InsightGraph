@@ -113,6 +113,25 @@ KNOWN_ENTITIES: tuple[ResolvedEntity, ...] = (
         ("Xiaomi", "小米", "小米集团", "1810.HK"),
     ),
     ResolvedEntity(
+        "alibaba",
+        "Alibaba Group",
+        "company",
+        (
+            "Alibaba",
+            "Alibaba Group",
+            "Alibaba Group Holding",
+            "Alibaba Group Holding Limited",
+            "阿里巴巴",
+            "阿里巴巴集团",
+            "阿里集团",
+        ),
+        (
+            "alibabagroup.com",
+            "alibaba.com",
+        ),
+        ("Alibaba", "Alibaba Group", "阿里巴巴", "阿里巴巴集团"),
+    ),
+    ResolvedEntity(
         "salesforce",
         "Salesforce",
         "company",

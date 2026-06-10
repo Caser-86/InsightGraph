@@ -36,6 +36,18 @@ def test_ci_validates_deployment_smoke_script_without_network() -> None:
     assert "insight-graph-smoke --help" in workflow
 
 
+def test_ci_keeps_pytest_coverage_and_supplies_demo_env() -> None:
+    workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "run: python -m pytest\n" in workflow
+    assert "python -m pytest -o addopts=" not in workflow
+    assert "INSIGHT_GRAPH_LLM_BASE_URL: https://example.invalid/v1" in workflow
+    assert 'INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE: "8"' in workflow
+    assert 'INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE: "8"' in workflow
+
+
 def test_ci_uses_least_privilege_permissions_and_concurrency() -> None:
     workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"

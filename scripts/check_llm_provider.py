@@ -13,19 +13,44 @@ import os
 import time
 from pathlib import Path
 
-# 加载 .env
-env_path = Path(__file__).resolve().parent.parent / ".env"
-if env_path.exists():
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip())
-
 
 def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
+
+
+def env_int(name: str, default: int) -> int:
+    try:
+        return int(env(name, str(default)))
+    except ValueError:
+        return default
+
+
+def load_env_file() -> None:
+    env_file = os.environ.get("INSIGHT_GRAPH_ENV_FILE")
+    env_path = (
+        Path(env_file)
+        if env_file is not None
+        else Path(__file__).resolve().parent.parent / ".env"
+    )
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key:
+            os.environ.setdefault(key, _strip_env_value(value.strip()))
+
+
+def _strip_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def check_model(label: str, model: str) -> dict[str, object]:
@@ -48,8 +73,11 @@ def check_model(label: str, model: str) -> dict[str, object]:
 
         payload = json.dumps({
             "model": model,
-            "messages": [{"role": "user", "content": 'Say exactly {"status":"ok"}'}],
-            "max_tokens": 50,
+            "messages": [
+                {"role": "system", "content": "Return only valid JSON. No markdown."},
+                {"role": "user", "content": 'Return exactly {"status":"ok"}'},
+            ],
+            "max_tokens": max(64, env_int("INSIGHT_GRAPH_LLM_CHECK_MAX_TOKENS", 256)),
             "temperature": 0,
         }).encode("utf-8")
 
@@ -89,6 +117,8 @@ def check_model(label: str, model: str) -> dict[str, object]:
 
 
 def main() -> int:
+    load_env_file()
+
     results = [
         check_model("fast", env("INSIGHT_GRAPH_LLM_MODEL_FAST")),
         check_model(
@@ -101,7 +131,7 @@ def main() -> int:
     output = {"check": "llm_provider", "results": results}
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
-    fail_count = sum(1 for r in results if r["status"] == "FAIL")
+    fail_count = sum(1 for r in results if str(r.get("status")) not in {"PASS", "SKIP"})
     return 1 if fail_count > 0 else 0
 
 

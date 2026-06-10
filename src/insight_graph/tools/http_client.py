@@ -67,14 +67,13 @@ def _fetch_text_once(
     timeout: float,
     max_bytes: int,
 ) -> FetchedPage:
-    parsed = urlparse(url)
-    _validate_url(parsed)
+    validate_fetch_url(url)
 
     request = Request(url, headers={"User-Agent": "InsightGraph/0.1"})
     try:
         with urlopen(request, timeout=timeout) as response:
             final_url = _response_url(response, url)
-            _validate_url(urlparse(final_url))
+            validate_fetch_url(final_url)
             status_code = getattr(response, "status", 200)
             if status_code < 200 or status_code >= 300:
                 raise FetchError(f"Unexpected HTTP status: {status_code}", kind="http_status")
@@ -102,6 +101,10 @@ def _fetch_text_once(
         raise FetchError(f"HTTP error while fetching URL: {exc.code}", kind="http_status") from exc
     except URLError as exc:
         raise FetchError(f"Network error while fetching URL: {exc.reason}", kind="network") from exc
+
+
+def validate_fetch_url(url: str) -> None:
+    _validate_url(urlparse(url))
 
 
 def _validate_url(parsed: ParseResult) -> None:
