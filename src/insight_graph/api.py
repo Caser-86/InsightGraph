@@ -1,0 +1,1821 @@
+# ruff: noqa: E402,I001
+import asyncio
+import hmac
+import os
+import sys
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+from html import escape as html_escape
+from pathlib import Path
+from queue import Empty, Queue
+from threading import Event, Lock, Thread
+from typing import Annotated, Any, Literal
+
+from dotenv import load_dotenv
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+    status,
+)
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from pydantic import BaseModel, field_validator
+from pydantic.json_schema import SkipJsonSchema
+
+# Load .env before any insight_graph imports that depend on env vars
+def _load_local_dotenv() -> None:
+    if "pytest" in sys.modules:
+        return
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+_load_local_dotenv()
+
+from insight_graph.cli import (
+    LIVE_LLM_PRESET_DEFAULTS,
+    LIVE_RESEARCH_PRESET_DEFAULTS,
+    ResearchPreset,
+    _build_research_json_payload,
+)
+from insight_graph.dashboard import dashboard_html
+from insight_graph.graph import run_research, run_research_with_events
+from insight_graph.memory.embeddings import embed_text
+from insight_graph.memory.store import ResearchMemoryRecord, get_research_memory_store
+from insight_graph.persistence.checkpoints import get_checkpoint_store
+from insight_graph.report_quality.intensity import (
+    ReportIntensity,
+    apply_report_intensity_defaults,
+    get_report_intensity_config,
+)
+from insight_graph.research_jobs import (
+    RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS,
+    RESEARCH_JOB_LEASE_TTL_SECONDS,
+    ResearchJobStatus,
+    append_research_job_event,
+    claim_next_research_job_for_worker,
+    cleanup_research_jobs,
+    configure_research_jobs_backend_from_env,
+    heartbeat_research_job,
+    initialize_research_jobs,
+    is_research_job_cancelled,
+    mark_research_job_failed,
+    mark_research_job_running,
+    mark_research_job_succeeded,
+    research_jobs_worker_id,
+    using_sqlite_research_jobs_backend,
+)
+from insight_graph.research_jobs import (
+    cancel_research_job as cancel_research_job_record,
+)
+from insight_graph.research_jobs import (
+    create_research_job as create_research_job_record,
+)
+from insight_graph.research_jobs import (
+    delete_research_job as delete_research_job_record,
+)
+from insight_graph.research_jobs import (
+    get_research_job as get_research_job_record,
+)
+from insight_graph.research_jobs import (
+    get_research_job_record as lookup_research_job_record,
+)
+from insight_graph.research_jobs import (
+    list_research_jobs as list_research_job_records,
+)
+from insight_graph.research_jobs import (
+    retry_research_job as retry_research_job_record,
+)
+from insight_graph.research_jobs import (
+    summarize_research_jobs as summarize_research_jobs_state,
+)
+from insight_graph.state import GraphState
+from insight_graph.tools.search_providers import (
+    get_search_quota_snapshot,
+    resolve_search_providers,
+)
+
+# ===========================================================================
+# Section 1: Constants, Models, Response Examples
+# ===========================================================================
+
+
+
+
+router = APIRouter()
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="InsightGraph API")
+    application.include_router(router)
+    return application
+
+
+# Presets use process env, so this synchronous MVP serializes /research execution.
+_RESEARCH_ENV_LOCK = Lock()
+_API_KEY_ENV_VAR = "INSIGHT_GRAPH_API_KEY"
+_API_KEY_AUTH_ERROR_DETAIL = "Invalid or missing API key."
+_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+_RESEARCH_JOB_STREAM_INTERVAL_SECONDS = 1.0
+_RESEARCH_JOB_EVENT_LIMIT = 100
+_RESEARCH_JOB_EVENTS: dict[str, list[dict[str, Any]]] = {}
+_RESEARCH_JOB_EVENT_SUBSCRIBERS: dict[str, list[Queue[dict[str, Any]]]] = {}
+_RESEARCH_JOB_EVENT_LOCK = Lock()
+_DEFAULT_RUN_RESEARCH = run_research
+_CHECKPOINT_RESUME_ENV_VAR = "INSIGHT_GRAPH_CHECKPOINT_RESUME"
+ResearchJobStatusQuery = Annotated[
+    ResearchJobStatus | None,
+    Query(description="Filter jobs by status. Omit to return all retained jobs."),
+]
+ResearchJobsLimitQuery = Annotated[
+    int,
+    Query(
+        ge=1,
+        le=100,
+        description=(
+            "Maximum number of jobs to return. The response count is the "
+            "returned count, not a total."
+        ),
+    ),
+]
+
+
+class ResearchRequest(BaseModel):
+    query: str
+    preset: ResearchPreset = ResearchPreset.offline
+    report_intensity: ReportIntensity | None = None
+    single_entity_detail_mode: Literal["auto", "on", "off"] = "auto"
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic"
+    fetch_rendered: Literal["auto", "on", "off"] = "auto"
+    search_provider: str = "auto"
+    web_search_mode: Literal["auto", "on", "off"] = "auto"
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be blank")
+        return stripped
+
+    @field_validator("search_provider")
+    @classmethod
+    def search_provider_must_be_valid(cls, value: str) -> str:
+        stripped = value.strip().lower()
+        if not stripped:
+            return "auto"
+        valid = {"auto", "all", "mock", "duckduckgo", "google", "serpapi"}
+        for part in stripped.split(","):
+            token = part.strip()
+            if token not in valid:
+                raise ValueError(
+                    "search_provider must be auto/all or comma-separated providers"
+                )
+        return stripped
+
+
+class ResearchJobCreateResponse(BaseModel):
+    job_id: str
+    status: str
+    created_at: str
+
+
+class ResearchJobSummary(BaseModel):
+    job_id: str
+    status: str
+    query: str
+    preset: ResearchPreset
+    created_at: str
+    started_at: str | SkipJsonSchema[None] = None
+    finished_at: str | SkipJsonSchema[None] = None
+    queue_position: int | SkipJsonSchema[None] = None
+
+
+class ResearchJobDetailResponse(BaseModel):
+    job_id: str
+    status: str
+    created_at: str
+    started_at: str | SkipJsonSchema[None] = None
+    finished_at: str | SkipJsonSchema[None] = None
+    queue_position: int | SkipJsonSchema[None] = None
+    progress_stage: str | SkipJsonSchema[None] = None
+    progress_percent: int | SkipJsonSchema[None] = None
+    progress_steps: list[dict[str, str]] | SkipJsonSchema[None] = None
+    runtime_seconds: int | SkipJsonSchema[None] = None
+    tool_call_count: int | SkipJsonSchema[None] = None
+    llm_call_count: int | SkipJsonSchema[None] = None
+    events: list[dict[str, Any]] | SkipJsonSchema[None] = None
+    result: dict[str, Any] | SkipJsonSchema[None] = None
+    error: str | SkipJsonSchema[None] = None
+
+
+class ResearchJobsListResponse(BaseModel):
+    jobs: list[ResearchJobSummary]
+    count: int
+
+
+class ResearchJobsSummaryResponse(BaseModel):
+    counts: dict[str, int]
+    active_count: int
+    active_limit: int
+    queued_jobs: list[ResearchJobSummary]
+    running_jobs: list[ResearchJobSummary]
+
+
+class MemoryRecordResponse(BaseModel):
+    memory_id: str
+    text: str
+    metadata: dict[str, Any]
+
+
+class MemoryListResponse(BaseModel):
+    records: list[MemoryRecordResponse]
+    count: int
+
+
+class MemorySearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+    metadata_filter: dict[str, object] | None = None
+
+
+class MemoryDeleteResponse(BaseModel):
+    deleted: bool
+
+
+_RESEARCH_JOBS_TAG = "research jobs"
+_RESEARCH_JOB_NOT_FOUND_RESPONSE = {
+    "description": "Research job not found.",
+    "content": {"application/json": {"example": {"detail": "Research job not found."}}},
+}
+_RESEARCH_JOB_STORE_FAILED_RESPONSE = {
+    "description": "Research job store failed.",
+    "content": {
+        "application/json": {"example": {"detail": "Research job store failed."}}
+    },
+}
+_TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE = {
+    "description": "Too many active research jobs.",
+    "content": {
+        "application/json": {"example": {"detail": "Too many active research jobs."}}
+    },
+}
+_RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE = {
+    "description": "Only queued or running research jobs can be cancelled.",
+    "content": {
+        "application/json": {
+            "example": {
+                "detail": "Only queued or running research jobs can be cancelled."
+            }
+        }
+    },
+}
+_RESEARCH_JOB_RETRY_CONFLICT_RESPONSE = {
+    "description": "Only failed or cancelled research jobs can be retried.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Only failed or cancelled research jobs can be retried."}
+        }
+    },
+}
+_RESEARCH_JOB_DELETE_CONFLICT_RESPONSE = {
+    "description": "Cannot delete active research job. Cancel it first.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Cannot delete active research job. Cancel it first."}
+        }
+    },
+}
+_RESEARCH_JOB_DELETE_EXAMPLE = {
+    "deleted": True,
+    "job_id": "job-123",
+}
+_RESEARCH_JOB_CREATE_EXAMPLE = {
+    "job_id": "job-123",
+    "status": "queued",
+    "created_at": "2026-04-27T10:00:00Z",
+}
+_RESEARCH_JOB_LIST_EXAMPLE = {
+    "jobs": [
+        {
+            "job_id": "job-123",
+            "status": "queued",
+            "query": "Compare AI coding agents",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:00:00Z",
+            "queue_position": 1,
+        }
+    ],
+    "count": 1,
+}
+_RESEARCH_JOBS_SUMMARY_EXAMPLE = {
+    "counts": {
+        "queued": 1,
+        "running": 1,
+        "succeeded": 0,
+        "failed": 0,
+        "cancelled": 0,
+        "total": 2,
+    },
+    "active_count": 2,
+    "active_limit": 100,
+    "queued_jobs": [
+        {
+            "job_id": "job-123",
+            "status": "queued",
+            "query": "Compare AI coding agents",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:00:00Z",
+            "queue_position": 1,
+        }
+    ],
+    "running_jobs": [
+        {
+            "job_id": "job-456",
+            "status": "running",
+            "query": "Analyze market signals",
+            "preset": "offline",
+            "created_at": "2026-04-27T10:01:00Z",
+            "started_at": "2026-04-27T10:01:01Z",
+        }
+    ],
+}
+_RESEARCH_JOB_DETAIL_EXAMPLE = {
+    "job_id": "job-789",
+    "status": "succeeded",
+    "created_at": "2026-04-27T10:02:00Z",
+    "started_at": "2026-04-27T10:02:01Z",
+    "finished_at": "2026-04-27T10:02:05Z",
+    "result": {"report_markdown": "# InsightGraph Research Report\n"},
+}
+_RESEARCH_JOB_CANCEL_EXAMPLE = {
+    "job_id": "job-123",
+    "status": "cancelled",
+    "created_at": "2026-04-27T10:00:00Z",
+    "finished_at": "2026-04-27T10:00:10Z",
+}
+_RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE = {
+    "description": "Research job report is not available.",
+    "content": {
+        "application/json": {
+            "example": {"detail": "Research job report is not available."}
+        }
+    },
+}
+_PROGRESS_STEP_LABELS = {
+    "planner": "Planner",
+    "collector": "Collector",
+    "analyst": "Analyst",
+    "critic": "Critic",
+    "reporter": "Reporter",
+}
+_PROGRESS_STEP_IDS = tuple(_PROGRESS_STEP_LABELS)
+_PROGRESS_STAGE_PERCENT = {
+    "planner": 20,
+    "collector": 40,
+    "analyst": 60,
+    "critic": 80,
+    "reporter": 95,
+}
+
+
+@contextmanager
+# ===========================================================================
+# Section 3: Preset Environment & Research Workflow
+# ===========================================================================
+
+def _research_preset_environment(
+    preset: ResearchPreset,
+    report_intensity: ReportIntensity | None = None,
+    single_entity_detail_mode: Literal["auto", "on", "off"] = "auto",
+    relevance_judge: Literal["deterministic", "openai_compatible"] = "deterministic",
+    fetch_rendered: Literal["auto", "on", "off"] = "auto",
+    search_provider: str = "auto",
+    web_search_mode: Literal["auto", "on", "off"] = "auto",
+    *,
+    relevance_judge_explicit: bool = True,
+) -> Iterator[None]:
+    if preset == ResearchPreset.offline:
+        defaults: dict[str, str] = {}
+    else:
+        defaults = (
+            LIVE_RESEARCH_PRESET_DEFAULTS
+            if preset == ResearchPreset.live_research
+            else LIVE_LLM_PRESET_DEFAULTS
+        )
+
+    intensity_env = set()
+    if report_intensity is not None:
+        intensity_env = {
+            "INSIGHT_GRAPH_REPORT_INTENSITY",
+            "INSIGHT_GRAPH_SEARCH_LIMIT",
+            "INSIGHT_GRAPH_MAX_TOOL_CALLS",
+            "INSIGHT_GRAPH_MAX_FETCHES",
+            "INSIGHT_GRAPH_MAX_EVIDENCE_PER_RUN",
+            "INSIGHT_GRAPH_MAX_TOKENS",
+            "INSIGHT_GRAPH_LLM_MAX_OUTPUT_TOKENS",
+        }
+    mode_env = {
+        "INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE",
+        "INSIGHT_GRAPH_RELEVANCE_JUDGE",
+        "INSIGHT_GRAPH_FETCH_RENDERED",
+        "INSIGHT_GRAPH_SEARCH_PROVIDER",
+        "INSIGHT_GRAPH_SEARCH_PROVIDERS",
+        "INSIGHT_GRAPH_USE_WEB_SEARCH",
+    }
+    previous_values = {
+        name: os.environ.get(name)
+        for name in {*defaults.keys(), *intensity_env, *mode_env}
+    }
+    try:
+        for name, value in defaults.items():
+            os.environ.setdefault(name, value)
+        if report_intensity is not None:
+            apply_report_intensity_defaults(report_intensity, overwrite=True)
+        os.environ["INSIGHT_GRAPH_SINGLE_ENTITY_DETAIL_MODE"] = single_entity_detail_mode
+        if relevance_judge_explicit:
+            os.environ["INSIGHT_GRAPH_RELEVANCE_JUDGE"] = relevance_judge
+        if fetch_rendered == "on":
+            os.environ["INSIGHT_GRAPH_FETCH_RENDERED"] = "1"
+        elif fetch_rendered == "off":
+            os.environ["INSIGHT_GRAPH_FETCH_RENDERED"] = "0"
+        if search_provider != "auto":
+            normalized = search_provider.strip().lower()
+            providers = [part.strip() for part in normalized.split(",") if part.strip()]
+            if normalized == "all":
+                providers = ["duckduckgo", "serpapi", "google"]
+            os.environ["INSIGHT_GRAPH_SEARCH_PROVIDERS"] = ",".join(providers)
+            if providers:
+                os.environ["INSIGHT_GRAPH_SEARCH_PROVIDER"] = providers[0]
+        if web_search_mode == "on":
+            os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] = "1"
+        elif web_search_mode == "off":
+            os.environ["INSIGHT_GRAPH_USE_WEB_SEARCH"] = "0"
+        yield
+    finally:
+        for name, value in previous_values.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _request_field_was_set(request: BaseModel, field_name: str) -> bool:
+    return field_name in getattr(request, "model_fields_set", set())
+
+
+# ===========================================================================
+# Section 2: Health & Dashboard Endpoints
+# ===========================================================================
+
+@router.get("/health")
+def health() -> dict[str, object]:
+    providers = resolve_search_providers()
+    return {
+        "status": "ok",
+        "api_key_configured": bool(_configured_api_key()),
+        "jobs_backend": os.environ.get(
+            "INSIGHT_GRAPH_RESEARCH_JOBS_BACKEND", "memory"
+        ),
+        "sqlite_path_configured": bool(
+            os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_SQLITE_PATH", "").strip()
+        ),
+        "startup_worker_enabled": _startup_worker_enabled(),
+        "checkpoint_resume_enabled": _checkpoint_resume_enabled(),
+        "search_provider": os.environ.get(
+            "INSIGHT_GRAPH_SEARCH_PROVIDER", "duckduckgo"
+        ),
+        "serpapi_configured": bool(
+            os.environ.get("INSIGHT_GRAPH_SERPAPI_KEY", "").strip()
+        ),
+        "search_providers": providers,
+        "search_quota": get_search_quota_snapshot(),
+    }
+
+
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard() -> HTMLResponse:
+    return HTMLResponse(dashboard_html())
+
+
+def _current_utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_utc_timestamp(timestamp: str) -> datetime:
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
+def _add_seconds_to_timestamp(timestamp: str, seconds: int) -> str:
+    parsed = _parse_utc_timestamp(timestamp)
+    return (parsed + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+
+def _elapsed_seconds(started_at: str, finished_at: str) -> int:
+    elapsed = _parse_utc_timestamp(finished_at) - _parse_utc_timestamp(started_at)
+    return max(0, int(elapsed.total_seconds()))
+
+
+# ===========================================================================
+# Section 4: Progress Tracking
+# ===========================================================================
+
+def _progress_steps(status_by_id: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {
+            "id": step_id,
+            "label": _PROGRESS_STEP_LABELS[step_id],
+            "status": status_by_id.get(step_id, "pending"),
+        }
+        for step_id in _PROGRESS_STEP_IDS
+    ]
+
+
+def _stage_progress_from_events(
+    job_id: str | None,
+    status: str,
+) -> dict[str, Any] | None:
+    if job_id is None:
+        return None
+
+    active_stage: str | None = None
+    last_started_stage: str | None = None
+    finished_stages: set[str] = set()
+    for event in _cached_research_job_events(job_id):
+        stage = event.get("stage")
+        if stage not in _PROGRESS_STEP_IDS:
+            continue
+        if event.get("type") == "stage_started":
+            active_stage = stage
+            last_started_stage = stage
+        elif event.get("type") == "stage_finished":
+            finished_stages.add(stage)
+            if active_stage == stage:
+                active_stage = None
+
+    if last_started_stage is None:
+        return None
+
+    if status == "failed":
+        failed_stage = active_stage or last_started_stage
+        failed_index = _PROGRESS_STEP_IDS.index(failed_stage)
+        step_statuses = {
+            step_id: _failed_stage_step_status(index, failed_index)
+            for index, step_id in enumerate(_PROGRESS_STEP_IDS)
+        }
+        return {
+            "progress_stage": "failed",
+            "progress_percent": 100,
+            "progress_steps": _progress_steps(step_statuses),
+        }
+
+    current_stage = active_stage or _next_active_stage(finished_stages)
+    current_index = _PROGRESS_STEP_IDS.index(current_stage)
+    step_statuses = {
+        step_id: _running_stage_step_status(index, current_index)
+        for index, step_id in enumerate(_PROGRESS_STEP_IDS)
+    }
+    return {
+        "progress_stage": current_stage,
+        "progress_percent": _PROGRESS_STAGE_PERCENT[current_stage],
+        "progress_steps": _progress_steps(step_statuses),
+    }
+
+
+def _next_active_stage(finished_stages: set[str]) -> str:
+    for step_id in _PROGRESS_STEP_IDS:
+        if step_id not in finished_stages:
+            return step_id
+    return "reporter"
+
+
+def _running_stage_step_status(index: int, current_index: int) -> str:
+    if index < current_index:
+        return "completed"
+    if index == current_index:
+        return "active"
+    return "pending"
+
+
+def _failed_stage_step_status(index: int, failed_index: int) -> str:
+    if index < failed_index:
+        return "completed"
+    if index == failed_index:
+        return "failed"
+    return "skipped"
+
+
+def _research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
+    status = job["status"]
+    result = job.get("result") or {}
+    if status == "queued":
+        progress_stage = "queued"
+        progress_percent = 0
+        step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
+    elif status == "running":
+        event_progress = _stage_progress_from_events(job.get("job_id"), status)
+        if event_progress is not None:
+            progress_stage = event_progress["progress_stage"]
+            progress_percent = event_progress["progress_percent"]
+            progress_steps = event_progress["progress_steps"]
+        else:
+            progress_stage = "planner"
+            progress_percent = 20
+            step_statuses = {"planner": "active"}
+            progress_steps = _progress_steps(step_statuses)
+    elif status == "succeeded":
+        progress_stage = "completed"
+        progress_percent = 100
+        step_statuses = {step_id: "completed" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
+    elif status == "failed":
+        event_progress = _stage_progress_from_events(job.get("job_id"), status)
+        progress_stage = "failed"
+        progress_percent = 100
+        if event_progress is not None:
+            progress_steps = event_progress["progress_steps"]
+        else:
+            step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+            step_statuses["planner"] = "failed"
+            progress_steps = _progress_steps(step_statuses)
+    elif status == "cancelled":
+        progress_stage = "cancelled"
+        progress_percent = 100
+        step_statuses = {step_id: "skipped" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
+    else:
+        progress_stage = status
+        progress_percent = 0
+        step_statuses = {step_id: "pending" for step_id in _PROGRESS_STEP_IDS}
+        progress_steps = _progress_steps(step_statuses)
+
+    runtime_start = job.get("started_at") or job.get("created_at")
+    runtime_end = job.get("finished_at")
+    runtime_seconds = _elapsed_seconds(runtime_start, runtime_end) if runtime_end else 0
+    return {
+        "progress_stage": progress_stage,
+        "progress_percent": progress_percent,
+        "progress_steps": progress_steps,
+        "runtime_seconds": runtime_seconds,
+        "tool_call_count": _research_job_call_count(
+            job.get("job_id"),
+            result,
+            result_key="tool_call_log",
+            event_type="tool_call",
+        ),
+        "llm_call_count": _research_job_call_count(
+            job.get("job_id"),
+            result,
+            result_key="llm_call_log",
+            event_type="llm_call",
+        ),
+    }
+
+
+def _research_job_call_count(
+    job_id: str | None,
+    result: dict[str, Any],
+    *,
+    result_key: str,
+    event_type: str,
+) -> int:
+    result_records = result.get(result_key)
+    if isinstance(result_records, list) and result_records:
+        return len(result_records)
+    if job_id is None:
+        return 0
+    return sum(
+        1
+        for event in _cached_research_job_events(job_id)
+        if event.get("type") == event_type
+    )
+
+
+def _with_research_job_progress(job: dict[str, Any]) -> dict[str, Any]:
+    return {**job, **_research_job_progress(job)}
+
+
+# ===========================================================================
+# Section 5: Event Streaming & WebSocket
+# ===========================================================================
+
+def _clear_research_job_events(job_id: str) -> None:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        _RESEARCH_JOB_EVENTS.pop(job_id, None)
+        for subscriber in _RESEARCH_JOB_EVENT_SUBSCRIBERS.pop(job_id, []):
+            subscriber.put({"type": "stream_closed"})
+
+
+def _publish_research_job_event(job_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    event_limit = _research_job_event_limit(job_id)
+    with _RESEARCH_JOB_EVENT_LOCK:
+        events = _RESEARCH_JOB_EVENTS.setdefault(job_id, [])
+        event_with_sequence = {**event, "sequence": _next_research_job_event_sequence(job_id)}
+        events.append(event_with_sequence)
+        del events[:-event_limit]
+        for subscriber in _RESEARCH_JOB_EVENT_SUBSCRIBERS.get(job_id, []):
+            subscriber.put(event_with_sequence)
+    append_research_job_event(
+        job_id,
+        event_with_sequence,
+        limit=event_limit,
+    )
+    return event_with_sequence
+
+
+def _research_job_event_limit(job_id: str) -> int:
+    override = os.getenv("INSIGHT_GRAPH_RESEARCH_JOB_EVENT_LIMIT", "").strip()
+    if override:
+        try:
+            value = int(override)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    job = lookup_research_job_record(job_id)
+    intensity = ReportIntensity.standard
+    if job is not None:
+        intensity = getattr(job, "report_intensity", ReportIntensity.standard)
+    return _research_job_event_limit_for_intensity(intensity)
+
+
+def _research_job_event_limit_for_intensity(
+    intensity: ReportIntensity | str | None,
+) -> int:
+    config = get_report_intensity_config(intensity)
+    return max(_RESEARCH_JOB_EVENT_LIMIT, min(config.max_tool_calls, 2_000))
+
+
+def _next_research_job_event_sequence(job_id: str) -> int:
+    sequences = [
+        event.get("sequence")
+        for event in [
+            *_RESEARCH_JOB_EVENTS.get(job_id, []),
+            *_persisted_research_job_events(job_id),
+        ]
+    ]
+    return max((value for value in sequences if isinstance(value, int)), default=0) + 1
+
+
+def _persisted_research_job_events(job_id: str) -> list[dict[str, Any]]:
+    try:
+        job = get_research_job_record(job_id)
+    except HTTPException:
+        return []
+    events = job.get("events")
+    if not isinstance(events, list):
+        return []
+    return [dict(event) for event in events if isinstance(event, dict)]
+
+
+def _cached_research_job_events(job_id: str) -> list[dict[str, Any]]:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        events = [dict(event) for event in _RESEARCH_JOB_EVENTS.get(job_id, [])]
+    if events:
+        return events
+    return _persisted_research_job_events(job_id)
+
+
+def _filter_research_job_events(
+    events: list[dict[str, Any]],
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in events
+        if _research_job_event_matches(
+            event,
+            event_type=event_type,
+            event_stage=event_stage,
+            trace_id=trace_id,
+        )
+    ]
+
+
+def _research_job_event_matches(
+    event: dict[str, Any],
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> bool:
+    if event_type and event.get("type") != event_type:
+        return False
+    if event_stage and event.get("stage") != event_stage:
+        return False
+    if trace_id and event.get("trace_id") != trace_id:
+        return False
+    return True
+
+
+def _subscribe_research_job_events(job_id: str) -> Queue[dict[str, Any]]:
+    queue: Queue[dict[str, Any]] = Queue()
+    with _RESEARCH_JOB_EVENT_LOCK:
+        _RESEARCH_JOB_EVENT_SUBSCRIBERS.setdefault(job_id, []).append(queue)
+    return queue
+
+
+def _unsubscribe_research_job_events(job_id: str, queue: Queue[dict[str, Any]]) -> None:
+    with _RESEARCH_JOB_EVENT_LOCK:
+        subscribers = _RESEARCH_JOB_EVENT_SUBSCRIBERS.get(job_id)
+        if subscribers is None:
+            return
+        if queue in subscribers:
+            subscribers.remove(queue)
+        if not subscribers:
+            _RESEARCH_JOB_EVENT_SUBSCRIBERS.pop(job_id, None)
+
+
+def _next_research_job_event(
+    queue: Queue[dict[str, Any]],
+    timeout_seconds: float,
+) -> dict[str, Any] | None:
+    try:
+        return queue.get(timeout=timeout_seconds)
+    except Empty:
+        return None
+
+
+def _run_research_job_workflow(
+    query: str,
+    emit_event: Callable[[dict[str, Any]], None],
+    *,
+    job_id: str | None = None,
+) -> GraphState:
+    if run_research is not _DEFAULT_RUN_RESEARCH:
+        return run_research(query)
+    if job_id is not None and _checkpoint_resume_enabled():
+        return run_research_with_events(
+            query,
+            emit_event,
+            run_id=job_id,
+            checkpoint_store=get_checkpoint_store(),
+            resume=True,
+        )
+    return run_research_with_events(query, emit_event)
+
+
+def _research_job_quality_failure(job: Any, result: dict[str, Any]) -> str | None:
+    if job.preset != ResearchPreset.live_research:
+        return None
+    if os.getenv("INSIGHT_GRAPH_STRICT_QUALITY_GATE", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return None
+
+    diagnostics = result.get("runtime_diagnostics")
+    if not isinstance(diagnostics, dict):
+        diagnostics = {}
+
+    serpapi_enabled = _is_serpapi_enabled(job.search_provider)
+    default_thresholds = _quality_gate_defaults(
+        job.report_intensity,
+        serpapi_enabled=serpapi_enabled,
+    )
+
+    checks = [
+        (
+            "evidence_count",
+            _int_value(diagnostics.get("evidence_count")),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_EVIDENCE",
+                default_thresholds["evidence_count"],
+            ),
+        ),
+        (
+            "verified_evidence_count",
+            _int_value(diagnostics.get("verified_evidence_count")),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_VERIFIED_EVIDENCE",
+                default_thresholds["verified_evidence_count"],
+            ),
+        ),
+        (
+            "successful_llm_call_count",
+            _int_value(diagnostics.get("successful_llm_call_count")),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESSFUL_LLM_CALLS",
+                default_thresholds["successful_llm_call_count"],
+            ),
+        ),
+        (
+            "report_chars",
+            len(str(result.get("report_markdown") or "").strip()),
+            _positive_int_env(
+                "INSIGHT_GRAPH_MIN_SUCCESS_REPORT_CHARS",
+                default_thresholds["report_chars"],
+            ),
+        ),
+    ]
+    failed = [
+        f"{name}={actual} < {minimum}"
+        for name, actual, minimum in checks
+        if minimum > 0 and actual < minimum
+    ]
+    if not failed:
+        diagnostics["quality_gate_status"] = "passed"
+        return None
+    diagnostics["quality_gate_warnings"] = failed
+    diagnostics["quality_gate_status"] = "needs_improvement"
+    hard_failed = [
+        failure
+        for failure in failed
+        if _quality_gate_failure_is_hard(failure, diagnostics)
+    ]
+    if not hard_failed:
+        return None
+    hints = _research_quality_failure_hints(diagnostics)
+    message = "Research quality gate failed: " + "; ".join(hard_failed)
+    if hints:
+        message = f"{message}. Hints: {'; '.join(hints)}"
+    return message
+
+
+def _quality_gate_failure_is_hard(failure: str, diagnostics: dict[str, Any]) -> bool:
+    if failure.startswith(("evidence_count=", "verified_evidence_count=")):
+        return (
+            _int_value(diagnostics.get("evidence_count")) == 0
+            and _int_value(diagnostics.get("verified_evidence_count")) == 0
+        )
+    return True
+
+
+def _research_quality_failure_hints(diagnostics: dict[str, Any]) -> list[str]:
+    hints: list[str] = []
+    evidence_count = _int_value(diagnostics.get("evidence_count"))
+    verified_evidence_count = _int_value(diagnostics.get("verified_evidence_count"))
+    successful_llm_call_count = _int_value(diagnostics.get("successful_llm_call_count"))
+    if evidence_count == 0 and verified_evidence_count == 0:
+        hints.append(
+            "no live evidence collected; check search engine selection, network access, "
+            "SerpAPI quota/key, or disable strict live quality gate for dry runs"
+        )
+    if successful_llm_call_count == 0:
+        hints.append(
+            "no successful LLM calls; check INSIGHT_GRAPH_LLM_API_KEY, "
+            "INSIGHT_GRAPH_LLM_BASE_URL, model name, and provider connectivity"
+        )
+    return hints
+
+
+def _int_value(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _quality_gate_defaults(
+    intensity: ReportIntensity | str | None,
+    *,
+    serpapi_enabled: bool,
+) -> dict[str, int]:
+    mode = get_report_intensity_config(intensity).name
+    defaults: dict[str, tuple[int, int, int, int]] = {
+        "concise": (10, 5, 2, 3_000),
+        "standard": (18, 12, 4, 9_000),
+        "deep": (26, 18, 6, 12_000),
+        "deep-plus": (40, 28, 10, 18_000),
+    }
+    evidence, verified, llm_calls, report_chars = defaults.get(mode, defaults["standard"])
+    if serpapi_enabled:
+        evidence += 2
+    return {
+        "evidence_count": evidence,
+        "verified_evidence_count": verified,
+        "successful_llm_call_count": llm_calls,
+        "report_chars": report_chars,
+    }
+
+
+def _is_serpapi_enabled(search_provider: str | None) -> bool:
+    expression = _effective_search_provider_expression(search_provider)
+    providers = _safe_resolve_search_providers(expression)
+    return "serpapi" in providers
+
+
+def _effective_search_provider_expression(search_provider: str | None) -> str:
+    if isinstance(search_provider, str):
+        normalized = search_provider.strip().lower()
+        if normalized and normalized != "auto":
+            return normalized
+    providers_env = os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDERS", "").strip().lower()
+    if providers_env:
+        return providers_env
+    return os.getenv("INSIGHT_GRAPH_SEARCH_PROVIDER", "mock").strip().lower() or "mock"
+
+
+def _safe_resolve_search_providers(expression: str) -> list[str]:
+    try:
+        return resolve_search_providers(expression)
+    except ValueError:
+        valid = {"mock", "duckduckgo", "google", "serpapi"}
+        providers: list[str] = []
+        for part in expression.split(","):
+            provider = part.strip().lower()
+            if provider in valid and provider not in providers:
+                providers.append(provider)
+        return providers or ["mock"]
+
+
+def _failed_stage_from_events(job_id: str) -> str | None:
+    active_stage: str | None = None
+    last_started_stage: str | None = None
+    for event in _cached_research_job_events(job_id):
+        stage = event.get("stage")
+        if stage not in _PROGRESS_STEP_IDS:
+            continue
+        if event.get("type") == "stage_started":
+            active_stage = stage
+            last_started_stage = stage
+        elif event.get("type") == "stage_finished" and active_stage == stage:
+            active_stage = None
+    return active_stage or last_started_stage
+
+
+def _failure_error_kind(error: Exception) -> str:
+    kind_name = error.__class__.__name__.lower()
+    message = str(error).lower()
+    if isinstance(error, TimeoutError) or "timeout" in kind_name:
+        return "timeout"
+    if isinstance(error, ConnectionError) or "connection" in kind_name:
+        return "network_error"
+    if "rate" in message and "limit" in message:
+        return "rate_limited"
+    if "llm" in message:
+        return "llm_call_failed"
+    return "workflow_exception"
+
+
+def _publish_failure_event(
+    job_id: str,
+    *,
+    error_kind: str,
+    error_code: str | None = None,
+    failed_stage: str | None = None,
+) -> None:
+    # Preserve legacy behavior: do not create an extra persisted failure event
+    # when no workflow events exist yet (for example, immediate startup failures).
+    existing_events = _cached_research_job_events(job_id)
+    if not existing_events and error_kind != "quality_gate":
+        return
+    payload: dict[str, Any] = {
+        "type": "job_failed",
+        "error_kind": error_kind,
+    }
+    if error_code:
+        payload["error_code"] = error_code
+    payload["stage"] = failed_stage or "planner"
+    _publish_research_job_event(job_id, payload)
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _checkpoint_resume_enabled() -> bool:
+    return os.environ.get(_CHECKPOINT_RESUME_ENV_VAR, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _lease_expires_at(started_at: str) -> str:
+    return _add_seconds_to_timestamp(started_at, RESEARCH_JOB_LEASE_TTL_SECONDS)
+
+
+def _start_research_job_heartbeat(job_id: str, worker_id: str) -> tuple[Event, Thread | None]:
+    stop_event = Event()
+    if not using_sqlite_research_jobs_backend():
+        return stop_event, None
+
+    def heartbeat_loop() -> None:
+        while not stop_event.wait(RESEARCH_JOB_HEARTBEAT_INTERVAL_SECONDS):
+            now = _current_utc_timestamp()
+            heartbeat_research_job(
+                job_id,
+                worker_id=worker_id,
+                now=now,
+                lease_expires_at=_lease_expires_at(now),
+            )
+
+    thread = Thread(
+        target=heartbeat_loop,
+        name=f"research-job-heartbeat-{job_id}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
+def _stop_research_job_heartbeat(stop_event: Event, thread: Thread | None) -> None:
+    stop_event.set()
+    if thread is not None:
+        thread.join(timeout=1)
+
+
+def _initialize_research_jobs_from_env() -> None:
+    configure_research_jobs_backend_from_env()
+    initialize_research_jobs(restart_timestamp=_current_utc_timestamp())
+    _cleanup_research_jobs_from_env()
+    _submit_startup_research_jobs()
+
+
+def _cleanup_research_jobs_from_env() -> None:
+    retention_days = _terminal_retention_days_from_env()
+    if retention_days is None:
+        return
+    cleanup_research_jobs(
+        finished_before=_timestamp_days_before(_current_utc_timestamp(), retention_days)
+    )
+
+
+def _terminal_retention_days_from_env() -> int | None:
+    raw = os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_TERMINAL_RETENTION_DAYS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def _timestamp_days_before(timestamp: str, days: int) -> str:
+    cutoff = datetime.fromisoformat(timestamp.replace("Z", "+00:00")) - timedelta(days=days)
+    return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _startup_worker_enabled() -> bool:
+    return os.environ.get("INSIGHT_GRAPH_RESEARCH_JOBS_STARTUP_WORKER", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _submit_startup_research_jobs() -> None:
+    if not _startup_worker_enabled() or not using_sqlite_research_jobs_backend():
+        return
+    while True:
+        job = claim_next_research_job_for_worker(
+            started_at=_current_utc_timestamp,
+            worker_id=research_jobs_worker_id(),
+            lease_expires_at=_lease_expires_at,
+        )
+        if job is None:
+            return
+        _JOB_EXECUTOR.submit(_run_claimed_research_job, job, research_jobs_worker_id())
+
+
+_initialize_research_jobs_from_env()
+
+
+def _configured_api_key() -> str | None:
+    api_key = os.environ.get(_API_KEY_ENV_VAR, "").strip()
+    return api_key or None
+
+
+def _candidate_matches_api_key(candidate: str | None, expected: str) -> bool:
+    if candidate is None:
+        return False
+    return hmac.compare_digest(candidate, expected)
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if authorization is None:
+        return None
+    prefix = "Bearer "
+    if not authorization.startswith(prefix):
+        return None
+    token = authorization[len(prefix) :].strip()
+    return token or None
+
+
+def _api_key_is_authorized(*candidates: str | None) -> bool:
+    expected_api_key = _configured_api_key()
+    if expected_api_key is None:
+        return True
+    return any(_candidate_matches_api_key(candidate, expected_api_key) for candidate in candidates)
+
+
+def require_api_key(
+    authorization: Annotated[
+        str | None,
+        Header(alias="Authorization", include_in_schema=False),
+    ] = None,
+    x_api_key: Annotated[
+        str | None,
+        Header(alias="X-API-Key", include_in_schema=False),
+    ] = None,
+) -> None:
+    if _api_key_is_authorized(_bearer_token(authorization), x_api_key):
+        return
+
+    raise HTTPException(status_code=401, detail=_API_KEY_AUTH_ERROR_DETAIL)
+
+
+_API_KEY_DEPENDENCY = [Depends(require_api_key)]
+
+
+@router.post("/research", dependencies=_API_KEY_DEPENDENCY)
+def research(request: ResearchRequest) -> dict[str, Any]:
+    try:
+        with _RESEARCH_ENV_LOCK:
+            with _research_preset_environment(
+                request.preset,
+                request.report_intensity or ReportIntensity.standard,
+                request.single_entity_detail_mode,
+                request.relevance_judge,
+                request.fetch_rendered,
+                request.search_provider,
+                request.web_search_mode,
+                relevance_judge_explicit=_request_field_was_set(
+                    request,
+                    "relevance_judge",
+                ),
+            ):
+                state = run_research(request.query)
+                return _build_research_json_payload(state)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Research workflow failed.") from exc
+
+
+def _memory_record_response(record: ResearchMemoryRecord) -> dict[str, Any]:
+    return {
+        "memory_id": record.memory_id,
+        "text": record.text,
+        "metadata": record.metadata,
+    }
+
+
+@router.get(
+    "/memory",
+    response_model=MemoryListResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def list_memory_records(limit: int = 100) -> dict[str, Any]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    records = store.list_memories(limit=limit)
+    return {
+        "records": [_memory_record_response(record) for record in records],
+        "count": len(records),
+    }
+
+
+@router.post(
+    "/memory/search",
+    response_model=MemoryListResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def search_memory_records(request: MemorySearchRequest) -> dict[str, Any]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    records = store.search(
+        embed_text(request.query),
+        limit=request.limit,
+        metadata_filter=request.metadata_filter,
+    )
+    return {
+        "records": [_memory_record_response(record) for record in records],
+        "count": len(records),
+    }
+
+
+@router.delete(
+    "/memory/{memory_id}",
+    response_model=MemoryDeleteResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=["memory"],
+)
+def delete_memory_record(memory_id: str) -> dict[str, bool]:
+    store = get_research_memory_store()
+    store.ensure_schema()
+    return {"deleted": store.delete_memory(memory_id)}
+
+
+@router.post(
+    "/research/jobs",
+    status_code=202,
+    response_model=ResearchJobCreateResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Create research job",
+    description=(
+        "Queue a research workflow for background execution. Jobs start as queued and "
+        "can be inspected with the job detail endpoint."
+    ),
+    responses={
+        202: {"content": {"application/json": {"example": _RESEARCH_JOB_CREATE_EXAMPLE}}},
+        429: _TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def create_research_job(request: ResearchRequest) -> dict[str, str]:
+    response = create_research_job_record(
+        query=request.query,
+        preset=request.preset,
+        report_intensity=request.report_intensity or ReportIntensity.standard,
+        single_entity_detail_mode=request.single_entity_detail_mode,
+        relevance_judge=request.relevance_judge,
+        fetch_rendered=request.fetch_rendered,
+        search_provider=request.search_provider,
+        web_search_mode=request.web_search_mode,
+        created_at=_current_utc_timestamp(),
+    )
+    _JOB_EXECUTOR.submit(_run_research_job, response["job_id"])
+    return response
+
+
+@router.get(
+    "/research/jobs",
+    response_model=ResearchJobsListResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="List research jobs",
+    description=(
+        "Return retained research jobs ordered newest first. Optional status filtering "
+        "does not change queued job positions."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_LIST_EXAMPLE}}},
+    },
+)
+def list_research_jobs(
+    status: ResearchJobStatusQuery = None,
+    limit: ResearchJobsLimitQuery = 100,
+) -> dict[str, Any]:
+    return list_research_job_records(status=status, limit=limit)
+
+
+@router.get(
+    "/research/jobs/summary",
+    response_model=ResearchJobsSummaryResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Summarize research jobs",
+    description=(
+        "Return job counts plus queued and running job summaries for monitoring active work."
+    ),
+    responses={
+        200: {
+            "content": {"application/json": {"example": _RESEARCH_JOBS_SUMMARY_EXAMPLE}}
+        },
+    },
+)
+def summarize_research_jobs() -> dict[str, Any]:
+    return summarize_research_jobs_state()
+
+
+@router.post(
+    "/research/jobs/{job_id}/cancel",
+    response_model=ResearchJobDetailResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Cancel queued research job",
+    description=(
+        "Cancel a queued or running research job. Terminal jobs are not cancellable."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_CANCEL_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_CANCEL_CONFLICT_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def cancel_research_job(job_id: str) -> dict[str, Any]:
+    return cancel_research_job_record(
+        job_id=job_id,
+        finished_at=_current_utc_timestamp(),
+    )
+
+
+@router.delete(
+    "/research/jobs/{job_id}",
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Delete a terminal research job",
+    description=(
+        "Delete a succeeded, failed, or cancelled research job. "
+        "Active jobs cannot be deleted."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_DELETE_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_DELETE_CONFLICT_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def delete_research_job(job_id: str) -> dict[str, Any]:
+    return delete_research_job_record(job_id=job_id)
+
+
+@router.post(
+    "/research/jobs/{job_id}/retry",
+    status_code=202,
+    response_model=ResearchJobCreateResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Retry failed or cancelled research job",
+    description="Create a new queued job from a failed or cancelled research job.",
+    responses={
+        202: {"content": {"application/json": {"example": _RESEARCH_JOB_CREATE_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_RETRY_CONFLICT_RESPONSE,
+        429: _TOO_MANY_ACTIVE_RESEARCH_JOBS_RESPONSE,
+        500: _RESEARCH_JOB_STORE_FAILED_RESPONSE,
+    },
+)
+def retry_research_job(job_id: str) -> dict[str, str]:
+    response = retry_research_job_record(
+        job_id=job_id,
+        created_at=_current_utc_timestamp(),
+    )
+    _JOB_EXECUTOR.submit(_run_research_job, response["job_id"])
+    return response
+
+
+def _research_job_report_markdown(job_id: str) -> str:
+    job = get_research_job_record(job_id)
+    result = job.get("result") or {}
+    report_markdown = result.get("report_markdown") if isinstance(result, dict) else None
+    if not isinstance(report_markdown, str) or not report_markdown.strip():
+        raise HTTPException(
+            status_code=409,
+            detail="Research job report is not available.",
+        )
+    return report_markdown
+
+
+def _markdown_report_to_html(markdown: str) -> str:
+    lines = markdown.splitlines()
+    html_lines = [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '  <meta charset="utf-8">',
+        "  <title>InsightGraph Research Report</title>",
+        "</head>",
+        "<body>",
+        "<article>",
+    ]
+    in_list = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            continue
+        if stripped.startswith("# "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h1>{html_escape(stripped[2:])}</h1>")
+        elif stripped.startswith("## "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h2>{html_escape(stripped[3:])}</h2>")
+        elif stripped.startswith("### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h3>{html_escape(stripped[4:])}</h3>")
+        elif stripped.startswith("- "):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            html_lines.append(f"<li>{html_escape(stripped[2:])}</li>")
+        else:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<p>{html_escape(stripped)}</p>")
+    if in_list:
+        html_lines.append("</ul>")
+    html_lines.extend(["</article>", "</body>", "</html>"])
+    return "\n".join(html_lines) + "\n"
+
+
+@router.get(
+    "/research/jobs/{job_id}/report.md",
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Download research job Markdown report",
+    description="Download the Markdown report for a succeeded research job.",
+    responses={
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE,
+    },
+)
+def download_research_job_markdown_report(job_id: str) -> PlainTextResponse:
+    return PlainTextResponse(
+        _research_job_report_markdown(job_id),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{job_id}.md"'},
+    )
+
+
+@router.get(
+    "/research/jobs/{job_id}/report.html",
+    response_class=HTMLResponse,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Download research job HTML report",
+    description="Download an escaped HTML rendering for a succeeded research job report.",
+    responses={
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+        409: _RESEARCH_JOB_REPORT_UNAVAILABLE_RESPONSE,
+    },
+)
+def download_research_job_html_report(job_id: str) -> HTMLResponse:
+    return HTMLResponse(
+        _markdown_report_to_html(_research_job_report_markdown(job_id)),
+        headers={"Content-Disposition": f'attachment; filename="{job_id}.html"'},
+    )
+
+
+async def _send_research_job_stream_event(websocket: WebSocket, job_id: str) -> bool:
+    try:
+        job = _with_research_job_progress(get_research_job_record(job_id))
+    except HTTPException as exc:
+        await websocket.send_json({"type": "error", "detail": exc.detail})
+        return True
+
+    await websocket.send_json({"type": "job_snapshot", "job": job})
+    return job["status"] in {"succeeded", "failed", "cancelled"}
+
+
+async def _send_cached_research_job_events(
+    websocket: WebSocket,
+    job_id: str,
+    *,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> None:
+    events = _filter_research_job_events(
+        _cached_research_job_events(job_id),
+        event_type=event_type,
+        event_stage=event_stage,
+        trace_id=trace_id,
+    )
+    for event in events:
+        await websocket.send_json(event)
+
+
+@router.websocket("/research/jobs/{job_id}/stream")
+async def stream_research_job(
+    websocket: WebSocket,
+    job_id: str,
+    api_key: str | None = None,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> None:
+    if not _api_key_is_authorized(api_key):
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    await websocket.accept()
+    terminal = await _send_research_job_stream_event(websocket, job_id)
+    await _send_cached_research_job_events(
+        websocket,
+        job_id,
+        event_type=event_type,
+        event_stage=event_stage,
+        trace_id=trace_id,
+    )
+    if terminal:
+        await websocket.close()
+        return
+
+    event_queue = _subscribe_research_job_events(job_id)
+    try:
+        while True:
+            event = await asyncio.to_thread(
+                _next_research_job_event,
+                event_queue,
+                _RESEARCH_JOB_STREAM_INTERVAL_SECONDS,
+            )
+            if (
+                event is not None
+                and event["type"] != "stream_closed"
+                and _research_job_event_matches(
+                    event,
+                    event_type=event_type,
+                    event_stage=event_stage,
+                    trace_id=trace_id,
+                )
+            ):
+                await websocket.send_json(event)
+            terminal = await _send_research_job_stream_event(websocket, job_id)
+            if terminal:
+                await websocket.close()
+                return
+    except WebSocketDisconnect:
+        return
+    finally:
+        _unsubscribe_research_job_events(job_id, event_queue)
+
+
+@router.get(
+    "/research/jobs/{job_id}",
+    response_model=ResearchJobDetailResponse,
+    response_model_exclude_none=True,
+    dependencies=_API_KEY_DEPENDENCY,
+    tags=[_RESEARCH_JOBS_TAG],
+    summary="Get research job",
+    description=(
+        "Return one research job. Succeeded jobs include result, failed jobs include "
+        "a safe error message, and queued jobs include queue position."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": _RESEARCH_JOB_DETAIL_EXAMPLE}}},
+        404: _RESEARCH_JOB_NOT_FOUND_RESPONSE,
+    },
+)
+def get_research_job(
+    job_id: str,
+    event_type: str | None = None,
+    event_stage: str | None = None,
+    trace_id: str | None = None,
+) -> dict[str, Any]:
+    job = _with_research_job_progress(get_research_job_record(job_id))
+    if any([event_type, event_stage, trace_id]):
+        job["events"] = _filter_research_job_events(
+            job.get("events") or [],
+            event_type=event_type,
+            event_stage=event_stage,
+            trace_id=trace_id,
+        )
+    return job
+
+
+def _run_research_job(job_id: str) -> None:
+    _clear_research_job_events(job_id)
+    worker_id = research_jobs_worker_id()
+    job = mark_research_job_running(
+        job_id=job_id,
+        started_at=_current_utc_timestamp,
+        store_failure_finished_at=_current_utc_timestamp,
+        worker_id=worker_id,
+        lease_expires_at=_lease_expires_at,
+    )
+    if job is None:
+        return
+
+    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
+    try:
+        with _RESEARCH_ENV_LOCK:
+            with _research_preset_environment(
+                preset=job.preset,
+                report_intensity=job.report_intensity,
+                single_entity_detail_mode=job.single_entity_detail_mode,
+                relevance_judge=job.relevance_judge,
+                fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
+                search_provider=job.search_provider,
+                web_search_mode=job.web_search_mode,
+                relevance_judge_explicit=True,
+            ):
+                state = _run_research_job_workflow(
+                    job.query,
+                    lambda event: _publish_research_job_event(job.id, event),
+                    job_id=job.id,
+                )
+                result = _build_research_json_payload(state)
+                quality_failure = _research_job_quality_failure(job, result)
+                if quality_failure is not None:
+                    _publish_failure_event(
+                        job.id,
+                        error_kind="quality_gate",
+                        error_code="QUALITY_GATE_FAILED",
+                        failed_stage=_failed_stage_from_events(job.id) or "reporter",
+                    )
+                    mark_research_job_failed(
+                        job,
+                        finished_at=_current_utc_timestamp(),
+                        error=quality_failure,
+                        result=result,
+                        worker_id=worker_id,
+                    )
+                    return
+    except Exception as e:
+        if is_research_job_cancelled(job.id):
+            return
+        _publish_failure_event(
+            job.id,
+            error_kind=_failure_error_kind(e),
+            error_code=e.__class__.__name__,
+            failed_stage=_failed_stage_from_events(job.id),
+        )
+        mark_research_job_failed(
+            job,
+            finished_at=_current_utc_timestamp(),
+            error="Research workflow failed.",
+            worker_id=worker_id,
+        )
+        return
+    else:
+        if is_research_job_cancelled(job.id):
+            return
+        mark_research_job_succeeded(
+            job,
+            finished_at=_current_utc_timestamp(),
+            result=result,
+            worker_id=worker_id,
+        )
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+
+
+def _run_claimed_research_job(job, worker_id: str) -> None:
+    _clear_research_job_events(job.id)
+    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
+    try:
+        try:
+            with _RESEARCH_ENV_LOCK:
+                with _research_preset_environment(
+                    preset=job.preset,
+                    report_intensity=job.report_intensity,
+                    single_entity_detail_mode=job.single_entity_detail_mode,
+                    relevance_judge=job.relevance_judge,
+                    fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
+                    search_provider=job.search_provider,
+                    web_search_mode=job.web_search_mode,
+                    relevance_judge_explicit=True,
+                ):
+                    state = _run_research_job_workflow(
+                        job.query,
+                        lambda event: _publish_research_job_event(job.id, event),
+                        job_id=job.id,
+                    )
+                    result = _build_research_json_payload(state)
+                    quality_failure = _research_job_quality_failure(job, result)
+                    if quality_failure is not None:
+                        _publish_failure_event(
+                            job.id,
+                            error_kind="quality_gate",
+                            error_code="QUALITY_GATE_FAILED",
+                            failed_stage=_failed_stage_from_events(job.id) or "reporter",
+                        )
+                        mark_research_job_failed(
+                            job,
+                            finished_at=_current_utc_timestamp(),
+                            error=quality_failure,
+                            result=result,
+                            worker_id=worker_id,
+                        )
+                        return
+        except Exception as e:
+            if is_research_job_cancelled(job.id):
+                return
+            _publish_failure_event(
+                job.id,
+                error_kind=_failure_error_kind(e),
+                error_code=e.__class__.__name__,
+                failed_stage=_failed_stage_from_events(job.id),
+            )
+            mark_research_job_failed(
+                job,
+                finished_at=_current_utc_timestamp(),
+                error="Research workflow failed.",
+                worker_id=worker_id,
+            )
+            return
+
+        if is_research_job_cancelled(job.id):
+            return
+        mark_research_job_succeeded(
+            job,
+            finished_at=_current_utc_timestamp(),
+            result=result,
+            worker_id=worker_id,
+        )
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+
+
+app = create_app()

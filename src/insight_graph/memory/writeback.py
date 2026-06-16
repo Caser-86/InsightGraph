@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+import hashlib
+import os
+
+from insight_graph.memory.embeddings import build_memory_record
+from insight_graph.memory.store import ResearchMemoryStore, get_research_memory_store
+from insight_graph.state import Evidence, GraphState
+
+
+def memory_writeback_enabled() -> bool:
+    return os.environ.get("INSIGHT_GRAPH_MEMORY_WRITEBACK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def write_report_memories(
+    state: GraphState,
+    *,
+    store: ResearchMemoryStore | None = None,
+    run_id: str | None = None,
+) -> int:
+    if not memory_writeback_enabled() or not state.report_markdown:
+        return 0
+    store = store or get_research_memory_store()
+    store.ensure_schema()
+    count = 0
+    for memory_type, text, metadata in _memory_items(state, run_id=run_id):
+        memory_id = _memory_id(memory_type, text, run_id)
+        store.add_memory(
+            build_memory_record(
+                memory_id=memory_id,
+                text=text,
+                metadata={"memory_type": memory_type, **metadata},
+            )
+        )
+        count += 1
+    return count
+
+
+def _is_claim_supported(state: GraphState, claim_text: str) -> bool:
+    """Check if a claim is supported either via grounded_claims or citation_support."""
+    # Check if grounded_claims have explicit support_status (for backward compatibility)
+    for claim in state.grounded_claims:
+        if claim.get("claim") == claim_text:
+            if claim.get("support_status") == "supported":
+                return True
+            # If it has support_status but not "supported", it's not supported
+            if "support_status" in claim:
+                return False
+    
+    # Fall back to checking citation_support
+    for item in state.citation_support:
+        if item.get("support_status") == "supported" and item.get("claim") == claim_text:
+            return True
+    
+    return False
+
+
+def _memory_items(
+    state: GraphState,
+    *,
+    run_id: str | None,
+) -> list[tuple[str, str, dict[str, object]]]:
+    base_metadata: dict[str, object] = {
+        "user_request": state.user_request,
+        "refresh_after_days": 90,
+        "expires_after_days": 365,
+    }
+    if state.domain_profile:
+        base_metadata["domain_profile"] = state.domain_profile
+    if run_id is not None:
+        base_metadata["run_id"] = run_id
+    items: list[tuple[str, str, dict[str, object]]] = []
+    items.append(
+        (
+            "report_summary",
+            _report_summary_text(state),
+            {**base_metadata, "support_status": "summary"},
+        )
+    )
+    for entity in state.resolved_entities:
+        name = entity.get("name")
+        entity_id = entity.get("id")
+        if isinstance(name, str) and name.strip():
+            metadata = {
+                **base_metadata,
+                "entity_id": entity_id or name,
+                "support_status": "summary",
+            }
+            items.append(("entity", f"Entity researched: {name}.", metadata))
+    for claim in state.grounded_claims:
+        claim_text = claim.get("claim")
+        if not isinstance(claim_text, str) or not claim_text.strip():
+            continue
+        if not _is_claim_supported(state, claim_text):
+            continue
+        metadata = {
+            **base_metadata,
+            "evidence_ids": list(_string_items(claim.get("evidence_ids"))),
+            "support_status": "supported",
+        }
+        items.append(("supported_claim", claim_text, metadata))
+    for evidence in _verified_references(state):
+        metadata = {
+            **base_metadata,
+            "evidence_id": evidence.id,
+            "source_url": evidence.source_url,
+            "source_type": evidence.source_type,
+            "support_status": "fresh_evidence",
+        }
+        items.append(("reference", f"Reference: {evidence.title}. {evidence.source_url}", metadata))
+        reliability = "trusted" if evidence.source_trusted else "unverified_trust"
+        items.append(
+            (
+                "source_reliability_note",
+                f"{evidence.source_type} source {reliability}: {evidence.source_url}",
+                {
+                    **metadata,
+                    "source_reliability": reliability,
+                },
+            )
+        )
+    return items
+
+
+def _report_summary_text(state: GraphState) -> str:
+    finding_summaries = [finding.summary for finding in state.findings if finding.summary]
+    if finding_summaries:
+        return " ".join(finding_summaries)[:1000]
+    return state.report_markdown or state.user_request
+
+
+def _verified_references(state: GraphState) -> list[Evidence]:
+    seen: set[str] = set()
+    references = []
+    for evidence in [*state.evidence_pool, *state.global_evidence_pool]:
+        if not evidence.verified or evidence.id in seen:
+            continue
+        seen.add(evidence.id)
+        references.append(evidence)
+    return references
+
+
+def _string_items(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _memory_id(memory_type: str, text: str, run_id: str | None) -> str:
+    raw = "|".join([run_id or "", memory_type, text]).encode("utf-8")
+    digest = hashlib.sha1(raw).hexdigest()[:12]
+    return f"{memory_type}-{digest}"

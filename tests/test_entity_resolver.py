@@ -1,0 +1,59 @@
+from insight_graph.report_quality.entity_resolver import resolve_entities
+
+
+def test_resolve_entities_detects_known_products_and_domains() -> None:
+    entities = resolve_entities("Compare Cursor, OpenCode, and GitHub Copilot")
+
+    assert [entity.id for entity in entities] == ["cursor", "opencode", "github-copilot"]
+    assert entities[0].name == "Cursor"
+    assert entities[0].entity_type == "product"
+    assert entities[0].official_domains == ("cursor.com",)
+    assert "Cursor" in entities[0].query_terms
+
+
+def test_resolve_entities_matches_aliases_and_deduplicates() -> None:
+    entities = resolve_entities("Compare Copilot with GitHub Copilot and Claude Code")
+
+    assert [entity.id for entity in entities] == ["github-copilot", "claude-code"]
+
+
+def test_resolve_entities_returns_empty_for_generic_request() -> None:
+    assert resolve_entities("Summarize this research topic") == []
+
+
+def test_resolve_entities_extracts_unknown_capitalized_entities() -> None:
+    entities = resolve_entities("Compare NewAgent and AnotherTool pricing")
+
+    assert [entity.id for entity in entities] == ["newagent", "anothertool"]
+    assert all(entity.entity_type == "unknown" for entity in entities)
+    assert entities[0].official_domains == ()
+
+
+def test_resolve_entities_detects_public_company_aliases_for_sec_targets() -> None:
+    entities = resolve_entities("Compare Salesforce, Oracle, and Adobe SEC filings")
+
+    assert [entity.id for entity in entities] == ["salesforce", "oracle", "adobe"]
+    assert [entity.entity_type for entity in entities] == ["company", "company", "company"]
+    assert entities[0].aliases == ("Salesforce", "Salesforce Inc", "CRM")
+    assert "CRM" in entities[0].query_terms
+
+
+def test_resolve_entities_detects_chinese_public_company_aliases() -> None:
+    entities = resolve_entities("分析腾讯、Meta 和小米公司的业务与财务")
+
+    assert [entity.id for entity in entities] == ["tencent", "meta", "xiaomi"]
+    assert entities[0].name == "Tencent"
+    assert "腾讯" in entities[0].aliases
+    assert "tencent.com" in entities[0].official_domains
+    assert "0700.HK" in entities[0].query_terms
+    assert "meta.com" in entities[1].official_domains
+    assert "xiaomi.com" in entities[2].official_domains
+
+
+def test_resolve_entities_detects_alibaba_group_aliases() -> None:
+    entities = resolve_entities("分析阿里巴巴的云业务和公司战略")
+
+    assert [entity.id for entity in entities] == ["alibaba"]
+    assert entities[0].name == "Alibaba Group"
+    assert "阿里巴巴" in entities[0].aliases
+    assert "alibabagroup.com" in entities[0].official_domains

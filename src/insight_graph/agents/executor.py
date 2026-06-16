@@ -1,0 +1,995 @@
+import os
+import re
+from urllib.parse import urlparse
+
+from insight_graph.agents.relevance import (
+    filter_relevant_evidence,
+    is_relevance_filter_enabled,
+)
+from insight_graph.report_quality.budgeting import get_research_budgets
+from insight_graph.report_quality.conversation_compression import compress_conversation
+from insight_graph.report_quality.evidence_scoring import score_evidence
+from insight_graph.report_quality.intensity import get_report_intensity_config
+from insight_graph.report_quality.source_types import infer_source_type
+from insight_graph.state import Evidence, GraphState, LLMCallRecord, Subtask, ToolCallRecord
+from insight_graph.tools import ToolRegistry
+from insight_graph.tools.search_providers import (
+    get_search_provider_diagnostics,
+    reset_search_provider_diagnostics,
+)
+
+WEB_SEARCH_TOOL = "web_search"
+WEB_SEARCH_EMPTY_ERROR = "web_search returned no live evidence"
+MAX_COLLECTION_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_COLLECTION_ROUNDS"
+MAX_TOOL_ROUNDS_ENV = "INSIGHT_GRAPH_MAX_TOOL_ROUNDS"
+CONVERSATION_COMPRESSION_ENV = "INSIGHT_GRAPH_CONVERSATION_COMPRESSION"
+TOOL_SOURCE_TYPES = {
+    "github_search": {"github"},
+    "news_search": {"news"},
+    "sec_filings": {"official_site"},
+    "document_reader": {"docs"},
+    "web_search": {"official_site", "docs", "news", "blog", "unknown"},
+}
+
+
+def _max_collection_rounds() -> int:
+    raw_value = os.environ.get(MAX_COLLECTION_ROUNDS_ENV, "1")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return 1
+    return value if value > 0 else 1
+
+
+def _max_tool_rounds() -> int:
+    raw_value = os.environ.get(MAX_TOOL_ROUNDS_ENV)
+    if raw_value is None:
+        return _max_collection_rounds()
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return _max_collection_rounds()
+    return value if value > 0 else _max_collection_rounds()
+
+
+def _conversation_compression_enabled() -> bool:
+    return os.environ.get(CONVERSATION_COMPRESSION_ENV, "").lower() in {"1", "true", "yes"}
+
+
+def execute_subtasks(state: GraphState) -> GraphState:
+    registry = ToolRegistry()
+    collected: list[Evidence] = _existing_retry_evidence(state)
+    official_domains = _resolved_entity_official_domains(state.resolved_entities)
+    records = [ToolCallRecord.model_validate(record) for record in state.tool_call_log]
+    seeded_evidence, seed_records = _seed_entity_official_sources(registry, state)
+    collected.extend(seeded_evidence)
+    records.extend(seed_records)
+    filter_enabled = is_relevance_filter_enabled()
+    relevance_drop_reasons: list[str] = []
+    budgets = get_research_budgets()
+    max_rounds = _max_tool_rounds()
+    previous_evidence_keys: set[tuple[str, str]] = set()
+    round_summaries: list[dict[str, object]] = []
+    stop_reason = "max_rounds"
+
+    for round_index in range(1, max_rounds + 1):
+        round_start_count = len(collected)
+        section_focus = _section_focus_for_round(state, round_index)
+        work_items_for_round = _collection_work_items(state, round_index)
+        for subtask, strategy in work_items_for_round:
+            if strategy is not None:
+                work_items = [_strategy_tool_query(strategy)]
+            else:
+                work_items = [
+                    {
+                        "tool_name": tool_name,
+                        "query": _collection_query(state, tool_name, section_focus),
+                        "section_id": _focused_section_id(section_focus),
+                        "strategy_id": None,
+                    }
+                    for tool_name in subtask.suggested_tools
+                ]
+            for work_item in work_items:
+                if len(records) >= budgets.max_tool_calls:
+                    stop_reason = "tool_budget_exhausted"
+                    break
+                kept_results, new_records = _run_tool(
+                    registry,
+                    str(work_item["tool_name"]),
+                    str(work_item["query"]),
+                    subtask,
+                    official_domains,
+                    filter_enabled,
+                    state.llm_call_log,
+                    relevance_drop_reasons,
+                    round_index=round_index,
+                    section_id=_optional_string(work_item.get("section_id")),
+                    strategy_id=_optional_string(work_item.get("strategy_id")),
+                )
+                collected.extend(kept_results)
+                records.extend(new_records)
+            if stop_reason == "tool_budget_exhausted":
+                break
+        if stop_reason == "tool_budget_exhausted":
+            state = _finalize_collected_evidence(state, collected, records)
+            state = _maybe_compress_conversation(state)
+            round_summaries.append(
+                _round_summary(
+                    round_index,
+                    new_evidence_count=0,
+                    state=state,
+                    round_evidence=collected[round_start_count:],
+                    query_strategy_count=_query_strategy_count(work_items_for_round),
+                    relevance_drop_reasons=relevance_drop_reasons,
+                )
+            )
+            break
+
+        state = _finalize_collected_evidence(state, collected, records)
+        state = _maybe_compress_conversation(state)
+        current_evidence_keys = {(item.id, item.source_url) for item in state.evidence_pool}
+        new_evidence_count = len(current_evidence_keys - previous_evidence_keys)
+        previous_evidence_keys = current_evidence_keys
+        sufficient = _all_sections_sufficient(state.section_collection_status)
+        round_summaries.append(
+            _round_summary(
+                round_index,
+                new_evidence_count=new_evidence_count,
+                state=state,
+                round_evidence=collected[round_start_count:],
+                query_strategy_count=_query_strategy_count(work_items_for_round),
+                relevance_drop_reasons=relevance_drop_reasons,
+            )
+        )
+        if sufficient:
+            stop_reason = "sufficient"
+            break
+        if _all_round_fetches_failed(collected[round_start_count:]):
+            stop_reason = "network_failed"
+            break
+        if _has_query_strategies_for_round(state, round_index) and not _has_later_query_strategies(
+            state,
+            round_index,
+        ):
+            stop_reason = _strategy_exhaustion_stop_reason(state)
+            break
+        if not state.section_research_plan and max_rounds == 1:
+            stop_reason = "no_section_plan"
+            break
+        if round_index > 1 and new_evidence_count == 0:
+            stop_reason = "no_new_evidence"
+            break
+
+    state.collection_rounds = round_summaries
+    state.collection_stop_reason = stop_reason
+    return state
+
+
+def _seed_entity_official_sources(
+    registry: ToolRegistry,
+    state: GraphState,
+) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    if not state.resolved_entities:
+        return [], []
+    evidence: list[Evidence] = []
+    records: list[ToolCallRecord] = []
+    for entity in state.resolved_entities:
+        entity_name = entity.get("name")
+        if not isinstance(entity_name, str) or not entity_name.strip():
+            continue
+        for url in _entity_official_seed_urls(entity):
+            try:
+                fetched = registry.run("fetch_url", url, "collect")
+            except Exception as exc:
+                fetched = [_official_source_locator_evidence(entity_name, url, exc)]
+            fetched = [
+                item
+                for item in fetched
+                if _url_matches_official_domain(item.source_url, {_normalize_domain_host(url)})
+            ]
+            if not fetched:
+                fetched = [
+                    _official_source_locator_evidence(
+                        entity_name,
+                        url,
+                        RuntimeError("fetch_url returned no official-domain evidence"),
+                    )
+                ]
+            fetched = fetched[:_official_seed_evidence_limit()]
+            normalized = [
+                item.model_copy(
+                    update={
+                        "source_type": _official_seed_source_type(item.source_url),
+                        "source_trusted": True,
+                        "verified": True,
+                        "search_query": f"official source seed: {entity_name}",
+                    }
+                )
+                for item in fetched
+            ]
+            evidence.extend(normalized)
+            records.append(
+                ToolCallRecord(
+                    subtask_id="collect",
+                    tool_name="fetch_url",
+                    query=url,
+                    evidence_count=len(normalized),
+                    success=bool(normalized),
+                    error=None if normalized else "fetch_url returned no evidence",
+                    round_index=1,
+                    strategy_id="official-source-seed",
+                )
+            )
+    return evidence, records
+
+
+def _entity_official_seed_urls(entity: dict[str, object]) -> list[str]:
+    urls: list[str] = []
+    for value in _string_list(entity.get("official_domains", [])):
+        url = _normalize_official_source_url(value)
+        if url and url not in urls:
+            urls.append(url)
+        if len(urls) >= _official_seed_url_limit():
+            break
+    return urls
+
+
+def _official_seed_url_limit() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 12
+    if intensity == "deep":
+        return 10
+    if intensity == "standard":
+        return 8
+    return 6
+
+
+def _official_seed_evidence_limit() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 4
+    if intensity == "deep":
+        return 3
+    if intensity == "standard":
+        return 2
+    return 1
+
+
+def _official_seed_source_type(url: str) -> str:
+    inferred = infer_source_type(url)
+    return "official_site" if inferred == "unknown" else inferred
+
+
+def _normalize_official_source_url(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        return ""
+    return raw if "://" in raw else f"https://{raw}"
+
+
+def _official_source_locator_evidence(
+    entity_name: str,
+    url: str,
+    error: Exception,
+) -> Evidence:
+    return Evidence(
+        id=f"official-source-{_slugify_url(url)}",
+        subtask_id="collect",
+        title=f"{entity_name} official source",
+        source_url=url,
+        snippet=(
+            f"Official source locator for {entity_name}. The page should be used to "
+            f"verify company background, investor relations, business segments, "
+            f"financial reports, strategy, and risk disclosures. Fetch fallback: {error}"
+        ),
+        source_type="official_site",
+        verified=True,
+        canonical_url=url,
+        fetch_status="failed",
+        fetch_error=str(error),
+        reachable=False,
+        source_trusted=True,
+    )
+
+
+def _slugify_url(url: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", url.lower()).strip("-") or "official"
+
+
+def _maybe_compress_conversation(state: GraphState) -> GraphState:
+    if _conversation_compression_enabled():
+        state.conversation_summary = compress_conversation(state)
+    return state
+
+
+def _round_summary(
+    round_index: int,
+    *,
+    new_evidence_count: int,
+    state: GraphState,
+    round_evidence: list[Evidence],
+    query_strategy_count: int,
+    relevance_drop_reasons: list[str],
+) -> dict[str, object]:
+    return {
+        "round": round_index,
+        "new_evidence_count": new_evidence_count,
+        "total_evidence_count": len(state.evidence_pool),
+        "sufficient": _all_sections_sufficient(state.section_collection_status),
+        "query_strategy_count": query_strategy_count,
+        "failed_fetch_count": _fetch_status_count(round_evidence, "failed"),
+        "empty_fetch_count": _fetch_status_count(round_evidence, "empty"),
+        "verified_evidence_count": sum(1 for item in round_evidence if item.verified),
+        "relevance_filtered_count": len(relevance_drop_reasons),
+        "relevance_drop_reasons": list(dict.fromkeys(relevance_drop_reasons)),
+    }
+
+
+def _query_strategy_count(
+    work_items: list[tuple[Subtask, dict[str, object] | None]],
+) -> int:
+    return sum(1 for _, strategy in work_items if strategy is not None)
+
+
+def _fetch_status_count(evidence: list[Evidence], status: str) -> int:
+    return sum(1 for item in evidence if item.fetch_status == status)
+
+
+def _all_round_fetches_failed(evidence: list[Evidence]) -> bool:
+    return bool(evidence) and all(item.fetch_status == "failed" for item in evidence)
+
+
+def _has_query_strategies_for_round(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) == round_index for strategy in state.query_strategies)
+
+
+def _has_later_query_strategies(state: GraphState, round_index: int) -> bool:
+    return any(int(strategy.get("round", 1)) > round_index for strategy in state.query_strategies)
+
+
+def _strategy_exhaustion_stop_reason(state: GraphState) -> str:
+    if state.evidence_pool and not any(item.verified for item in state.evidence_pool):
+        return "no_verified_evidence"
+    return "query_strategy_exhausted"
+
+
+def _finalize_collected_evidence(
+    state: GraphState,
+    collected: list[Evidence],
+    records: list[ToolCallRecord],
+) -> GraphState:
+    deduped = _assign_section_ids(
+        _deduplicate_evidence(collected),
+        state.section_research_plan,
+    )
+    ordered_evidence, evidence_scores = _order_evidence_by_score(deduped)
+    capped_evidence = _cap_evidence_pool(ordered_evidence, state.section_research_plan)
+    evidence_scores = [score_evidence(item) for item in capped_evidence]
+    state.evidence_pool = capped_evidence
+    state.global_evidence_pool = capped_evidence
+    state.tool_call_log = records
+    state.evidence_scores = evidence_scores
+    state.section_collection_status = _build_section_collection_status(
+        state.section_research_plan,
+        capped_evidence,
+    )
+    return state
+
+
+def _section_focus_for_round(
+    state: GraphState,
+    round_index: int,
+) -> dict[str, object] | None:
+    if round_index <= 1:
+        return None
+    for status in state.section_collection_status:
+        if not bool(status.get("sufficient", False)):
+            return status
+    return None
+
+
+def _focused_section_id(section_focus: dict[str, object] | None) -> str | None:
+    if section_focus is None:
+        return None
+    section_id = section_focus.get("section_id")
+    return section_id if isinstance(section_id, str) and section_id else None
+
+
+def _all_sections_sufficient(statuses: list[dict[str, object]]) -> bool:
+    return bool(statuses) and all(bool(status.get("sufficient", False)) for status in statuses)
+
+
+def _existing_retry_evidence(state: GraphState) -> list[Evidence]:
+    if state.iterations <= 0:
+        return []
+    existing = state.global_evidence_pool or state.evidence_pool
+    return [Evidence.model_validate(item) for item in existing]
+
+
+def _collection_work_items(
+    state: GraphState,
+    round_index: int,
+) -> list[tuple[Subtask, dict[str, object] | None]]:
+    collect_subtasks = [task for task in state.subtasks if task.id == "collect"]
+    subtask = (
+        collect_subtasks[0]
+        if collect_subtasks
+        else Subtask(id="collect", description="Collect")
+    )
+    strategies = [
+        strategy
+        for strategy in state.query_strategies
+        if int(strategy.get("round", 1)) == round_index
+    ]
+    if strategies:
+        return [(subtask, strategy) for strategy in _cap_query_strategies(strategies)]
+    return [(task, None) for task in state.subtasks]
+
+
+def _cap_query_strategies(strategies: list[dict[str, object]]) -> list[dict[str, object]]:
+    limit = _max_query_strategies_per_round()
+    return strategies[:limit]
+
+
+def _max_query_strategies_per_round() -> int:
+    raw_value = os.environ.get("INSIGHT_GRAPH_MAX_QUERY_STRATEGIES_PER_ROUND")
+    if raw_value is not None:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = 0
+        if value > 0:
+            return value
+    intensity = get_report_intensity_config().name
+    if intensity == "deep-plus":
+        return 24
+    if intensity == "deep":
+        return 12
+    if intensity == "standard":
+        return 8
+    return 4
+
+
+def _strategy_tool_query(strategy: dict[str, object]) -> dict[str, object]:
+    return {
+        "tool_name": strategy.get("tool_name", ""),
+        "query": strategy.get("query", ""),
+        "section_id": strategy.get("section_id"),
+        "strategy_id": strategy.get("strategy_id"),
+    }
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _collection_query(
+    state: GraphState,
+    tool_name: str,
+    section_focus: dict[str, object] | None = None,
+) -> str:
+    base_query = _section_aware_query(state, tool_name)
+    parts = [base_query]
+    if section_focus is not None:
+        focused_section_id = _focused_section_id(section_focus)
+        missing_evidence = int(section_focus.get("missing_evidence", 0))
+        missing_source_types = _string_list(section_focus.get("missing_source_types", []))
+        if focused_section_id:
+            parts.append(f"section: {focused_section_id}")
+        if missing_source_types:
+            parts.append(f"missing source types: {', '.join(missing_source_types)}")
+        if missing_evidence > 0:
+            parts.append(f"missing evidence: {missing_evidence}")
+    if state.iterations <= 0 or not state.replan_requests:
+        return " | ".join(parts)
+
+    for request in state.replan_requests:
+        if request.get("type") == "unsupported_claim":
+            parts.extend(_unsupported_claim_query_parts(request))
+            break
+        if request.get("type") != "missing_section_evidence":
+            continue
+        section_id = str(request.get("section_id", "")).strip()
+        missing_evidence = int(request.get("missing_evidence", 0))
+        missing_source_types = _string_list(request.get("missing_source_types", []))
+        if section_id:
+            parts.append(f"section: {section_id}")
+        if missing_source_types:
+            parts.append(f"missing source types: {', '.join(missing_source_types)}")
+        if missing_evidence > 0:
+            parts.append(f"missing evidence: {missing_evidence}")
+        break
+    return " | ".join(parts)
+
+
+def _unsupported_claim_query_parts(request: dict[str, object]) -> list[str]:
+    parts: list[str] = []
+    claim = _optional_string(request.get("unsupported_claim_hint")) or _optional_string(
+        request.get("claim")
+    )
+    missing_section = _optional_string(request.get("missing_section"))
+    missing_entity = _optional_string(request.get("missing_entity"))
+    missing_source_type = _optional_string(request.get("missing_source_type"))
+    if claim:
+        parts.append(f"unsupported claim: {claim}")
+    if missing_section:
+        parts.append(f"section: {missing_section}")
+    if missing_entity:
+        parts.append(f"entity: {missing_entity}")
+    if missing_source_type:
+        parts.append(f"missing source type: {missing_source_type}")
+    return parts
+
+
+def _section_aware_query(state: GraphState, tool_name: str) -> str:
+    parts = [state.user_request]
+    entity_names = _resolved_entity_names(state.resolved_entities)
+    if entity_names:
+        parts.append(f"entities: {', '.join(entity_names)}")
+    matching_sections = _matching_sections_for_tool(state.section_research_plan, tool_name)
+    for section in matching_sections[:2]:
+        section_id = str(section.get("section_id", "")).strip()
+        title = str(section.get("title", "")).strip()
+        question = _first_question(section)
+        section_parts = []
+        if section_id:
+            section_parts.append(section_id)
+        if title:
+            section_parts.append(title)
+        if question:
+            section_parts.append(question)
+        if section_parts:
+            parts.append("section: " + " | ".join(section_parts))
+    return " | ".join(parts)
+
+
+def _resolved_entity_names(entities: list[dict[str, object]]) -> list[str]:
+    names = []
+    for entity in entities:
+        name = entity.get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def _matching_sections_for_tool(
+    section_plan: list[dict[str, object]],
+    tool_name: str,
+) -> list[dict[str, object]]:
+    source_types = TOOL_SOURCE_TYPES.get(tool_name)
+    if not source_types:
+        return section_plan
+    matching = [
+        section
+        for section in section_plan
+        if source_types.intersection(_required_source_types(section))
+    ]
+    return matching or section_plan
+
+
+def _first_question(section: dict[str, object]) -> str:
+    questions = section.get("questions", [])
+    if isinstance(questions, list):
+        for question in questions:
+            if isinstance(question, str) and question:
+                return question
+    return ""
+
+
+def _string_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str) and value]
+
+
+def _build_section_collection_status(
+    section_plan: list[dict[str, object]],
+    evidence: list[Evidence],
+) -> list[dict[str, object]]:
+    statuses: list[dict[str, object]] = []
+    for section in section_plan:
+        section_id = str(section.get("section_id", ""))
+        section_evidence = [item for item in evidence if item.section_id == section_id]
+        evidence_count = len(section_evidence)
+        min_evidence = int(section.get("min_evidence", 1))
+        missing_evidence = max(0, min_evidence - evidence_count)
+        required_source_types = _required_source_types(section)
+        covered_source_types = _covered_source_types(required_source_types, section_evidence)
+        missing_source_types = [
+            source_type
+            for source_type in required_source_types
+            if source_type not in covered_source_types
+        ]
+        statuses.append(
+            {
+                "section_id": section_id,
+                "round": 1,
+                "evidence_count": evidence_count,
+                "min_evidence": min_evidence,
+                "required_source_types": required_source_types,
+                "covered_source_types": covered_source_types,
+                "missing_source_types": missing_source_types,
+                "sufficient": missing_evidence == 0 and not missing_source_types,
+                "missing_evidence": missing_evidence,
+            }
+        )
+    return statuses
+
+
+def _assign_section_ids(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    if not section_plan:
+        return evidence
+    return [
+        item.model_copy(update={"section_id": _section_id_for_evidence(item, section_plan)})
+        for item in evidence
+    ]
+
+
+def _section_id_for_evidence(
+    evidence: Evidence,
+    section_plan: list[dict[str, object]],
+) -> str | None:
+    scored_sections = [
+        (_section_match_score(evidence, section), index, section)
+        for index, section in enumerate(section_plan)
+    ]
+    scored_sections.sort(key=lambda item: (-item[0], item[1]))
+    best = scored_sections[0][2]
+    section_id = best.get("section_id")
+    return section_id if isinstance(section_id, str) and section_id else None
+
+
+def _section_match_score(evidence: Evidence, section: dict[str, object]) -> int:
+    score = 0
+    if evidence.source_type in _required_source_types(section):
+        score += 10
+    haystack = " ".join([evidence.title, evidence.source_url, evidence.snippet]).lower()
+    section_terms = _section_terms(section)
+    score += sum(1 for term in section_terms if term in haystack)
+    return score
+
+
+def _section_terms(section: dict[str, object]) -> list[str]:
+    raw_values: list[object] = [
+        section.get("section_id", ""),
+        section.get("title", ""),
+        *_object_list(section.get("questions", [])),
+    ]
+    terms: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            continue
+        terms.extend(token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 4)
+    return list(dict.fromkeys(terms))
+
+
+def _object_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _required_source_types(section: dict[str, object]) -> list[str]:
+    raw_values = section.get("required_source_types", [])
+    if not isinstance(raw_values, list):
+        return []
+    return [value for value in raw_values if isinstance(value, str) and value]
+
+
+def _covered_source_types(
+    required_source_types: list[str],
+    evidence: list[Evidence],
+) -> list[str]:
+    available_source_types = {item.source_type for item in evidence if item.verified}
+    return [
+        source_type
+        for source_type in required_source_types
+        if source_type in available_source_types
+    ]
+
+
+def _run_tool(
+    registry: ToolRegistry,
+    tool_name: str,
+    query: str,
+    subtask: Subtask,
+    official_domains: set[str],
+    filter_enabled: bool,
+    llm_call_log: list[LLMCallRecord],
+    relevance_drop_reasons: list[str],
+    *,
+    round_index: int = 1,
+    section_id: str | None = None,
+    strategy_id: str | None = None,
+) -> tuple[list[Evidence], list[ToolCallRecord]]:
+    if tool_name == WEB_SEARCH_TOOL:
+        reset_search_provider_diagnostics()
+    try:
+        results = registry.run(tool_name, query, subtask.id)
+    except Exception as exc:
+        failed_record = ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            success=False,
+            error=str(exc),
+            round_index=round_index,
+            section_id=section_id,
+            strategy_id=strategy_id,
+        )
+        return [], [failed_record]
+
+    if tool_name == WEB_SEARCH_TOOL and not results:
+        diagnostics = get_search_provider_diagnostics()
+        error = WEB_SEARCH_EMPTY_ERROR
+        if diagnostics:
+            error = f"{error}; provider diagnostics: {'; '.join(diagnostics)}"
+        failed_record = ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            success=False,
+            error=error,
+            round_index=round_index,
+            section_id=section_id,
+            strategy_id=strategy_id,
+        )
+        return [], [failed_record]
+
+    kept_results, filtered_count = _process_tool_results(
+        query,
+        subtask,
+        results,
+        filter_enabled,
+        llm_call_log,
+        relevance_drop_reasons,
+    )
+    kept_results, low_signal_filtered_count = _filter_low_signal_aggregators(kept_results)
+    kept_results = _prioritize_tool_results(kept_results, official_domains)
+    kept_results, cap_filtered_count = _cap_tool_results(kept_results)
+    return kept_results, [
+        ToolCallRecord(
+            subtask_id=subtask.id,
+            tool_name=tool_name,
+            query=query,
+            evidence_count=len(results),
+            filtered_count=filtered_count + low_signal_filtered_count + cap_filtered_count,
+            round_index=round_index,
+            section_id=section_id,
+            strategy_id=strategy_id,
+        )
+    ]
+
+
+def _process_tool_results(
+    query: str,
+    subtask: Subtask,
+    results: list[Evidence],
+    filter_enabled: bool,
+    llm_call_log: list[LLMCallRecord],
+    relevance_drop_reasons: list[str],
+) -> tuple[list[Evidence], int]:
+    deduped_results = _deduplicate_evidence(results)
+    if not filter_enabled:
+        return deduped_results, 0
+    kept, filtered_count = filter_relevant_evidence(
+        query,
+        subtask,
+        deduped_results,
+        llm_call_log=llm_call_log,
+    )
+    kept_ids = {item.id for item in kept}
+    for item in deduped_results:
+        if item.id not in kept_ids:
+            reason = item.relevance_reason or _relevance_drop_reason(item)
+            relevance_drop_reasons.append(reason)
+    return kept, filtered_count
+
+
+def _relevance_drop_reason(evidence: Evidence) -> str:
+    if not evidence.verified:
+        return "Evidence is not verified."
+    if not evidence.title.strip():
+        return "Evidence title is empty."
+    if not evidence.source_url.strip():
+        return "Evidence source URL is empty."
+    if not evidence.snippet.strip():
+        return "Evidence snippet is empty."
+    return "Evidence was filtered by relevance judge."
+
+
+def _deduplicate_evidence(evidence: list[Evidence]) -> list[Evidence]:
+    seen: set[tuple[str, str] | tuple[str]] = set()
+    deduped: list[Evidence] = []
+    for item in evidence:
+        key = (item.canonical_url,) if item.canonical_url else (item.id, item.source_url)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _order_evidence_by_score(
+    evidence: list[Evidence],
+) -> tuple[list[Evidence], list[dict[str, object]]]:
+    scored = [(score_evidence(item), index, item) for index, item in enumerate(evidence)]
+    scored.sort(key=lambda item: (-int(item[0]["overall_score"]), item[1]))
+    return [item for _, _, item in scored], [score for score, _, _ in scored]
+
+
+def _cap_tool_results(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
+    capped = evidence[:_max_evidence_per_tool()]
+    return capped, max(0, len(evidence) - len(capped))
+
+
+def _filter_low_signal_aggregators(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
+    if not any(not _is_low_signal_aggregator(item) for item in evidence):
+        return evidence, 0
+    kept = [item for item in evidence if not _is_low_signal_aggregator(item)]
+    return kept, len(evidence) - len(kept)
+
+
+def _max_evidence_per_tool() -> int:
+    intensity = get_report_intensity_config().name
+    if intensity == "concise":
+        return 6
+    if intensity == "standard":
+        return 12
+    if intensity == "deep":
+        return 18
+    if intensity == "deep-plus":
+        return 24
+    return 12
+
+
+def _resolved_entity_official_domains(
+    entities: list[dict[str, object]],
+) -> set[str]:
+    domains: set[str] = set()
+    for entity in entities:
+        values = entity.get("official_domains", [])
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            host = _normalize_domain_host(value)
+            if host:
+                domains.add(host)
+    return domains
+
+
+def _prioritize_tool_results(
+    evidence: list[Evidence],
+    official_domains: set[str],
+) -> list[Evidence]:
+    scored = [
+        (_tool_result_priority(item, official_domains), index, item)
+        for index, item in enumerate(evidence)
+    ]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [item for _, _, item in scored]
+
+
+def _tool_result_priority(evidence: Evidence, official_domains: set[str]) -> int:
+    score = 0
+    if evidence.verified:
+        score += 30
+    if evidence.fetch_status == "fetched":
+        score += 10
+    if evidence.source_type in {"official_site", "docs", "sec", "paper"}:
+        score += 18
+    elif evidence.source_type == "github":
+        score += 8
+    if evidence.search_rank is not None:
+        rank_score = 8 - min(max(evidence.search_rank, 1), 8)
+        score += max(0, rank_score)
+    if official_domains and _url_matches_official_domain(evidence.source_url, official_domains):
+        score += 25
+    if _is_low_signal_aggregator(evidence):
+        score -= 25
+    if evidence.claim_supported is False:
+        score -= 10
+    return score
+
+
+def _url_matches_official_domain(url: str, official_domains: set[str]) -> bool:
+    host = _normalize_domain_host(url)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in official_domains)
+
+
+def _normalize_domain_host(value: str) -> str:
+    raw = value.strip().lower()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    host = parsed.netloc or parsed.path.split("/", maxsplit=1)[0]
+    host = host.split("@", maxsplit=1)[-1].split(":", maxsplit=1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _is_low_signal_aggregator(evidence: Evidence) -> bool:
+    if evidence.source_type != "github":
+        return False
+    haystack = f"{evidence.title} {evidence.source_url}".lower()
+    signals = (
+        "githubdaily",
+        "awesome",
+        "curated list",
+        "list of",
+        "合集",
+        "导航",
+        "resources",
+    )
+    return any(signal in haystack for signal in signals)
+
+
+def _cap_evidence_pool(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    section_capped = _cap_evidence_by_section_budget(evidence, section_plan)
+    section_capped = _preserve_source_type_diversity(section_capped, evidence)
+    evidence_budget = get_research_budgets().max_evidence_per_run
+    return section_capped[:evidence_budget]
+
+
+def _cap_evidence_by_section_budget(
+    evidence: list[Evidence],
+    section_plan: list[dict[str, object]],
+) -> list[Evidence]:
+    budgets = {
+        str(section.get("section_id", "")): _section_budget(section)
+        for section in section_plan
+    }
+    if not budgets:
+        return evidence
+    counts: dict[str, int] = {}
+    capped: list[Evidence] = []
+    for item in evidence:
+        section_id = item.section_id
+        budget = budgets.get(section_id or "")
+        if budget is None:
+            capped.append(item)
+            continue
+        current_count = counts.get(section_id or "", 0)
+        if current_count >= budget:
+            continue
+        counts[section_id or ""] = current_count + 1
+        capped.append(item)
+    return capped
+
+
+def _preserve_source_type_diversity(
+    capped: list[Evidence],
+    ordered_evidence: list[Evidence],
+) -> list[Evidence]:
+    kept_keys = {(item.id, item.source_url) for item in capped}
+    kept_source_types = {item.source_type for item in capped if item.source_type}
+    diversified = list(capped)
+    for item in ordered_evidence:
+        if not item.source_type or item.source_type in kept_source_types:
+            continue
+        key = (item.id, item.source_url)
+        if key in kept_keys:
+            continue
+        diversified.append(item)
+        kept_keys.add(key)
+        kept_source_types.add(item.source_type)
+    return diversified
+
+
+def _section_budget(section: dict[str, object]) -> int | None:
+    value = section.get("budget")
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
