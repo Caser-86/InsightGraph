@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.3 - 2026-06-24
 
 ### Documentation And Project Finish
 
@@ -38,6 +38,8 @@
 - Added event-runner checkpoint save and resume hooks for persisted `GraphState` runs.
 - Added opt-in API/background research job checkpoint resume wiring.
 - Documented PostgreSQL/pgvector deferral criteria and restart/resume behavior.
+
+## Unreleased
 
 ### Benchmarks, Eval, And Observability
 
