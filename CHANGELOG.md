@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.4 - 2026-06-24
+
+### Cleanup And Stability
+
+- Dedupe `.env` loading into a shared helper for scripts.
+- Tightened provider-check scripts to close HTTP responses promptly.
+- Shared the research-job execution path for queued and claimed workers.
+- Added coverage for the shared env loader and the claimed research-job path.
+- Removed local build and runtime leftovers from the workspace.
+
 ## v0.2.3 - 2026-06-24
 
 ### Documentation And Project Finish
