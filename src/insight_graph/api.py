@@ -1689,6 +1689,22 @@ def _run_research_job(job_id: str) -> None:
 
     stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
     try:
+        _run_research_job_record(job, worker_id)
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+
+
+def _run_claimed_research_job(job, worker_id: str) -> None:
+    _clear_research_job_events(job.id)
+    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
+    try:
+        _run_research_job_record(job, worker_id)
+    finally:
+        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+
+
+def _run_research_job_record(job, worker_id: str) -> None:
+    try:
         with _RESEARCH_ENV_LOCK:
             with _research_preset_environment(
                 preset=job.preset,
@@ -1722,13 +1738,13 @@ def _run_research_job(job_id: str) -> None:
                         worker_id=worker_id,
                     )
                     return
-    except Exception as e:
+    except Exception as exc:
         if is_research_job_cancelled(job.id):
             return
         _publish_failure_event(
             job.id,
-            error_kind=_failure_error_kind(e),
-            error_code=e.__class__.__name__,
+            error_kind=_failure_error_kind(exc),
+            error_code=exc.__class__.__name__,
             failed_stage=_failed_stage_from_events(job.id),
         )
         mark_research_job_failed(
@@ -1738,84 +1754,15 @@ def _run_research_job(job_id: str) -> None:
             worker_id=worker_id,
         )
         return
-    else:
-        if is_research_job_cancelled(job.id):
-            return
-        mark_research_job_succeeded(
-            job,
-            finished_at=_current_utc_timestamp(),
-            result=result,
-            worker_id=worker_id,
-        )
-    finally:
-        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
 
-
-def _run_claimed_research_job(job, worker_id: str) -> None:
-    _clear_research_job_events(job.id)
-    stop_event, heartbeat_thread = _start_research_job_heartbeat(job.id, worker_id)
-    try:
-        try:
-            with _RESEARCH_ENV_LOCK:
-                with _research_preset_environment(
-                    preset=job.preset,
-                    report_intensity=job.report_intensity,
-                    single_entity_detail_mode=job.single_entity_detail_mode,
-                    relevance_judge=job.relevance_judge,
-                    fetch_rendered=getattr(job, 'fetch_rendered', 'auto'),
-                    search_provider=job.search_provider,
-                    web_search_mode=job.web_search_mode,
-                    relevance_judge_explicit=True,
-                ):
-                    state = _run_research_job_workflow(
-                        job.query,
-                        lambda event: _publish_research_job_event(job.id, event),
-                        job_id=job.id,
-                    )
-                    result = _build_research_json_payload(state)
-                    quality_failure = _research_job_quality_failure(job, result)
-                    if quality_failure is not None:
-                        _publish_failure_event(
-                            job.id,
-                            error_kind="quality_gate",
-                            error_code="QUALITY_GATE_FAILED",
-                            failed_stage=_failed_stage_from_events(job.id) or "reporter",
-                        )
-                        mark_research_job_failed(
-                            job,
-                            finished_at=_current_utc_timestamp(),
-                            error=quality_failure,
-                            result=result,
-                            worker_id=worker_id,
-                        )
-                        return
-        except Exception as e:
-            if is_research_job_cancelled(job.id):
-                return
-            _publish_failure_event(
-                job.id,
-                error_kind=_failure_error_kind(e),
-                error_code=e.__class__.__name__,
-                failed_stage=_failed_stage_from_events(job.id),
-            )
-            mark_research_job_failed(
-                job,
-                finished_at=_current_utc_timestamp(),
-                error="Research workflow failed.",
-                worker_id=worker_id,
-            )
-            return
-
-        if is_research_job_cancelled(job.id):
-            return
-        mark_research_job_succeeded(
-            job,
-            finished_at=_current_utc_timestamp(),
-            result=result,
-            worker_id=worker_id,
-        )
-    finally:
-        _stop_research_job_heartbeat(stop_event, heartbeat_thread)
+    if is_research_job_cancelled(job.id):
+        return
+    mark_research_job_succeeded(
+        job,
+        finished_at=_current_utc_timestamp(),
+        result=result,
+        worker_id=worker_id,
+    )
 
 
 app = create_app()

@@ -11,17 +11,11 @@ import argparse
 import json
 import os
 import time
-from pathlib import Path
 
-# 加载 .env
-env_path = Path(__file__).resolve().parent.parent / ".env"
-if env_path.exists():
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip())
+try:
+    from scripts.env_file import load_env_file
+except ModuleNotFoundError:
+    from env_file import load_env_file
 
 
 def env(name: str, default: str = "") -> str:
@@ -78,9 +72,9 @@ def check_serpapi(query: str, limit: int) -> dict[str, object]:
         }
         url = f"https://serpapi.com/search?{urllib.parse.urlencode(params)}"
         start = time.monotonic()
-        resp = urllib.request.urlopen(url, timeout=10)
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
         duration_ms = int((time.monotonic() - start) * 1000)
-        body = json.loads(resp.read().decode("utf-8"))
         results = body.get("organic_results", [])
         return {
             "provider": "serpapi",
@@ -128,9 +122,9 @@ def check_google(query: str, limit: int) -> dict[str, object]:
             + urllib.parse.urlencode(params)
         )
         start = time.monotonic()
-        resp = urllib.request.urlopen(url, timeout=10)
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
         duration_ms = int((time.monotonic() - start) * 1000)
-        body = json.loads(resp.read().decode("utf-8"))
         results = body.get("items", [])
         return {
             "provider": "google",
@@ -169,6 +163,8 @@ PROVIDERS = {
 
 
 def main() -> int:
+    load_env_file()
+
     parser = argparse.ArgumentParser(description="Check search provider connectivity")
     parser.add_argument("--provider", default="duckduckgo", choices=list(PROVIDERS))
     parser.add_argument("--query", default="InsightGraph test")
