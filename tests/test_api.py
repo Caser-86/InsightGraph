@@ -2427,6 +2427,43 @@ def test_run_research_job_publishes_stage_events(monkeypatch) -> None:
     assert any(event["type"] == "report_ready" for event in events)
 
 
+def test_run_claimed_research_job_marks_success(monkeypatch, tmp_path) -> None:
+    sqlite_path = tmp_path / "jobs.sqlite3"
+    jobs_module.configure_research_jobs_sqlite_backend(sqlite_path)
+    job = jobs_module.create_research_job(
+        query="Claimed success",
+        preset=api_module.ResearchPreset.offline,
+        created_at="2026-04-28T11:00:00Z",
+    )
+
+    def fake_run_research(query: str) -> GraphState:
+        return make_api_state(query)
+
+    monkeypatch.setattr(api_module, "run_research", fake_run_research)
+    monkeypatch.setattr(api_module, "_current_utc_timestamp", lambda: "2026-04-28T11:00:02Z")
+
+    try:
+        claimed = jobs_module.mark_research_job_running(
+            job_id=job["job_id"],
+            started_at=lambda: "2026-04-28T11:00:01Z",
+            store_failure_finished_at=lambda: "2026-04-28T11:00:01Z",
+            worker_id="worker-1",
+            lease_expires_at=lambda _now: "2026-04-28T11:05:01Z",
+        )
+        assert claimed is not None
+
+        api_module._run_claimed_research_job(claimed, "worker-1")
+
+        stored = require_research_job_record(claimed.id)
+    finally:
+        jobs_module.configure_research_jobs_in_memory_backend()
+
+    assert stored.status == "succeeded"
+    assert stored.finished_at == "2026-04-28T11:00:02Z"
+    assert stored.result is not None
+    assert stored.result["user_request"] == "Claimed success"
+
+
 def test_research_job_includes_created_at_until_started(monkeypatch) -> None:
     fake_executor = FakeExecutor()
     monkeypatch.setattr(api_module, "_JOB_EXECUTOR", fake_executor)
