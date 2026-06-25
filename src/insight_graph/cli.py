@@ -3,12 +3,11 @@ import os
 import re
 import sys
 from enum import StrEnum
-from pathlib import Path
 from typing import Annotated
 
 import typer
-from dotenv import load_dotenv
 
+from insight_graph.env import load_local_dotenv
 from insight_graph.eval import build_report_quality_metrics
 from insight_graph.graph import run_research
 from insight_graph.llm.config import resolve_llm_config
@@ -34,9 +33,7 @@ app = typer.Typer(help="InsightGraph research workflow CLI")
 
 
 def _load_local_dotenv() -> None:
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return
-    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+    load_local_dotenv()
 
 
 class ResearchPreset(StrEnum):

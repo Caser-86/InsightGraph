@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Cleanup And Stability
+
+- Shared local `.env` loading between the API and CLI entry points.
+
 ## v0.2.4 - 2026-06-24
 
 ### Cleanup And Stability

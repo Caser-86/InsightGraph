@@ -2,18 +2,15 @@
 import asyncio
 import hmac
 import os
-import sys
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html import escape as html_escape
-from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Annotated, Any, Literal
 
-from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
     Depends,
@@ -30,12 +27,10 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
+from insight_graph.env import load_local_dotenv
+
 # Load .env before any insight_graph imports that depend on env vars
-def _load_local_dotenv() -> None:
-    if "pytest" in sys.modules:
-        return
-    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
-_load_local_dotenv()
+load_local_dotenv(skip_when_pytest_loaded=True)
 
 from insight_graph.cli import (
     LIVE_LLM_PRESET_DEFAULTS,
