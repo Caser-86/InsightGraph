@@ -1,6 +1,8 @@
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 
 from insight_graph.report_quality.budgeting import get_research_budgets
 from insight_graph.report_quality.intensity import get_report_intensity_config
@@ -9,6 +11,22 @@ from insight_graph.state import Evidence
 from insight_graph.tools.fetch_url import fetch_url
 from insight_graph.tools.search_providers import SearchResult
 from insight_graph.tools.url_canonicalization import canonicalize_url
+
+PREFETCH_CONCURRENCY_ENV = "INSIGHT_GRAPH_PREFETCH_CONCURRENCY"
+DEFAULT_PREFETCH_CONCURRENCY = 2
+MAX_PREFETCH_CONCURRENCY = 5
+
+
+@dataclass(frozen=True)
+class _RankedResult:
+    rank: int
+    result: SearchResult
+
+
+@dataclass(frozen=True)
+class _FetchedResult:
+    rank: int
+    evidence: list[Evidence]
 
 
 def pre_fetch_results(
@@ -23,25 +41,65 @@ def pre_fetch_results(
         get_research_budgets().max_fetches,
         _per_query_prefetch_limit(),
     )
+    ranked_results = _unique_ranked_results(results, fetch_limit)
+    concurrency = _prefetch_concurrency()
+    if concurrency <= 1 or len(ranked_results) <= 1:
+        for ranked in ranked_results:
+            evidence.extend(_fetch_one_result(ranked, subtask_id, query).evidence)
+        return evidence
+
+    fetched_results: list[_FetchedResult] = []
+    with ThreadPoolExecutor(max_workers=min(concurrency, len(ranked_results))) as pool:
+        futures = [
+            pool.submit(_fetch_one_result, ranked, subtask_id, query)
+            for ranked in ranked_results
+        ]
+        for future in as_completed(futures):
+            fetched_results.append(future.result())
+
+    for fetched in sorted(fetched_results, key=lambda item: item.rank):
+        evidence.extend(fetched.evidence)
+    return evidence
+
+
+def _unique_ranked_results(results: list[SearchResult], fetch_limit: int) -> list[_RankedResult]:
+    ranked_results: list[_RankedResult] = []
     seen_canonical_urls: set[str] = set()
     for rank, result in enumerate(results[:fetch_limit], start=1):
         canonical_url = canonicalize_url(result.url)
         if canonical_url in seen_canonical_urls:
             continue
         seen_canonical_urls.add(canonical_url)
-        try:
-            fetched = fetch_url(_fetch_query(result.url, query), subtask_id)
-        except Exception as exc:
-            evidence.append(_diagnostic_evidence(result, subtask_id, rank, query, exc))
-            continue
-        if not fetched:
-            evidence.append(_diagnostic_evidence(result, subtask_id, rank, query, None))
-            continue
-        evidence.extend(
+        ranked_results.append(_RankedResult(rank=rank, result=result))
+    return ranked_results
+
+
+def _fetch_one_result(
+    ranked: _RankedResult,
+    subtask_id: str,
+    query: str | None,
+) -> _FetchedResult:
+    rank = ranked.rank
+    result = ranked.result
+    try:
+        fetched = fetch_url(_fetch_query(result.url, query), subtask_id)
+    except Exception as exc:
+        return _FetchedResult(
+            rank=rank,
+            evidence=[_diagnostic_evidence(result, subtask_id, rank, query, exc)],
+        )
+    if not fetched:
+        return _FetchedResult(
+            rank=rank,
+            evidence=[_diagnostic_evidence(result, subtask_id, rank, query, None)],
+        )
+    return _FetchedResult(
+        rank=rank,
+        evidence=[
             _attach_search_metadata(item, result, rank, query, fetch_status="fetched")
             for item in fetched
-        )
-    return evidence
+        ],
+    )
 
 
 def _fetch_query(url: str, query: str | None) -> str:
@@ -134,6 +192,19 @@ def _per_query_prefetch_limit() -> int:
     if intensity == "standard":
         return 2
     return 1
+
+
+def _prefetch_concurrency() -> int:
+    raw_value = os.getenv(PREFETCH_CONCURRENCY_ENV)
+    if raw_value is None:
+        return DEFAULT_PREFETCH_CONCURRENCY
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return DEFAULT_PREFETCH_CONCURRENCY
+    if value <= 1:
+        return 1
+    return min(value, MAX_PREFETCH_CONCURRENCY)
 
 
 def _fetch_error_message(error: Exception) -> str:

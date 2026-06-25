@@ -1,4 +1,5 @@
 import importlib
+import time
 
 from insight_graph.state import Evidence
 from insight_graph.tools.web_search import SearchResult
@@ -306,3 +307,56 @@ def test_pre_fetch_deduplicates_candidates_by_canonical_url(monkeypatch) -> None
     assert fetched_urls == ["https://example.com/page?utm_source=newsletter#hero"]
     assert len(evidence) == 1
     assert evidence[0].canonical_url == "https://example.com/page"
+
+
+def test_pre_fetch_concurrent_results_keep_search_rank_order(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        if url.endswith("one"):
+            time.sleep(0.03)
+        return [
+            Evidence(
+                id=url.rsplit("/", 1)[-1],
+                subtask_id=subtask_id,
+                title=f"Fetched {url}",
+                source_url=url,
+                snippet="Fetched evidence snippet.",
+                verified=True,
+            )
+        ]
+
+    monkeypatch.setenv("INSIGHT_GRAPH_PREFETCH_CONCURRENCY", "2")
+    monkeypatch.setenv("INSIGHT_GRAPH_PREFETCH_PER_QUERY_LIMIT", "3")
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title="One", url="https://example.com/one", snippet="one"),
+        SearchResult(title="Two", url="https://example.com/two", snippet="two"),
+        SearchResult(title="Three", url="https://example.com/three", snippet="three"),
+    ]
+
+    evidence = pre_fetch_module.pre_fetch_results(results, "s1", limit=3)
+
+    assert [item.id for item in evidence] == ["one", "two", "three"]
+    assert [item.search_rank for item in evidence] == [1, 2, 3]
+
+
+def test_pre_fetch_concurrency_can_be_disabled(monkeypatch) -> None:
+    pre_fetch_module = importlib.import_module("insight_graph.tools.pre_fetch")
+    fetched_urls = []
+
+    def fake_fetch_url(url: str, subtask_id: str):
+        fetched_urls.append(url)
+        return []
+
+    monkeypatch.setenv("INSIGHT_GRAPH_PREFETCH_CONCURRENCY", "1")
+    monkeypatch.setenv("INSIGHT_GRAPH_PREFETCH_PER_QUERY_LIMIT", "2")
+    monkeypatch.setattr(pre_fetch_module, "fetch_url", fake_fetch_url)
+    results = [
+        SearchResult(title="One", url="https://example.com/one", snippet="one"),
+        SearchResult(title="Two", url="https://example.com/two", snippet="two"),
+    ]
+
+    pre_fetch_module.pre_fetch_results(results, "s1", limit=2)
+
+    assert fetched_urls == ["https://example.com/one", "https://example.com/two"]
